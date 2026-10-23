@@ -14,8 +14,7 @@ import {
   Redo2, RemoveFormatting, Smile, Strikethrough, Table, Trash2, Underline, Undo2,
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
-import { imageUrl } from './drive.ts'
-import { pickImage, uploadImage } from './images.ts'
+import { imageUrl, pickImage, uploadImage } from './images.ts'
 
 const FONTS = [['', 'Fuente'], ['Georgia, serif', 'Serif'], ['ui-monospace, monospace', 'Monoespaciada'], ['"Comic Sans MS", cursive', 'Manuscrita']]
 const SIZES = [['', 'Tamaño'], ['12px', '12'], ['14px', '14'], ['18px', '18'], ['24px', '24'], ['32px', '32']]
