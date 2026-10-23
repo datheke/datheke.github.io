@@ -1,11 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { forgetSession, loadSession, signIn } from './auth.ts'
-import { AuthError, deleteFile, listFiles, readFile, saveFile, setToken, type DriveFile } from './drive.ts'
+import { AuthError, deleteFile, listFiles, readNote, saveFile, setToken, type DriveFile } from './drive.ts'
+import Editor, { Cover, EmojiPicker } from './Editor.tsx'
+import { pickImage, uploadImage } from './images.ts'
+import { TEMPLATES } from './templates.ts'
 
 type Snapshot = { title: string; text: string }
 const UNTITLED = 'Sin título'
 const byName = (a: DriveFile, b: DriveFile) => a.name.localeCompare(b.name)
 const byDate = (a: DriveFile, b: DriveFile) => b.modifiedTime.localeCompare(a.modifiedTime)
+const isTemplates = (f: DriveFile) => f.appProperties?.templates === 'true' // libreta "Plantillas"
+const parentOf = (n: DriveFile) => n.appProperties?.parent
 
 export default function App() {
   const [session, setSession] = useState(loadSession)
@@ -13,19 +18,32 @@ export default function App() {
   const [files, setFiles] = useState<DriveFile[] | null>(null) // null = cargando
   const [notebookId, setNotebookId] = useState<string | null>(null) // null = todas
   const [noteId, setNoteId] = useState<string | null>(null)
-  const [title, setTitle] = useState('')
-  const [text, setText] = useState<string | null>(null) // null = cargando
+  const [doc, setDoc] = useState<Snapshot & { id: string; rev: number } | null>(null) // nota abierta
   const [status, setStatus] = useState('')
   const [error, setError] = useState<string | null>(null) // 'auth' = sesión vencida
+  const [picker, setPicker] = useState(false) // selector de ícono de la nota
   const local = useRef(new Map<string, Snapshot>()) // contenido ya cargado o editado
   const dirty = useRef(new Set<string>()) // notas con cambios sin subir
   const savingId = useRef<string | null>(null)
   const timer = useRef(0)
+  const rev = useRef(0) // sube al leer de Drive: vuelve a montar el editor con el contenido nuevo
 
   const notebooks = (files ?? []).filter(f => f.appProperties?.kind === 'notebook').sort(byName)
+  const templatesNb = notebooks.find(isTemplates)
   const allNotes = (files ?? []).filter(f => f.appProperties?.kind === 'note')
-  const notes = allNotes.filter(f => !notebookId || f.appProperties?.notebook === notebookId).sort(byDate)
+  const regular = allNotes.filter(n => n.appProperties?.notebook !== templatesNb?.id) // "Todas las notas" sin plantillas
+  const visible = notebookId ? allNotes.filter(n => n.appProperties?.notebook === notebookId) : regular
+  // Subnotas debajo de su nota y con sangría; si la nota madre no está a la vista, la subnota va arriba.
+  const ids = new Set(visible.map(n => n.id))
+  const tree = (parent?: string, depth = 0): [DriveFile, number][] => visible
+    .filter(n => (ids.has(parentOf(n) ?? '') ? parentOf(n) : undefined) === parent).sort(byDate)
+    .flatMap(n => [[n, depth] as [DriveFile, number], ...tree(n.id, depth + 1)])
+  const list = tree()
+  const descendants = (id: string): DriveFile[] => allNotes.filter(n => parentOf(n) === id).flatMap(n => [n, ...descendants(n.id)])
+  const templates = templatesNb ? allNotes.filter(n => n.appProperties?.notebook === templatesNb.id).sort(byName) : []
   const note = allNotes.find(f => f.id === noteId)
+  const parent = note && allNotes.find(f => f.id === parentOf(note))
+  const cover = note?.appProperties?.cover
   const modified = note?.modifiedTime
 
   function fail(e: unknown) {
@@ -83,15 +101,13 @@ export default function App() {
   useEffect(() => {
     if (!noteId || !note) return
     const cached = local.current.get(noteId)
-    if (cached) { setTitle(cached.title); setText(cached.text); return }
-    const name = note.name === UNTITLED ? '' : note.name
+    if (cached) return setDoc({ ...cached, id: noteId, rev: rev.current })
+    const title = note.name === UNTITLED ? '' : note.name
     let stale = false
-    setText(null)
-    readFile(noteId).then(t => {
+    readNote(noteId, note.mimeType).then(text => {
       if (stale) return
-      local.current.set(noteId, { title: name, text: t })
-      setTitle(name)
-      setText(t)
+      local.current.set(noteId, { title, text })
+      setDoc({ id: noteId, rev: ++rev.current, title, text })
     }, fail)
     return () => { stale = true }
   // Solo recarga si cambia la nota o su versión en Drive, no con cada letra del título.
@@ -115,10 +131,10 @@ export default function App() {
   }
 
   function edit(changes: Partial<Snapshot>) {
-    if (!noteId || text === null) return
-    const snap = { title, text, ...changes }
-    setTitle(snap.title)
-    setText(snap.text)
+    if (!noteId || doc?.id !== noteId) return
+    const prev = local.current.get(noteId) ?? doc
+    const snap = { title: prev.title, text: prev.text, ...changes }
+    setDoc({ ...doc, ...snap })
     local.current.set(noteId, snap)
     dirty.current.add(noteId)
     if (changes.title !== undefined) setFiles(fs => fs && fs.map(f => f.id === noteId ? { ...f, name: snap.title } : f))
@@ -130,14 +146,21 @@ export default function App() {
   function open(id: string | null) {
     flush()
     setNoteId(id)
+    setPicker(false)
   }
 
-  async function createNotebook(name: string) {
+  async function createNotebook(name: string, extra: Record<string, string> = {}) {
     try {
-      const nb = await saveFile(undefined, { name, appProperties: { kind: 'notebook' } })
+      const nb = await saveFile(undefined, { name, appProperties: { kind: 'notebook', ...extra } })
       setFiles(fs => [...fs ?? [], nb])
-      setNotebookId(nb.id)
       return nb
+    } catch (e) { fail(e) }
+  }
+
+  async function saveMeta(id: string, appProperties: Record<string, string | null>) {
+    try {
+      const saved = await saveFile(id, { appProperties })
+      setFiles(fs => fs && fs.map(f => f.id === id ? { ...saved, name: f.name } : f))
     } catch (e) { fail(e) }
   }
 
@@ -160,27 +183,62 @@ export default function App() {
     } catch (e) { fail(e) }
   }
 
-  async function newNote() {
+  // Una subnota va en la libreta de su nota madre.
+  async function newNote(title = '', html = '', parentId?: string) {
     try {
-      const nbId = notebookId ?? notebooks[0]?.id ?? (await createNotebook('Mis notas'))?.id
+      const nbId = (parentId ? note?.appProperties?.notebook : notebookId)
+        ?? notebooks.find(nb => !isTemplates(nb))?.id ?? (await createNotebook('Mis notas'))?.id
       if (!nbId) return
-      const n = await saveFile(undefined, { name: UNTITLED, appProperties: { kind: 'note', notebook: nbId } }, '')
-      local.current.set(n.id, { title: '', text: '' })
+      const props = { kind: 'note', notebook: nbId, ...(parentId ? { parent: parentId } : {}) }
+      const n = await saveFile(undefined, { name: title || UNTITLED, appProperties: props }, html)
+      local.current.set(n.id, { title, text: html })
       setFiles(fs => [...fs ?? [], n])
       open(n.id)
     } catch (e) { fail(e) }
   }
 
+  async function fromTemplate(value: string) {
+    const builtIn = TEMPLATES.find(t => t.title === value)
+    if (builtIn) return newNote(builtIn.title, builtIn.html)
+    const tpl = allNotes.find(n => n.id === value)
+    if (!tpl) return
+    try {
+      newNote(tpl.name === UNTITLED ? '' : tpl.name, local.current.get(tpl.id)?.text ?? await readNote(tpl.id, tpl.mimeType))
+    } catch (e) { fail(e) }
+  }
+
+  async function saveAsTemplate() {
+    if (!doc) return
+    try {
+      const nb = templatesNb ?? await createNotebook('Plantillas', { templates: 'true' })
+      if (!nb) return
+      const n = await saveFile(undefined, { name: doc.title.trim() || UNTITLED, appProperties: { kind: 'note', notebook: nb.id } }, doc.text)
+      setFiles(fs => [...fs ?? [], n])
+      alert(`Guardada como plantilla en la libreta "${nb.name}".`)
+    } catch (e) { fail(e) }
+  }
+
+  // La nota se mueve con todas sus subnotas.
   async function moveNote(nbId: string) {
     if (!note) return
+    for (const n of [note, ...descendants(note.id)]) await saveMeta(n.id, { notebook: nbId })
+  }
+
+  async function changeCover() {
+    if (!note) return
+    const file = await pickImage()
+    if (!file) return
+    setStatus('Subiendo portada…')
     try {
-      const saved = await saveFile(note.id, { appProperties: { notebook: nbId } })
-      setFiles(fs => fs && fs.map(f => f.id === saved.id ? { ...saved, name: f.name } : f))
+      await saveMeta(note.id, { cover: await uploadImage(file) })
+      setStatus('')
     } catch (e) { fail(e) }
   }
 
   async function deleteNote() {
-    if (!note || !confirm(`¿Borrar "${note.name || UNTITLED}"? No se puede deshacer.`)) return
+    if (!note) return
+    if (descendants(note.id).length) return alert('Esta nota tiene subnotas. Bórralas primero.')
+    if (!confirm(`¿Borrar "${note.name || UNTITLED}"? No se puede deshacer.`)) return
     try {
       await deleteFile(note.id)
       dirty.current.delete(note.id)
@@ -208,7 +266,7 @@ export default function App() {
           <button className="enlace" onClick={logout}>Salir</button>
         </div>
         <button className={notebookId === null ? 'libreta activa' : 'libreta'} onClick={() => setNotebookId(null)}>
-          Todas las notas <small>{allNotes.length}</small>
+          Todas las notas <small>{regular.length}</small>
         </button>
         {notebooks.map(nb => (
           <div key={nb.id} className={notebookId === nb.id ? 'libreta activa' : 'libreta'}>
@@ -221,21 +279,26 @@ export default function App() {
         ))}
         <button className="libreta nueva" onClick={() => {
           const name = prompt('Nombre de la nueva libreta')?.trim()
-          if (name) createNotebook(name)
+          if (name) createNotebook(name).then(nb => nb && setNotebookId(nb.id))
         }}>+ Libreta</button>
       </nav>
 
       <section className="lista">
         <header>
-          <button className="principal" onClick={newNote}>+ Nota</button>
+          <button className="principal" onClick={() => newNote()}>+ Nota</button>
+          <select value="" aria-label="Nueva nota desde plantilla" onChange={e => fromTemplate(e.target.value)}>
+            <option value="">Plantilla…</option>
+            {TEMPLATES.map(t => <option key={t.title} value={t.title}>{t.title}</option>)}
+            {templates.map(t => <option key={t.id} value={t.id}>{t.name || UNTITLED}</option>)}
+          </select>
           <button onClick={refresh} title="Actualizar" aria-label="Actualizar">↻</button>
           <span className="estado">{status}</span>
         </header>
         {files === null ? <p className="vacio">Cargando…</p>
-          : notes.length === 0 ? <p className="vacio">Sin notas</p>
-          : notes.map(n => (
-            <button key={n.id} className={n.id === noteId ? 'nota activa' : 'nota'} onClick={() => open(n.id)}>
-              <strong>{n.name || UNTITLED}</strong>
+          : list.length === 0 ? <p className="vacio">Sin notas</p>
+          : list.map(([n, depth]) => (
+            <button key={n.id} className={n.id === noteId ? 'nota activa' : 'nota'} style={{ paddingLeft: 12 + depth * 16 }} onClick={() => open(n.id)}>
+              <strong>{depth > 0 && '↳ '}{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}</strong>
               <small>{new Date(n.modifiedTime).toLocaleString()}</small>
             </button>
           ))}
@@ -248,12 +311,26 @@ export default function App() {
             <select value={note.appProperties?.notebook} onChange={e => moveNote(e.target.value)} aria-label="Libreta">
               {notebooks.map(nb => <option key={nb.id} value={nb.id}>{nb.name}</option>)}
             </select>
+            <button onClick={() => newNote('', '', note.id)}>+ Subnota</button>
+            <button onClick={saveAsTemplate}>Guardar como plantilla</button>
             <button onClick={deleteNote}>Borrar</button>
           </header>
-          <input className="titulo" value={title} placeholder="Título" disabled={text === null}
-            onChange={e => edit({ title: e.target.value })} />
-          <textarea value={text ?? ''} placeholder={text === null ? 'Cargando…' : 'Escribe aquí…'} disabled={text === null}
-            onChange={e => edit({ text: e.target.value })} />
+          {cover && <Cover id={cover} />}
+          <div className="cabecera">
+            {parent && <button className="enlace" onClick={() => open(parent.id)}>↑ {parent.name || UNTITLED}</button>}
+            <button className={note.appProperties?.icon ? 'icono' : 'enlace'} aria-label="Ícono de la nota" onClick={() => setPicker(!picker)}>
+              {note.appProperties?.icon ?? 'Agregar ícono'}
+            </button>
+            {note.appProperties?.icon && <button className="enlace" onClick={() => saveMeta(note.id, { icon: null })}>Quitar ícono</button>}
+            <button className="enlace" onClick={changeCover}>{cover ? 'Cambiar portada' : 'Agregar portada'}</button>
+            {cover && <button className="enlace" onClick={() => saveMeta(note.id, { cover: null })}>Quitar portada</button>}
+          </div>
+          {picker && <EmojiPicker onPick={icon => { saveMeta(note.id, { icon }); setPicker(false) }} />}
+          {doc?.id === note.id ? <>
+            <input className="titulo" value={doc.title} placeholder="Título" onChange={e => edit({ title: e.target.value })} />
+            <Editor key={`${doc.id}-${doc.rev}`} content={doc.text} onChange={text => edit({ text })}
+              notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} />
+          </> : <p className="vacio">Cargando…</p>}
         </> : <p className="vacio">Elige o crea una nota</p>}
       </main>
 
