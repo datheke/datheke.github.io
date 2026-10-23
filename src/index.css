@@ -50,7 +50,65 @@ button.libreta, .libreta > button:first-child { padding: 6px 10px; }
 .editor { display: flex; flex-direction: column; min-width: 0; }
 .editor select { border: 1px solid var(--borde); border-radius: 6px; padding: 5px; background: none; margin-right: auto; }
 .editor .titulo { border: none; font-size: 26px; font-weight: 700; padding: 16px 24px 8px; outline: none; }
-.editor textarea { flex: 1; border: none; resize: none; padding: 8px 24px 24px; font-size: 16px; line-height: 1.6; outline: none; }
+.barra { display: flex; align-items: center; gap: 2px; padding: 6px 16px; border-bottom: 1px solid var(--borde); overflow-x: auto; flex-shrink: 0; }
+.barra > * { flex-shrink: 0; }
+.barra button { border: none; padding: 6px; display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; }
+.barra button:hover:not(:disabled) { background: var(--lista); }
+.barra button.activo { background: #2f9e5b22; color: var(--acento); }
+.barra button:disabled { opacity: .35; cursor: default; }
+.barra select { border: 1px solid var(--borde); border-radius: 6px; padding: 4px; background: none; margin-right: 4px; }
+.barra .color { position: relative; display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; cursor: pointer; border-radius: 6px; }
+.barra .color:hover { background: var(--lista); }
+.barra .color input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+.barra .color:focus-within { outline: 2px solid var(--acento); }
+
+.contenido { flex: 1; min-height: 0; overflow-y: auto; }
+.contenido .tiptap { min-height: 100%; padding: 8px 24px 24px; font-size: 16px; line-height: 1.6; outline: none; }
+.tiptap p { margin: 0 0 .5em; }
+.tiptap h1, .tiptap h2, .tiptap h3 { line-height: 1.25; margin: .8em 0 .4em; }
+.tiptap a { color: var(--acento); }
+.tiptap blockquote { border-left: 3px solid var(--borde); margin: 0 0 .5em; padding-left: 12px; color: var(--suave); }
+.tiptap ul[data-type="taskList"] { list-style: none; padding-left: 4px; }
+.tiptap ul[data-type="taskList"] li { display: flex; gap: 8px; align-items: flex-start; }
+.tiptap ul[data-type="taskList"] li > label { margin-top: .25em; }
+.tiptap ul[data-type="taskList"] li > div { flex: 1; }
+.tiptap ul[data-type="taskList"] li[data-checked="true"] > div { text-decoration: line-through; color: var(--suave); }
+.tiptap .tableWrapper { overflow-x: auto; margin: 8px 0; }
+.tiptap table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+.tiptap td, .tiptap th { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; position: relative; min-width: 60px; }
+.tiptap th { background: var(--lista); font-weight: 600; text-align: left; }
+.tiptap td > p, .tiptap th > p { margin: 0; }
+.tiptap .selectedCell::after { content: ''; position: absolute; inset: 0; background: #2f9e5b22; pointer-events: none; }
+.tiptap p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--suave); float: left; height: 0; pointer-events: none; }
+.tiptap img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; }
+.tiptap img.ProseMirror-selectednode { outline: 3px solid var(--acento); }
+.tiptap hr { border: none; border-top: 1px solid var(--borde); margin: 16px 0; }
+.tiptap .enlace-nota { color: var(--acento); background: #2f9e5b14; border-radius: 4px; padding: 0 3px; cursor: pointer; }
+.tiptap div[data-type="callout"] { position: relative; background: #eef2ff; border-radius: 8px; padding: 10px 12px 10px 42px; margin: 8px 0; }
+.tiptap div[data-type="callout"]::before { content: attr(data-emoji); position: absolute; left: 12px; top: 10px; }
+.tiptap div[data-type="callout"][data-emoji="⚠️"] { background: #fef3c7; }
+.tiptap div[data-type="callout"][data-emoji="❗"] { background: #fee2e2; }
+.tiptap div[data-type="callout"] > :last-child { margin-bottom: 0; }
+.tiptap .details { display: flex; gap: 6px; margin: 8px 0; border: 1px solid var(--borde); border-radius: 8px; padding: 8px; }
+.tiptap .details > button { border: none; padding: 0; width: 20px; height: 20px; margin-top: 2px; display: flex; align-items: center; justify-content: center; font-size: 10px; flex-shrink: 0; }
+.tiptap .details > button::before { content: '▶'; transition: transform .15s; }
+.tiptap .details.is-open > button::before { transform: rotate(90deg); }
+.tiptap .details > div { flex: 1; min-width: 0; }
+.tiptap .details summary { font-weight: 600; list-style: none; }
+.tiptap .details summary::-webkit-details-marker { display: none; }
+
+.menu { background: var(--fondo); border: 1px solid var(--borde); border-radius: 8px; box-shadow: 0 6px 24px #0002; padding: 4px; max-height: 280px; overflow-y: auto; min-width: 200px; z-index: 10; }
+.menu button { display: block; width: 100%; text-align: left; border: none; padding: 6px 10px; }
+.menu button.activo, .menu button:hover { background: var(--lista); }
+.menu p { margin: 6px 10px; color: var(--suave); }
+.emojis { display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 16px; border-bottom: 1px solid var(--borde); }
+.emojis button { border: none; font-size: 22px; padding: 4px; line-height: 1; }
+.emojis button:hover { background: var(--lista); }
+
+.editor header { flex-wrap: wrap; }
+.portada { width: 100%; height: 180px; object-fit: cover; display: block; background: var(--lista); flex-shrink: 0; }
+.cabecera { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 24px 0; font-size: 13px; color: var(--suave); }
+.cabecera .icono { border: none; padding: 0; font-size: 36px; line-height: 1; }
 .volver { display: none; }
 
 .aviso { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100% - 32px); background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 10px 14px; }
@@ -64,5 +122,8 @@ button.libreta, .libreta > button:first-child { padding: 6px 10px; }
   .app.con-nota .libretas, .app.con-nota .lista, .app:not(.con-nota) .editor { display: none; }
   .app.con-nota { grid-template-rows: 1fr; }
   .volver { display: inline-block; }
-  .editor .titulo, .editor textarea { padding-left: 16px; padding-right: 16px; }
+  .editor .titulo, .contenido .tiptap { padding-left: 16px; padding-right: 16px; }
+  .barra { padding: 6px 8px; }
+  .cabecera { padding: 12px 16px 0; }
+  .portada { height: 120px; }
 }

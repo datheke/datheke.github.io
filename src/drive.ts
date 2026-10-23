@@ -2,15 +2,16 @@
 // Cada libreta y cada nota es un archivo de Drive; su id de Drive es el id fijo que siempre se sobrescribe.
 const API = 'https://www.googleapis.com/drive/v3'
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files'
-const FIELDS = 'id,name,modifiedTime,appProperties'
+const FIELDS = 'id,name,modifiedTime,mimeType,appProperties'
 
 export type DriveFile = {
   id: string
   name: string
   modifiedTime: string
+  mimeType?: string
   appProperties?: Record<string, string>
 }
-type Meta = { name?: string; appProperties?: Record<string, string> }
+type Meta = { name?: string; appProperties?: Record<string, string | null> }
 
 export class AuthError extends Error {}
 
@@ -42,11 +43,21 @@ export async function listFiles(): Promise<DriveFile[]> {
 
 export const readFile = async (id: string) => (await call(`${API}/files/${id}?alt=media`)).text()
 
+// Las notas de la etapa 1 se guardaron como texto plano; se convierten a HTML al abrirlas.
+export async function readNote(id: string, mimeType?: string): Promise<string> {
+  const body = await readFile(id)
+  if (mimeType !== 'text/plain') return body
+  return body.split('\n').map(line => `<p>${line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`).join('')
+}
+
 export const deleteFile = (id: string) => call(`${API}/files/${id}`, { method: 'DELETE' })
 
-// Sin id = crear en la carpeta oculta. Sin contenido = solo datos (renombrar, mover).
-export async function saveFile(id: string | undefined, meta: Meta, content?: string): Promise<DriveFile> {
-  const metadata = JSON.stringify(id ? meta : { ...meta, parents: ['appDataFolder'] })
+// Sin id = crear en la carpeta oculta. Sin contenido = solo datos (renombrar, mover; null borra una propiedad).
+// Contenido texto = HTML de la nota; Blob = foto, en archivo aparte para que la nota solo guarde su id.
+export async function saveFile(id: string | undefined, meta: Meta, content?: string | Blob): Promise<DriveFile> {
+  const type = typeof content === 'string' ? 'text/html' : content?.type
+  const full = type ? { ...meta, mimeType: type } : meta
+  const metadata = JSON.stringify(id ? full : { ...full, parents: ['appDataFolder'] })
   const method = id ? 'PATCH' : 'POST'
   const path = id ? `/${id}` : ''
   if (content === undefined) {
@@ -54,8 +65,16 @@ export async function saveFile(id: string | undefined, meta: Meta, content?: str
     return res.json()
   }
   const b = crypto.randomUUID()
-  const body = `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n` +
-    `--${b}\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n${content}\r\n--${b}--`
+  const body = new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`,
+    `--${b}\r\nContent-Type: ${type}${typeof content === 'string' ? '; charset=UTF-8' : ''}\r\n\r\n`, content, `\r\n--${b}--`])
   const res = await call(`${UPLOAD}${path}?uploadType=multipart&fields=${FIELDS}`, { method, headers: { 'Content-Type': `multipart/related; boundary=${b}` }, body })
   return res.json()
+}
+
+// Las fotos de la carpeta oculta piden la sesión: se bajan con fetch y se muestran como blob (una vez por foto).
+const imageUrls = new Map<string, Promise<string>>()
+export function imageUrl(id: string): Promise<string> {
+  if (!imageUrls.has(id)) imageUrls.set(id, call(`${API}/files/${id}?alt=media`).then(r => r.blob()).then(b => URL.createObjectURL(b))
+    .catch(e => { imageUrls.delete(id); throw e }))
+  return imageUrls.get(id)!
 }
