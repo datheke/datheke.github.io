@@ -1,0 +1,30 @@
+# Genera el instalador de Windows. Solo a mano (Actions → "App de escritorio" → Run workflow), nunca en cada cambio.
+name: App de escritorio
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npm test
+      - run: npx tauri build --bundles nsis
+        env:
+          VITE_GOOGLE_DESKTOP_SECRET: ${{ secrets.GOOGLE_DESKTOP_SECRET }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Datheke-Windows
+          path: src-tauri/target/release/bundle/nsis/*.exe

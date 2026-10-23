@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { forgetSession, loadSession, signIn } from './auth.ts'
-import { AuthError, OfflineError, readNote, setToken, type DriveFile } from './drive.ts'
+import { desktop, forgetSession, loadSession, resume, signIn } from './auth.ts'
+import { AuthError, OfflineError, readNote, type DriveFile } from './drive.ts'
 import Editor, { Cover, EmojiPicker } from './Editor.tsx'
 import { pickImage, uploadImage } from './images.ts'
 import * as store from './sync.ts'
@@ -25,6 +25,7 @@ export default function App() {
   const [noteId, setNoteId] = useState<string | null>(null)
   const [picker, setPicker] = useState(false) // selector de ícono de la nota
   const [problem, setProblem] = useState<string | null>(null) // error de una acción ('auth' = sesión vencida)
+  const [waiting, setWaiting] = useState(false) // escritorio: esperando que termine el login en el navegador
 
   const files = Object.values(s.files)
   const notebooks = files.filter(f => f.appProperties?.kind === 'notebook').sort(byName)
@@ -58,7 +59,7 @@ export default function App() {
   // Crear necesita un id reservado; sin internet y sin ids avisa en vez de fallar en silencio.
   const act = (fn: () => void) => { try { fn() } catch (e) { fail(e) } }
 
-  useEffect(() => { if (session) setToken(session.token) }, [session])
+  useEffect(() => { if (session) resume(session) }, [session])
 
   useEffect(() => {
     if (!email) return
@@ -81,11 +82,13 @@ export default function App() {
   }, [noteId, hasNote, hasDoc])
 
   async function login() {
+    if (desktop) setProblem(null)
+    setWaiting(desktop)
     try {
       setSession(await signIn(session?.email))
       setProblem(null)
       store.sync()
-    } catch (e) { fail(e) }
+    } catch (e) { fail(e) } finally { setWaiting(false) }
   }
 
   async function logout() {
@@ -166,7 +169,8 @@ export default function App() {
     <div className="login">
       <h1>Datheke</h1>
       <p>Tus notas se guardan en tu propio Google Drive.</p>
-      <button className="principal" onClick={login}>Entrar con Google</button>
+      <button className="principal" onClick={login} disabled={waiting}>Entrar con Google</button>
+      {waiting && <p>Se abrió tu navegador: entra con Google ahí y luego vuelve a esta ventana.</p>}
       {error && <p className="error">{error === 'auth' ? 'Vuelve a entrar.' : error}</p>}
     </div>
   )
