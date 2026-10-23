@@ -1,4 +1,6 @@
-import { saveFile } from './drive.ts'
+import * as db from './db.ts'
+import { readBlob } from './drive.ts'
+import { addImage } from './sync.ts'
 
 // Fotos a JPEG de máx. 1600 px (~150–350 KB) con fondo blanco (el JPEG no tiene transparencia).
 async function compress(file: File): Promise<Blob> {
@@ -15,9 +17,24 @@ async function compress(file: File): Promise<Blob> {
   return new Promise((ok, ko) => canvas.toBlob(b => b ? ok(b) : ko(new Error('No se pudo leer la foto.')), 'image/jpeg', 0.8))
 }
 
+// La foto queda en el dispositivo al instante y se sube con lo demás (también sin internet).
 // shortcut: las fotos que se borran de una nota (o de una nota borrada) quedan en Drive; se limpian en la etapa 6 (basurero).
 export async function uploadImage(file: File): Promise<string> {
-  return (await saveFile(undefined, { name: 'foto.jpg', appProperties: { kind: 'image' } }, await compress(file))).id
+  return addImage(await compress(file))
+}
+
+// Las fotos se guardan también en el dispositivo: se ven sin internet y se bajan una sola vez.
+const urls = new Map<string, Promise<string>>()
+export function imageUrl(id: string): Promise<string> {
+  if (!urls.has(id)) urls.set(id, (async () => {
+    let blob = await db.get<Blob>(`img:${id}`)
+    if (!blob) {
+      blob = await readBlob(id)
+      db.set(`img:${id}`, blob)
+    }
+    return URL.createObjectURL(blob)
+  })().catch(e => { urls.delete(id); throw e }))
+  return urls.get(id)!
 }
 
 // Abre el selector de archivos (en el celular ofrece cámara o galería). Debe llamarse desde un clic o tecla.
