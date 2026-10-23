@@ -1,13 +1,21 @@
-# Genera el instalador de Windows. Solo a mano (Actions → "App de escritorio" → Run workflow), nunca en cada cambio.
+# Genera los instaladores. Solo a mano (Actions → "App de escritorio" → Run workflow → elegir plataforma), nunca en cada cambio.
 name: App de escritorio
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+    inputs:
+      plataforma:
+        description: Qué instalador generar
+        type: choice
+        options: [windows, android]
+        default: windows
 
 permissions:
   contents: read
 
 jobs:
   windows:
+    if: inputs.plataforma == 'windows'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -28,3 +36,46 @@ jobs:
         with:
           name: Datheke-Windows
           path: src-tauri/target/release/bundle/nsis/*.exe
+
+  android:
+    if: inputs.plataforma == 'android'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: echo "NDK_HOME=${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_HOME}" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npm test
+      # El proyecto Android se genera aquí en cada compilación (no se guarda en el repositorio).
+      - run: npx tauri android init --ci
+      - run: npx tauri icon public/icon.svg
+      - run: npx tauri android build --apk --target aarch64
+        env:
+          VITE_GOOGLE_DESKTOP_SECRET: ${{ secrets.GOOGLE_DESKTOP_SECRET }}
+      - name: Firmar el APK
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/datheke.jks"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*-release-unsigned.apk' | head -1)
+          "$BT/zipalign" -p -f 4 "$APK" "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/datheke.jks" --ks-pass env:KS_PASS --out Datheke.apk "$RUNNER_TEMP/aligned.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Datheke-Android
+          path: Datheke.apk
