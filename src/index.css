@@ -20,12 +20,13 @@ button.principal { background: var(--acento); border-color: var(--acento); color
 button.enlace { border: none; padding: 0; text-decoration: underline; color: inherit; }
 :focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
 
-.login { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; text-align: center; }
+.login { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); text-align: center; }
 .login h1 { margin: 0; }
 .login p { color: var(--suave); margin: 0 0 8px; }
 .error { color: #b91c1c; }
 
-.app { display: grid; grid-template-columns: 220px 300px 1fr; height: 100dvh; }
+/* En el celular la app se dibuja bajo la barra de estado y la de gestos: se deja su espacio (en PC vale 0). */
+.app { display: grid; grid-template-columns: 220px 300px 1fr; height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 
 .libretas { background: var(--barra); color: var(--barra-texto); padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
 .cuenta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 0 8px 12px; }
@@ -116,7 +117,7 @@ button.libreta, .libreta > button:first-child { padding: 6px 10px; }
 .cabecera .icono { border: none; padding: 0; font-size: 36px; line-height: 1; }
 .volver { display: none; }
 
-.aviso { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100% - 32px); background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 10px 14px; }
+.aviso { position: fixed; bottom: calc(16px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100% - 32px); background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 10px 14px; }
 
 /* Celular: libretas arriba en una fila; la lista o la nota ocupan el resto. */
 @media (max-width: 700px) {
