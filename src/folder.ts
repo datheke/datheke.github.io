@@ -65,6 +65,8 @@ async function mirror() {
     const fs = await import('@tauri-apps/plugin-fs')
     const opt = { baseDir: fs.BaseDirectory.Document }
     const manifest = `${root}/.datheke.json`
+    // Si alguien borró la carpeta, se vuelve a escribir entera.
+    if (!await fs.exists(root, opt)) { written.clear(); lastHtml.clear() }
     if (!written.size && await fs.exists(manifest, opt)) written = new Map(Object.entries(JSON.parse(await fs.readTextFile(manifest, opt))))
     const want = plan(store.getState())
     // Nota borrada o renombrada: se quita su archivo viejo (solo archivos que escribió la app) y la carpeta si quedó vacía.
