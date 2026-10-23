@@ -7,7 +7,7 @@ import { getEmail, setToken } from './drive.ts'
 // Es público por diseño (va dentro de la página); se puede subir al repositorio.
 const CLIENT_ID = '561260224283-pgslf9i4qll8teqtnuqhqg3ai8plmcbf.apps.googleusercontent.com'
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata'
-const KEY = 'notas-david-sesion'
+const KEY = 'datheke-sesion'
 
 export type Session = { email: string; token: string; expires: number }
 
