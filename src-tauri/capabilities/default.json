@@ -9,6 +9,23 @@
     "core:default",
     "opener:default",
     "oauth:allow-start",
-    "oauth:allow-cancel"
+    "oauth:allow-cancel",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        {
+          "path": "$DOCUMENT/Datheke"
+        },
+        {
+          "path": "$DOCUMENT/Datheke/**"
+        }
+      ]
+    },
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-read-text-file",
+    "fs:allow-remove",
+    "fs:allow-write-file",
+    "fs:allow-write-text-file"
   ]
 }

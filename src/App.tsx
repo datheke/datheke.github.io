@@ -2,6 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { desktop, forgetSession, loadSession, resume, signIn } from './auth.ts'
 import { AuthError, OfflineError, readNote, type DriveFile } from './drive.ts'
 import Editor, { Cover, EmojiPicker } from './Editor.tsx'
+import { startFolder } from './folder.ts'
 import { pickImage, uploadImage } from './images.ts'
 import * as store from './sync.ts'
 import { TEMPLATES } from './templates.ts'
@@ -64,6 +65,7 @@ export default function App() {
   useEffect(() => {
     if (!email) return
     store.start(email).then(() => setReady(true), e => setProblem(messageOf(e)))
+    const stopFolder = desktop ? startFolder(email) : undefined // copia visible en Documentos/Datheke
     // Al volver a la app o recuperar internet se sincroniza; con cambios pendientes se reintenta cada 30 s.
     const sync = () => { store.sync() }
     const retry = setInterval(() => { if (Object.keys(store.getState().pending).length) sync() }, 30000)
@@ -71,6 +73,7 @@ export default function App() {
     window.addEventListener('online', sync)
     return () => {
       clearInterval(retry)
+      stopFolder?.()
       document.removeEventListener('visibilitychange', sync)
       window.removeEventListener('online', sync)
     }

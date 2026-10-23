@@ -24,16 +24,18 @@ export async function uploadImage(file: File): Promise<string> {
 }
 
 // Las fotos se guardan también en el dispositivo: se ven sin internet y se bajan una sola vez.
+export async function imageBlob(id: string): Promise<Blob> {
+  let blob = await db.get<Blob>(`img:${id}`)
+  if (!blob) {
+    blob = await readBlob(id)
+    db.set(`img:${id}`, blob)
+  }
+  return blob
+}
+
 const urls = new Map<string, Promise<string>>()
 export function imageUrl(id: string): Promise<string> {
-  if (!urls.has(id)) urls.set(id, (async () => {
-    let blob = await db.get<Blob>(`img:${id}`)
-    if (!blob) {
-      blob = await readBlob(id)
-      db.set(`img:${id}`, blob)
-    }
-    return URL.createObjectURL(blob)
-  })().catch(e => { urls.delete(id); throw e }))
+  if (!urls.has(id)) urls.set(id, imageBlob(id).then(b => URL.createObjectURL(b)).catch(e => { urls.delete(id); throw e }))
   return urls.get(id)!
 }
 
