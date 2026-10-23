@@ -1,0 +1,68 @@
+:root {
+  --fondo: #ffffff;
+  --texto: #1f2328;
+  --suave: #6b7280;
+  --borde: #e5e7eb;
+  --lista: #f7f7f5;
+  --barra: #1d1f21;
+  --barra-texto: #d4d4d4;
+  --acento: #2f9e5b;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--texto);
+  background: var(--fondo);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 1px solid var(--borde); border-radius: 6px; padding: 6px 10px; }
+button.principal { background: var(--acento); border-color: var(--acento); color: #fff; font-weight: 600; }
+button.enlace { border: none; padding: 0; text-decoration: underline; color: inherit; }
+:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+.login { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; text-align: center; }
+.login h1 { margin: 0; }
+.login p { color: var(--suave); margin: 0 0 8px; }
+.error { color: #b91c1c; }
+
+.app { display: grid; grid-template-columns: 220px 300px 1fr; height: 100dvh; }
+
+.libretas { background: var(--barra); color: var(--barra-texto); padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
+.cuenta { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; padding: 0 8px 12px; }
+.cuenta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.libreta { display: flex; align-items: center; border: none; border-radius: 6px; text-align: left; justify-content: space-between; }
+.libreta button { border: none; padding: 6px 6px; }
+.libreta button:first-child { flex: 1; text-align: left; }
+button.libreta, .libreta > button:first-child { padding: 6px 10px; }
+.libreta.activa { background: #ffffff1a; color: #fff; }
+.libreta small { opacity: .6; }
+.libreta.nueva { margin-top: 8px; opacity: .8; }
+
+.lista { background: var(--lista); border-right: 1px solid var(--borde); display: flex; flex-direction: column; overflow-y: auto; }
+.lista header, .editor header { display: flex; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid var(--borde); }
+.estado { margin-left: auto; font-size: 12px; color: var(--suave); }
+.nota { display: flex; flex-direction: column; gap: 4px; text-align: left; border: none; border-bottom: 1px solid var(--borde); border-radius: 0; padding: 12px; }
+.nota.activa { background: #fff; box-shadow: inset 3px 0 var(--acento); }
+.nota strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nota small { color: var(--suave); }
+.vacio { color: var(--suave); padding: 16px; text-align: center; }
+
+.editor { display: flex; flex-direction: column; min-width: 0; }
+.editor select { border: 1px solid var(--borde); border-radius: 6px; padding: 5px; background: none; margin-right: auto; }
+.editor .titulo { border: none; font-size: 26px; font-weight: 700; padding: 16px 24px 8px; outline: none; }
+.editor textarea { flex: 1; border: none; resize: none; padding: 8px 24px 24px; font-size: 16px; line-height: 1.6; outline: none; }
+.volver { display: none; }
+
+.aviso { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 12px; max-width: calc(100% - 32px); background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 10px 14px; }
+
+/* Celular: libretas arriba en una fila; la lista o la nota ocupan el resto. */
+@media (max-width: 700px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .libretas { flex-direction: row; overflow-x: auto; padding: 8px; }
+  .libretas > * { flex-shrink: 0; }
+  .cuenta { padding: 6px 8px; }
+  .app.con-nota .libretas, .app.con-nota .lista, .app:not(.con-nota) .editor { display: none; }
+  .app.con-nota { grid-template-rows: 1fr; }
+  .volver { display: inline-block; }
+  .editor .titulo, .editor textarea { padding-left: 16px; padding-right: 16px; }
+}
