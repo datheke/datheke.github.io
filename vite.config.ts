@@ -3,6 +3,6 @@ import { defineConfig } from 'vite'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: './', // funciona igual en localhost y en GitHub Pages (/notas-david/)
+  base: './', // rutas relativas: funciona en localhost y en GitHub Pages
   plugins: [react()],
 })

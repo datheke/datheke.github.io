@@ -192,7 +192,7 @@ export default function App() {
 
   if (!started) return (
     <div className="login">
-      <h1>Notas David</h1>
+      <h1>Datheke</h1>
       <p>Tus notas se guardan en tu propio Google Drive.</p>
       <button className="principal" onClick={login}>{session ? `Continuar como ${session.email}` : 'Entrar con Google'}</button>
       {session && <button className="enlace" onClick={logout}>Usar otra cuenta</button>}

@@ -1,4 +1,4 @@
-# Notas David — Especificación del proyecto
+# Datheke — Especificación del proyecto
 
 App personal de notas estilo Evernote, **costo cero**, con almacenamiento en la nube del propio usuario (Google Drive y/o Dropbox).
 
@@ -12,7 +12,7 @@ App personal de notas estilo Evernote, **costo cero**, con almacenamiento en la 
 ## Plataformas
 | Plataforma | Formato | Copia local |
 |---|---|---|
-| Windows | App instalable (Tauri) | Carpeta real en disco (ej. Documentos/NotasDavid) |
+| Windows | App instalable (Tauri) | Carpeta real en disco (ej. Documentos/Datheke) |
 | Mac | App instalable (Tauri, .dmg sin firmar) | Carpeta real en disco |
 | Android | APK instalable (Tauri, sin Play Store) | Carpeta real en el teléfono |
 | iPhone | Versión web (PWA) en GitHub Pages, agregada a pantalla de inicio | Almacenamiento del navegador + subida inmediata |
@@ -62,7 +62,7 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 - (No es posible poner clave dentro de Drive/Dropbox; se compensa con la carpeta oculta.)
 
 ## Respaldo visible
-- Carpeta visible "Notas David" con el archivo "Notas David – respaldo.zip" (todas las notas y fotos).
+- Carpeta visible "Datheke" con el archivo "Datheke – respaldo.zip" (todas las notas y fotos).
 - Se genera **una vez por semana solo si hubo cambios**.
 - Se guardan **2 respaldos** (el actual y el anterior); el más viejo se pisa.
 
