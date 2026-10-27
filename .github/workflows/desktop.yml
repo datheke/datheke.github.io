@@ -61,6 +61,11 @@ jobs:
       - run: npm test
       # El proyecto Android se genera aquí en cada compilación (no se guarda en el repositorio).
       - run: npx tauri android init --ci
+      # La app es siempre clara: hora, batería y señal en oscuro también con el celular en modo oscuro (si no, blanco sobre blanco).
+      - run: |
+          f=$(find src-tauri/gen/android -name MainActivity.kt)
+          sed -i 's/enableEdgeToEdge()/enableEdgeToEdge(androidx.activity.SystemBarStyle.light(0, 0), androidx.activity.SystemBarStyle.light(0, 0x801b1b1b.toInt()))/' "$f"
+          grep -q SystemBarStyle "$f"
       - run: npx tauri icon public/icon.svg
       - run: npx tauri android build --apk --target aarch64
         env:
