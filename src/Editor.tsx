@@ -3,6 +3,7 @@ import Image from '@tiptap/extension-image'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
 import Mention from '@tiptap/extension-mention'
 import { TableKit } from '@tiptap/extension-table'
+import TextAlign from '@tiptap/extension-text-align'
 import { TextStyleKit } from '@tiptap/extension-text-style'
 import { Placeholder } from '@tiptap/extensions'
 import { PluginKey } from '@tiptap/pm/state'
@@ -10,8 +11,9 @@ import { EditorContent, Extension, mergeAttributes, Node, ReactRenderer, useEdit
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
 import StarterKit from '@tiptap/starter-kit'
 import {
-  Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, Highlighter, ImagePlus, Italic, Link, List, ListOrdered, ListTodo,
-  Redo2, RemoveFormatting, Smile, Strikethrough, Table, Trash2, Underline, Undo2,
+  Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, Highlighter, ImagePlus, Italic, Link, List, ListIndentDecrease,
+  ListIndentIncrease, ListOrdered, ListTodo, Redo2, RemoveFormatting, Smile, Strikethrough, Table, TextAlignCenter, TextAlignEnd,
+  TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
 import { imageUrl, pickImage, uploadImage } from './images.ts'
@@ -28,6 +30,14 @@ const TEXT_COLORS = [['', 'Automático'], ['#000000', 'Negro'], ['#595959', 'Gri
 const HIGHLIGHTS = [['', 'Sin resaltado'], ['#fff59d', 'Amarillo'], ['#c8e6c9', 'Verde'], ['#b3e5fc', 'Celeste'], ['#f8bbd0', 'Rosado'],
   ['#ffe0b2', 'Naranja'], ['#e1bee7', 'Lila'], ['#e0e0e0', 'Gris']]
 const SIZES = [['', 'Tamaño'], ['12px', '12'], ['14px', '14'], ['18px', '18'], ['24px', '24'], ['32px', '32']]
+// Interlineado con los números de Word; en CSS va x1.2 porque el "sencillo" de Word es ~1.2 veces la letra.
+const LINE_HEIGHTS = [['', 'Interlineado'], ['1.2', '1.0'], ['1.38', '1.15'], ['1.8', '1.5'], ['2.4', '2.0'], ['3', '2.5'], ['3.6', '3.0']]
+const ALIGNS = [['left', 'Alinear a la izquierda', TextAlignStart], ['center', 'Centrar', TextAlignCenter],
+  ['right', 'Alinear a la derecha', TextAlignEnd], ['justify', 'Justificar', TextAlignJustify]] as const
+// Lo que tiene interlineado, alineación, sangría y estilo: párrafos, títulos y el título de un desplegable.
+const BLOCKS = ['paragraph', 'heading', 'detailsSummary']
+const INDENT_PX = 40
+const MAX_INDENT = 8
 const EMOJIS = '😀 😂 😍 🥰 😎 🤔 😢 😡 👍 👎 👏 🙏 💪 🎉 ❤️ ⭐ 🔥 ✅ ❌ ⚠️ 💡 📌 📎 📝 📅 ⏰ 🛒 🏠 💼 💰 📚 🎓 ✈️ 🚗 🍎 🍕 ☕ 🎵 🐶 🌱'.split(' ')
 
 type Command = { label: string; run: (editor: TiptapEditor, range: Range) => void }
@@ -114,6 +124,42 @@ const Callout = Node.create({
   renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'callout' }), 0],
 })
 
+// Interlineado y sangría por párrafo, como en Word. Van en el HTML de la nota: se ven igual en todos los aparatos.
+// El interlineado pegado con su formato original (Word manda "107%") se respeta tal cual.
+const ParagraphFormat = Extension.create({
+  name: 'paragraphFormat',
+  addGlobalAttributes: () => [{
+    types: BLOCKS,
+    attributes: {
+      lineHeight: {
+        default: null,
+        parseHTML: el => el.style.lineHeight || null,
+        renderHTML: a => a.lineHeight ? { style: `line-height: ${a.lineHeight}` } : {},
+      },
+      indent: {
+        default: 0,
+        parseHTML: el => Math.min(MAX_INDENT, Number(el.getAttribute('data-indent')) || 0),
+        renderHTML: a => a.indent ? { 'data-indent': a.indent, style: `margin-left: ${a.indent * INDENT_PX}px` } : {},
+      },
+    },
+  }],
+})
+
+// El título de un desplegable nace como Título 2 y se puede cambiar como cualquier título, también a Normal (0).
+// Sin data-level (desplegables de antes) también es Título 2: antes ya se veían en negrita.
+const Summary = DetailsSummary.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      level: {
+        default: 2,
+        parseHTML: el => el.hasAttribute('data-level') ? Number(el.getAttribute('data-level')) : 2,
+        renderHTML: a => ({ 'data-level': a.level }),
+      },
+    }
+  },
+})
+
 type Props = {
   content: string
   onChange: (html: string) => void
@@ -168,7 +214,8 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
   const editor = useEditor({
     extensions: [
       StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true }), TableKit, DriveImage, Callout,
-      Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), DetailsSummary, DetailsContent,
+      Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), Summary, DetailsContent,
+      TextAlign.configure({ types: BLOCKS }), ParagraphFormat,
       Placeholder.configure({ placeholder: 'Escribe / para insertar tablas, fotos, casillas, recuadros…' }),
       // Los comandos y el buscador de "@" leen refs solo al usarse (al escribir), no al dibujar.
       // eslint-disable-next-line react-hooks/refs
@@ -265,19 +312,22 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
   const toggle = (p: typeof panel) => setPanel(panel === p ? null : p)
   const s = useEditorState({
     editor,
-    selector: ({ editor: e }) => ({
-      block: [1, 2, 3].find(level => e.isActive('heading', { level })) ?? 0,
-      // El título de un desplegable no acepta Título: ahí el cambio no hacía nada y la lista volvía sola a "Normal".
-      canBlock: ['paragraph', 'heading'].includes(e.state.selection.$from.parent.type.name),
-      font: e.getAttributes('textStyle').fontFamily ?? '',
-      size: e.getAttributes('textStyle').fontSize ?? '',
-      color: e.getAttributes('textStyle').color ?? '',
-      highlight: e.getAttributes('textStyle').backgroundColor ?? '',
-      bold: e.isActive('bold'), italic: e.isActive('italic'), underline: e.isActive('underline'), strike: e.isActive('strike'),
-      bullet: e.isActive('bulletList'), ordered: e.isActive('orderedList'), task: e.isActive('taskList'),
-      link: e.isActive('link'), table: e.isActive('table'),
-      undo: e.can().undo(), redo: e.can().redo(),
-    }),
+    selector: ({ editor: e }) => {
+      const parent = e.state.selection.$from.parent
+      return {
+        block: parent.type.name === 'detailsSummary' ? parent.attrs.level : [1, 2, 3].find(level => e.isActive('heading', { level })) ?? 0,
+        align: ALIGNS.find(([a]) => e.isActive({ textAlign: a }))?.[0] ?? 'left',
+        lineHeight: parent.attrs.lineHeight ?? '',
+        font: e.getAttributes('textStyle').fontFamily ?? '',
+        size: e.getAttributes('textStyle').fontSize ?? '',
+        color: e.getAttributes('textStyle').color ?? '',
+        highlight: e.getAttributes('textStyle').backgroundColor ?? '',
+        bold: e.isActive('bold'), italic: e.isActive('italic'), underline: e.isActive('underline'), strike: e.isActive('strike'),
+        bullet: e.isActive('bulletList'), ordered: e.isActive('orderedList'), task: e.isActive('taskList'),
+        link: e.isActive('link'), table: e.isActive('table'),
+        undo: e.can().undo(), redo: e.can().redo(),
+      }
+    },
   })
   const c = () => editor.chain().focus()
   const font = appFont(s.font)
@@ -292,6 +342,23 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
     ch.run()
   }
 
+  // Interlineado y sangría van a cada párrafo de la selección, como en Word.
+  function setBlocks(attrs: (current: Record<string, unknown>) => Record<string, unknown>) {
+    c().command(({ tr }) => {
+      tr.doc.nodesBetween(tr.selection.from, tr.selection.to, (node, pos) => {
+        if (BLOCKS.includes(node.type.name)) tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs(node.attrs) })
+      })
+      return true
+    }).run()
+  }
+
+  // En una lista la sangría sube o baja el nivel del renglón; si no se puede (primer renglón) o no es lista, corre el párrafo.
+  function indent(delta: 1 | -1) {
+    const item = ['taskItem', 'listItem'].find(t => editor.isActive(t))
+    if (item && (delta > 0 ? c().sinkListItem(item).run() : c().liftListItem(item).run())) return
+    setBlocks(a => ({ indent: Math.min(MAX_INDENT, Math.max(0, Number(a.indent) + delta)) }))
+  }
+
   function link() {
     const href = prompt('Dirección del enlace (vacío para quitarlo)', editor.getAttributes('link').href ?? 'https://')
     if (href === null) return
@@ -301,13 +368,15 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
 
   return <>
     <div className="barra" role="toolbar" aria-label="Formato">
-      <select aria-label="Estilo de párrafo" value={s.block} disabled={!s.canBlock}
-        title={s.canBlock ? undefined : 'El título de un desplegable no lleva Título; para agrandarlo usa Tamaño'} onChange={e => {
+      <select aria-label="Estilo de párrafo" value={s.block} onChange={e => {
         const level = Number(e.target.value) as 0 | 1 | 2 | 3
-        if (!level) return c().setParagraph().run()
-        // El título trae su tamaño: se quita el tamaño fijo del texto (pegado o elegido), que si no lo tapa.
         const { from, to, $from, $to } = editor.state.selection
-        c().setHeading({ level }).setTextSelection({ from: $from.start(), to: $to.end() }).unsetFontSize().setTextSelection({ from, to }).run()
+        // El título de un desplegable guarda su nivel (0 = Normal); el resto pasa a título o a párrafo.
+        let ch = $from.parent.type.name === 'detailsSummary' ? c().updateAttributes('detailsSummary', { level })
+          : level ? c().setHeading({ level }) : c().setParagraph()
+        // El título trae su tamaño: se quita el tamaño fijo del texto (pegado o elegido), que si no lo tapa.
+        if (level) ch = ch.setTextSelection({ from: $from.start(), to: $to.end() }).unsetFontSize().setTextSelection({ from, to })
+        ch.run()
       }}>
         <option value={0}>Normal</option>
         <option value={1}>Título 1</option>
@@ -320,6 +389,13 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
       <select aria-label="Tamaño de letra" value={s.size} onChange={e => { const v = e.target.value; mark(ch => v ? ch.setFontSize(v) : ch.unsetFontSize()) }}>
         {withCurrent(SIZES, s.size, s.size.replace(/px$/, '')).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select>
+      <select aria-label="Interlineado" value={s.lineHeight} onChange={e => { const v = e.target.value; setBlocks(() => ({ lineHeight: v || null })) }}>
+        {withCurrent(LINE_HEIGHTS, s.lineHeight, s.lineHeight).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select>
+      {ALIGNS.map(([align, label, Icon]) => (
+        <Btn key={align} label={label} active={s.align === align}
+          onClick={() => align === 'left' ? c().unsetTextAlign().run() : c().setTextAlign(align).run()}><Icon size={18} /></Btn>
+      ))}
       <Btn label="Negrita" active={s.bold} onClick={() => mark(ch => ch.toggleBold())}><Bold size={18} /></Btn>
       <Btn label="Cursiva" active={s.italic} onClick={() => mark(ch => ch.toggleItalic())}><Italic size={18} /></Btn>
       <Btn label="Subrayado" active={s.underline} onClick={() => mark(ch => ch.toggleUnderline())}><Underline size={18} /></Btn>
@@ -330,6 +406,8 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
       </Btn>
       <Btn label="Lista con viñetas" active={s.bullet} onClick={() => c().toggleBulletList().run()}><List size={18} /></Btn>
       <Btn label="Lista numerada" active={s.ordered} onClick={() => c().toggleOrderedList().run()}><ListOrdered size={18} /></Btn>
+      <Btn label="Disminuir sangría" onClick={() => indent(-1)}><ListIndentDecrease size={18} /></Btn>
+      <Btn label="Aumentar sangría" onClick={() => indent(1)}><ListIndentIncrease size={18} /></Btn>
       <Btn label="Casillas" active={s.task} onClick={() => c().toggleTaskList().run()}><ListTodo size={18} /></Btn>
       <Btn label="Foto" disabled={uploading} onClick={onPhoto}><ImagePlus size={18} /></Btn>
       <Btn label="Emoji" active={panel === 'emojis'} onClick={() => toggle('emojis')}><Smile size={18} /></Btn>
