@@ -113,3 +113,37 @@ test('borrar sin internet: no reaparece al leer Drive y se borra de Drive al vol
   assert.equal(store.getState().files.n1, undefined)
   assert.deepEqual(store.getState().pending, {})
 })
+
+test('nota con clave: en el aparato va cifrada, con la caja cerrada no está en memoria ni se baja, y Drive queda sin cifrar', async () => {
+  const vault = await import('./vault.ts')
+  const db = await import('./db.ts')
+  const drive = fakeDrive()
+  drive.note('n1', 'Cuentas', '<p>IESS Clave: Ab#2026</p>')
+  await store.start('caja@test')
+  await store.sync()
+  assert.match(JSON.stringify(await db.get('text:n1')), /Ab#2026/) // nota normal: en claro
+  const v = await vault.create('clave-larga')
+  store.patch('n1', { props: { protegida: 'true' } })
+  await store.sync()
+  await new Promise(r => setTimeout(r, 50))
+  const local = await db.get('text:n1')
+  assert.ok(vault.isSealed(local), 'en el aparato queda cifrada')
+  assert.doesNotMatch(JSON.stringify(local), /Ab#2026/)
+  assert.match(drive.files.get('n1')!.body, /Ab#2026/) // Drive: respaldo sin cifrar
+  assert.equal(drive.files.get('n1')!.appProperties?.protegida, 'true')
+  store.closeVault()
+  assert.equal(store.getState().texts.n1, undefined) // cerrada: fuera de memoria
+  // cambio desde otro aparato con la caja cerrada: no se baja
+  drive.files.get('n1')!.body = '<p>IESS Clave: Nueva#1</p>'
+  drive.files.get('n1')!.modifiedTime = drive.tick()
+  await store.sync()
+  assert.equal(store.getState().texts.n1, undefined)
+  // al abrir: se baja lo nuevo y se guarda cifrado
+  assert.equal(await vault.unlock('clave-larga', v), true)
+  await store.openVault()
+  await store.sync()
+  assert.match(store.getState().texts.n1.text, /Nueva#1/)
+  await new Promise(r => setTimeout(r, 50))
+  assert.ok(vault.isSealed(await db.get('text:n1')))
+  store.closeVault()
+})
