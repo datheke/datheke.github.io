@@ -177,9 +177,9 @@ body.cambiando-ancho { cursor: col-resize; }
 .agarre { position: absolute; z-index: 4; width: 22px; height: 24px; opacity: .65; }
 .agarre:hover, .agarre-lista:hover { background: var(--hover); color: var(--texto); opacity: 1; }
 .linea-soltar { position: absolute; z-index: 4; height: 3px; border-radius: 2px; background: var(--acento); pointer-events: none; }
-.agarre-lista { width: 24px; height: 28px; flex-shrink: 0; opacity: 0; }
+.agarre-lista { width: 24px; height: 28px; flex-shrink: 0; opacity: .35; }
 .nota-fila .agarre-lista { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
-.nota-fila:hover .agarre-lista, .nota.activa + .agarre-lista, .item:hover .agarre-lista, .item.activo .agarre-lista { opacity: .7; }
+.nota-fila:hover .agarre-lista, .nota.activa + .agarre-lista, .item:hover .agarre-lista, .item.activo .agarre-lista { opacity: .8; }
 @media (hover: none) { .nota-fila .agarre-lista { opacity: .5; } }
 .soltar-arriba { box-shadow: 0 -3px 0 var(--acento); }
 .soltar-abajo { box-shadow: 0 3px 0 var(--acento); }
