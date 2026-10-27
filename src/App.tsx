@@ -66,16 +66,21 @@ export default function App() {
     if (!email) return
     store.start(email).then(() => setReady(true), e => setProblem(messageOf(e)))
     const stopFolder = desktop ? startFolder(email) : undefined // copia visible en Documentos/Datheke
-    // Al volver a la app o recuperar internet se sincroniza; con cambios pendientes se reintenta cada 30 s.
+    // Al volver a la app, al recuperar internet y cada 30 s mientras está a la vista (o con cambios pendientes): así lo
+    // cambiado en otro dispositivo llega solo, aunque esta ventana nunca se haya escondido (PC con la nota abierta).
     const sync = () => { store.sync() }
-    const retry = setInterval(() => { if (Object.keys(store.getState().pending).length) sync() }, 30000)
+    const retry = setInterval(() => {
+      if (document.visibilityState === 'visible' || Object.keys(store.getState().pending).length) sync()
+    }, 30000)
     document.addEventListener('visibilitychange', sync)
     window.addEventListener('online', sync)
+    window.addEventListener('focus', sync)
     return () => {
       clearInterval(retry)
       stopFolder?.()
       document.removeEventListener('visibilitychange', sync)
       window.removeEventListener('online', sync)
+      window.removeEventListener('focus', sync)
     }
   }, [email])
 
