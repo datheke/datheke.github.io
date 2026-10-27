@@ -89,3 +89,9 @@ test('checkKey: clave mala avisa en palabras simples', async () => {
   mockFetch(json({ models: [] }))
   await checkKey('buena')
 })
+
+test('el dictado le dice a Gemini que cumpla los pedidos, no que los copie', async () => {
+  const calls = mockFetch(answer('<h2>Colada morada</h2>'))
+  await askAudio('QUJD', 'k')
+  assert.match(JSON.parse(String(calls[0].init.body)).contents[0].parts[0].text, /PEDIDO[\s\S]*CÚMPLELO/)
+})

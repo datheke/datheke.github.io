@@ -28,9 +28,15 @@ export const TASKS: Task[] = [
     ask: 'Traduce el texto al inglés; si ya está en inglés, tradúcelo al español. Conserva todo el formato y las etiquetas.' },
 ]
 
-export const DICTATION = 'Este audio es una nota dictada. Escríbela ordenada: quita muletillas ("eh", "este"), repeticiones y '
-  + 'arrepentimientos, corrige la puntuación y no inventes nada. Si menciona cosas por hacer, ponlas como lista de casillas; '
-  + 'si es una lista (compras, pasos), como lista. Si el audio está vacío o no se entiende, responde <p>No se entendió el audio.</p>'
+// El audio puede ser un pedido ("créame la lista de…") o algo para anotar tal cual: Gemini decide cuál es.
+export const DICTATION = 'Escucha este audio. Hay dos casos:\n'
+  + '1) Si es un PEDIDO o una orden para ti (por ejemplo "créame", "hazme", "dame", "escribe", "lista de…", "receta de…", '
+  + '"ideas para…"), CÚMPLELO y responde con el resultado completo y útil, no con la frase del pedido. '
+  + 'Ejemplo: "créame la lista para la colada morada" → un título y la lista de ingredientes con cantidades '
+  + '(y los pasos si sirven), no la frase "Créame la lista…".\n'
+  + '2) Si es una nota dictada (cosas que la persona quiere anotar), escríbela ordenada: quita muletillas ("eh", "este"), '
+  + 'repeticiones y arrepentimientos, corrige la puntuación y no inventes nada; lo que haya que hacer, como lista de casillas.\n'
+  + 'Si el audio está vacío o no se entiende, responde <p>No se entendió el audio.</p>'
 
 const RULES = 'Trabajas dentro de una app de notas. Responde SOLO con el resultado en HTML simple '
   + '(p, h2, h3, strong, em, u, s, ul, ol, li, blockquote, table, tr, th, td, br), sin explicaciones, sin saludos y sin ```. '
