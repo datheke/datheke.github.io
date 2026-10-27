@@ -18,6 +18,10 @@ import * as vault from './vault.ts'
 import { Create as CreateKey, Unlock } from './Vault.tsx'
 
 const UNTITLED = store.UNTITLED
+// Basurero: días que le quedan a una nota borrada, y la fecha que se le pone al borrarla.
+const TRASH_DAYS = 30
+const daysLeft = (f: DriveFile) => Math.max(0, TRASH_DAYS - Math.floor((Date.now() - Date.parse(f.appProperties?.borrada ?? '')) / 86400_000))
+const nowIso = () => new Date().toISOString()
 const byName = (a: DriveFile, b: DriveFile) => a.name.localeCompare(b.name)
 const byDate = (a: DriveFile, b: DriveFile) => b.modifiedTime.localeCompare(a.modifiedTime)
 const isTemplates = (f: DriveFile) => f.appProperties?.templates === 'true' // libreta "Plantillas"
@@ -54,6 +58,7 @@ export default function App() {
   const s = useSyncExternalStore(store.subscribe, store.getState)
   const [ready, setReady] = useState(false) // copia local cargada
   const [notebookId, setNotebookId] = useState<string | null>(null) // null = todas
+  const [trashView, setTrashView] = useState(false) // la lista muestra el basurero
   const [noteId, setNoteId] = useState<string | null>(null)
   const [picker, setPicker] = useState(false) // selector de ícono de la nota
   const [problem, setProblem] = useState<string | null>(null) // error de una acción ('auth' = sesión vencida)
@@ -71,9 +76,13 @@ export default function App() {
   const files = Object.values(s.files)
   const notebooks = files.filter(f => f.appProperties?.kind === 'notebook').sort(lastUnordered(byName))
   const templatesNb = notebooks.find(isTemplates)
-  const allNotes = files.filter(f => f.appProperties?.kind === 'note')
+  // Basurero: una nota borrada lleva la fecha en "borrada" y se elimina de verdad a los 30 días (ver efecto más abajo).
+  const inTrash = (f?: DriveFile) => !!f?.appProperties?.borrada
+  const allNotes = files.filter(f => f.appProperties?.kind === 'note' && !inTrash(f))
+  const trash = files.filter(f => f.appProperties?.kind === 'note' && inTrash(f))
+    .sort((a, b) => (b.appProperties?.borrada ?? '').localeCompare(a.appProperties?.borrada ?? ''))
   const regular = allNotes.filter(n => n.appProperties?.notebook !== templatesNb?.id) // "Todas las notas" sin plantillas
-  const visible = notebookId ? allNotes.filter(n => n.appProperties?.notebook === notebookId) : regular
+  const visible = trashView ? trash : notebookId ? allNotes.filter(n => n.appProperties?.notebook === notebookId) : regular
   // Subnotas debajo de su nota y con sangría; si la nota madre no está a la vista, la subnota va arriba. En cada nivel,
   // el orden que se les dio arrastrando; las que no tienen, arriba y la más nueva primero.
   const ids = new Set(visible.map(n => n.id))
@@ -81,7 +90,7 @@ export default function App() {
   const siblings = (parent?: string) => visible.filter(n => shownParent(n) === parent).sort(firstUnordered(byDate))
   const tree = (parent?: string, depth = 0): [DriveFile, number][] =>
     siblings(parent).flatMap(n => [[n, depth] as [DriveFile, number], ...tree(n.id, depth + 1)])
-  const list = tree()
+  const list = trashView ? trash.map(n => [n, 0] as [DriveFile, number]) : tree()
   const saveOrder = (items: DriveFile[], from: number, to: number) =>
     reorder(items, from, to).forEach(({ id, orden }) => store.patch(id, { props: { orden } }))
   const descendants = (id: string): DriveFile[] => allNotes.filter(n => parentOf(n) === id).flatMap(n => [n, ...descendants(n.id)])
@@ -115,7 +124,9 @@ export default function App() {
   const hasNote = !!note
   const hasDoc = !!doc
   // Nota fijada: se lee y se copia, pero no se escribe ni se cambia de libreta. Va en Drive: igual en todos los aparatos.
-  const locked = note?.appProperties?.locked === 'true'
+  // Una nota en el basurero se ve igual: solo leer, hasta restaurarla.
+  const trashed = inTrash(note)
+  const locked = note?.appProperties?.locked === 'true' || trashed
   // Privada (sin Gemini): la nota sola, o todas las de una libreta (también las que se creen después).
   const isPrivate = (f?: DriveFile) => f?.appProperties?.privada === 'true'
   const noteNotebook = notebooks.find(nb => nb.id === note?.appProperties?.notebook)
@@ -171,6 +182,12 @@ export default function App() {
   useEffect(() => {
     if (noteId && hasNote && !hasDoc) store.ensureText(noteId).catch(e => setProblem(messageOf(e)))
   }, [noteId, hasNote, hasDoc, unlocked])
+
+  // Lo que lleva más de 30 días en el basurero se elimina (en cualquier aparato que esté abierto, ya sincronizado).
+  useEffect(() => {
+    if (!ready || !s.synced) return
+    for (const t of trash) if (daysLeft(t) === 0) store.remove(t.id)
+  }, [ready, s.synced, trash])
 
   // La caja fuerte se cierra sola tras 5 minutos sin tocar la app (también si quedó en segundo plano).
   useEffect(() => {
@@ -288,11 +305,38 @@ export default function App() {
     } catch (e) { fail(e) }
   }
 
+  // Borrar manda al basurero (con sus subnotas); se puede restaurar durante 30 días.
   function deleteNote() {
     if (!note) return
-    if (descendants(note.id).length) return alert('Esta nota tiene subnotas. Bórralas primero.')
-    if (!confirm(`¿Borrar "${note.name || UNTITLED}"? No se puede deshacer.`)) return
-    store.remove(note.id)
+    const subs = descendants(note.id)
+    if (!confirm(`¿Mandar "${note.name || UNTITLED}"${subs.length ? ` y sus ${subs.length} subnotas` : ''} al basurero? Puedes restaurarla durante 30 días.`)) return
+    const when = nowIso()
+    for (const n of [note, ...subs]) store.patch(n.id, { props: { borrada: when } })
+    setNoteId(null)
+  }
+
+  // Notas del basurero que se borraron junto con esta (sus subnotas, con la misma fecha).
+  const trashedWith = (n: DriveFile): DriveFile[] => trash.filter(t => parentOf(t) === n.id && t.appProperties?.borrada === n.appProperties?.borrada)
+    .flatMap(t => [t, ...trashedWith(t)])
+
+  function restore(n: DriveFile) {
+    // Si su libreta ya no existe, vuelve a la primera.
+    const home = notebooks.some(nb => nb.id === n.appProperties?.notebook) ? undefined
+      : notebooks.find(nb => !isTemplates(nb))?.id
+    for (const t of [n, ...trashedWith(n)]) store.patch(t.id, { props: { borrada: null, ...(home ? { notebook: home } : {}) } })
+    setTrashView(false)
+    setNotebookId(null)
+  }
+
+  function deleteForever(n: DriveFile) {
+    if (!confirm(`¿Eliminar "${n.name || UNTITLED}" para siempre? Esto no se puede deshacer.`)) return
+    for (const t of [n, ...trashedWith(n)]) store.remove(t.id)
+    setNoteId(null)
+  }
+
+  function emptyTrash() {
+    if (!confirm(`¿Vaciar el basurero? Se eliminan ${trash.length} notas para siempre.`)) return
+    for (const t of trash) store.remove(t.id)
     setNoteId(null)
   }
 
@@ -315,7 +359,7 @@ export default function App() {
           <button className="btn-icono" onClick={logout} title="Salir" aria-label="Salir"><LogOut size={16} /></button>
         </div>
         <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
-        <button className={notebookId === null ? 'item activo' : 'item'} onClick={() => setNotebookId(null)}>
+        <button className={notebookId === null && !trashView ? 'item activo' : 'item'} onClick={() => { setNotebookId(null); setTrashView(false) }}>
           <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
         </button>
         <div className="seccion">
@@ -327,7 +371,7 @@ export default function App() {
         </div>
         {notebooks.map(nb => (
           <div key={nb.id} className={notebookId === nb.id ? 'item activo' : 'item'} data-grupo="libretas">
-            <button className="item-nombre" onClick={() => setNotebookId(nb.id)}>
+            <button className="item-nombre" onClick={() => { setNotebookId(nb.id); setTrashView(false) }}>
               <Notebook size={16} /><span>{nb.name}</span><small>{countOf(nb.id)}</small>
             </button>
             {isPrivate(nb) && notebookId !== nb.id && <ShieldCheck size={14} className="privada-icono" aria-label="Libreta privada" />}
@@ -347,6 +391,9 @@ export default function App() {
               onPointerDown={e => startSort(e, (from, to) => saveOrder(notebooks, from, to))}><GripVertical size={14} /></button>
           </div>
         ))}
+        <button className={trashView ? 'item activo basurero' : 'item basurero'} onClick={() => { setTrashView(true); setNotebookId(null) }}>
+          <Trash2 size={16} /><span>Basurero</span><small>{trash.length || ''}</small>
+        </button>
       </nav>
       <Resizer className="divisor-libretas" label="Ancho de la barra de libretas" value={layout.sidebar}
         onChange={w => resize('sidebar', w)} reset={() => resize('sidebar', LAYOUT.sidebar)} />
@@ -354,9 +401,10 @@ export default function App() {
       <section className="lista" aria-label="Notas">
         <header>
           <div className="lista-titulo">
-            <h2>{notebookName ?? 'Todas las notas'}</h2>
+            <h2>{trashView ? 'Basurero' : notebookName ?? 'Todas las notas'}</h2>
             <small>{list.length}</small>
             <button className="btn-icono" onClick={() => store.sync()} title="Sincronizar" aria-label="Sincronizar"><RefreshCw size={16} /></button>
+            {trashView && trash.length > 0 && <button className="vaciar" onClick={emptyTrash}>Vaciar</button>}
           </div>
           <div className="lista-acciones">
             <button className="principal solo-celular" onClick={() => newNote()}><Plus size={18} /> Nota</button>
@@ -370,7 +418,7 @@ export default function App() {
         </header>
         <div className="tarjetas">
           {!ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
-            : list.length === 0 ? <p className="vacio">Sin notas</p>
+            : list.length === 0 ? <p className="vacio">{trashView ? 'El basurero está vacío' : 'Sin notas'}</p>
             : list.map(([n, depth]) => (
               // Se ordena entre sus hermanas: las del mismo nivel y la misma nota madre (data-grupo).
               <div key={n.id} className="nota-fila" data-grupo={shownParent(n) ?? 'raiz'} style={{ marginLeft: 8 + depth * 16 }}>
@@ -380,6 +428,7 @@ export default function App() {
                   </strong>
                   {s.texts[n.id] && !(isLocked(n) && !unlocked) && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
                   {isLocked(n) && !unlocked && <span className="resumen">🔐 Nota con clave</span>}
+                  {trashView && <span className="resumen basurero-dias">Se elimina en {daysLeft(n)} días</span>}
                   <small>{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
                 </button>
                 <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
@@ -415,6 +464,7 @@ export default function App() {
               {withKey ? <LockKeyhole size={14} className="privada-icono" aria-label="Nota con clave" />
                 : privacy && <ShieldCheck size={14} className="privada-icono" aria-label="Privada: sin Gemini" />}
             </div>
+            {!trashed && <>
             <button className={locked ? 'fijar fijada' : 'fijar'} onClick={() => store.patch(note.id, { props: { locked: locked ? null : 'true' } })}
               title={locked ? 'Cambiar la nota' : 'Fijar: solo leer y copiar, sin cambios sin querer'}>
               {locked ? <><Pencil size={16} /> Editar</> : <><Lock size={16} /> Fijar</>}
@@ -434,8 +484,14 @@ export default function App() {
               { label: 'Guardar como plantilla', icon: <LayoutTemplate size={16} />, onClick: saveAsTemplate },
               { label: 'Borrar nota', icon: <Trash2 size={16} />, onClick: deleteNote, danger: true },
             ]} />
+            </>}
           </header>
-          {locked && <p className="aviso-fijada">🔒 Nota fijada: puedes leerla, copiar y marcar casillas. Toca <strong>Editar</strong> para cambiarla.</p>}
+          {trashed ? <div className="aviso-fijada aviso-basurero">
+            🗑️ Está en el basurero: se elimina sola a los 30 días.
+            <button className="principal" onClick={() => restore(note)}>Restaurar</button>
+            <button className="peligro" onClick={() => deleteForever(note)}>Eliminar para siempre</button>
+          </div>
+            : locked && <p className="aviso-fijada">🔒 Nota fijada: puedes leerla, copiar y marcar casillas. Toca <strong>Editar</strong> para cambiarla.</p>}
           {sealedNote ? <div className="nota-scroll">
             <h1 className="titulo-cerrado">{note.name || UNTITLED}</h1>
             <Unlock verifier={verifier} onOpen={() => { store.openVault() }} onForgot={forgotKey} />

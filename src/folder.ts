@@ -32,7 +32,8 @@ export function plan({ files, texts }: Pick<store.State, 'files' | 'texts'>) {
   const notes = Object.values(files).filter(f => f.appProperties?.kind === 'note').sort((a, b) => a.id.localeCompare(b.id))
   for (const f of notes) {
     const t = texts[f.id]
-    if (!t || f.appProperties?.protegida === 'true') continue // las notas con clave nunca van en claro a la carpeta visible
+    // Las notas con clave nunca van en claro a la carpeta visible; las del basurero tampoco van.
+    if (!t || f.appProperties?.protegida === 'true' || f.appProperties?.borrada) continue
     const dir = safeName(files[f.appProperties?.notebook ?? '']?.name ?? 'Sin libreta')
     const title = t.title || store.UNTITLED
     let path = `${dir}/${safeName(title)}.html`
