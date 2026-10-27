@@ -40,6 +40,9 @@ jobs:
   android:
     if: inputs.plataforma == 'android'
     runs-on: ubuntu-latest
+    # Para publicar el APK en la página de descargas (enlace fijo, se baja directo al celular).
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -84,3 +87,16 @@ jobs:
         with:
           name: Datheke-Android
           path: Datheke.apk
+      # Enlace fijo para el celular: github.com/datheke/datheke.github.io/releases/download/android/Datheke.apk
+      - name: Publicar el APK para descargar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          NOTAS="Datheke $V para Android. Toca Datheke.apk para descargarlo e instálalo encima del anterior."
+          if gh release view android >/dev/null 2>&1; then
+            gh release upload android Datheke.apk --clobber
+            gh release edit android --title "Datheke para Android ($V)" --notes "$NOTAS"
+          else
+            gh release create android Datheke.apk --title "Datheke para Android ($V)" --notes "$NOTAS" --latest
+          fi
