@@ -74,7 +74,7 @@ jobs:
           m=src-tauri/gen/android/app/src/main/AndroidManifest.xml
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />#' "$m"
           grep -q RECORD_AUDIO "$m" || { echo "No se pudo agregar el permiso del micrófono"; cat "$m"; exit 1; }
-      - run: npx tauri icon public/icon.svg
+      - run: npx tauri icon public/icon.png
       - run: npx tauri android build --apk --target aarch64
         env:
           VITE_GOOGLE_DESKTOP_SECRET: ${{ secrets.GOOGLE_DESKTOP_SECRET }}
