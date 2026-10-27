@@ -15,20 +15,11 @@ import {
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
 import { imageUrl, pickImage, uploadImage } from './images.ts'
-import { cleanPaste, isFromApp } from './paste.ts'
+import { appFont, FONTS } from './fonts.ts'
+import { appFonts, cleanPaste, isFromApp } from './paste.ts'
 import { wordAt } from './word.ts'
 
-// Fuentes incluidas en la app (main.tsx, fonts.css): se ven igual en PC, celular y web, también sin internet.
-// Sin elegir, el texto va con la letra de la nota (Lora, index.css).
-const FONTS = [
-  ['', 'Lora'], ['Arial, sans-serif', 'Arial'], ['Calibri, sans-serif', 'Calibri'], ['Cambria, serif', 'Cambria'],
-  ['"Courier New", monospace', 'Courier New'], ['Garamond, serif', 'Garamond'], ['Georgia, serif', 'Georgia'],
-  ['"Times New Roman", serif', 'Times New Roman'], ['"Inter Variable", sans-serif', 'Moderna'],
-  ['"JetBrains Mono Variable", monospace', 'Monoespaciada'], ['"Caveat Variable", cursive', 'Manuscrita'],
-]
-// Nombre de la primera fuente: '"Times New Roman", serif' y "'Times New Roman',serif" (pegado de Word) son la misma.
-const fontName = (f: string) => f.split(',')[0].replace(/["']/g, '').trim()
-// Las opciones con lo que tiene el texto: si no está en la lista (pegado con su formato original) se agrega con su nombre.
+// Las opciones con lo que tiene el texto: si no está en la lista (tamaño pegado con su formato original) se agrega.
 const withCurrent = (options: string[][], value: string, label: string) =>
   !value || options.some(([v]) => v === value) ? options : [...options, [value, label]]
 // Paletas propias en vez del selector de color del sistema, que en la app de Android no abre.
@@ -136,6 +127,8 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
   const latest = useRef({ onChange, notes, onError })
   useEffect(() => { latest.current = { onChange, notes, onError } })
+  // Fuentes que la app no tiene (pegadas antes de existir appFonts) se ven con la letra de la nota, igual en todos lados.
+  const [initial] = useState(() => appFonts(content))
   const [uploading, setUploading] = useState(0)
   // Lo último que se pegó (dónde quedó y el original), para "Mantener formato original"; se olvida con el siguiente cambio.
   const pasting = useRef<{ from: number; html: string } | null>(null)
@@ -189,7 +182,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
         },
       }),
     ],
-    content,
+    content: initial,
     editorProps: {
       transformPastedHTML: cleanPaste,
       handlePaste: (view, event) => {
@@ -220,7 +213,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
     {pasted && <div className="pegado" role="status">
       Pegado con la letra de la nota.
       <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => {
-        editor.chain().focus().insertContentAt({ from: pasted.from, to: pasted.to }, pasted.html).run()
+        editor.chain().focus().insertContentAt({ from: pasted.from, to: pasted.to }, appFonts(pasted.html)).run()
         setPasted(null)
       }}>Mantener formato original</button>
       <button type="button" aria-label="Cerrar" onClick={() => setPasted(null)}>✕</button>
@@ -280,7 +273,7 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
     }),
   })
   const c = () => editor.chain().focus()
-  const font = FONTS.find(([v]) => v && fontName(v).toLowerCase() === fontName(s.font).toLowerCase())?.[0] ?? s.font
+  const font = appFont(s.font)
   // Formatos de letra: sin selección van a la palabra del cursor (como en Word) y el cursor queda donde estaba.
   function mark(apply: (ch: ChainedCommands) => ChainedCommands) {
     const { empty, from, $from } = editor.state.selection
@@ -315,7 +308,7 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
         <option value={3}>Título 3</option>
       </select>
       <select aria-label="Fuente" value={font} onChange={e => { const v = e.target.value; mark(ch => v ? ch.setFontFamily(v) : ch.unsetFontFamily()) }}>
-        {withCurrent(FONTS, font, fontName(font)).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        {FONTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select>
       <select aria-label="Tamaño de letra" value={s.size} onChange={e => { const v = e.target.value; mark(ch => v ? ch.setFontSize(v) : ch.unsetFontSize()) }}>
         {withCurrent(SIZES, s.size, s.size.replace(/px$/, '')).map(([value, label]) => <option key={value} value={value}>{label}</option>)}

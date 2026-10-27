@@ -1,5 +1,8 @@
+import { appFont } from './fonts.ts'
+
 // Lo pegado de otro lado (Word, web, correo) entra con la letra de la nota: se le quitan fuente, tamaño y colores, y se
-// deja negrita, cursiva, subrayado, tachado, listas, tablas y enlaces. Con "Mantener formato original" va tal cual.
+// deja negrita, cursiva, subrayado, tachado, listas, tablas y enlaces. Con "Mantener formato original" va tal cual,
+// salvo la fuente si no la tenemos (appFonts).
 const DROP = /^(font|font-family|font-size|color|background|background-color|line-height|mso-.*)$/
 
 // Las declaraciones de un style="..." sin las de fuente, tamaño y colores. Respeta los ; dentro de comillas.
@@ -32,5 +35,19 @@ export function cleanPaste(html: string): string {
     else el.removeAttribute('style')
   }
   for (const el of doc.body.querySelectorAll('font')) for (const a of ['face', 'size', 'color']) el.removeAttribute(a)
+  return doc.body.innerHTML
+}
+
+// Cada fuente pasada a una de la app (la misma o una parecida); si no tenemos ninguna, la letra de la nota. Para lo pegado
+// con su formato original y para lo que ya estaba en las notas: lo desconocido nunca sale con la letra del aparato.
+export function appFonts(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  for (const el of doc.body.querySelectorAll<HTMLElement>('[style]')) {
+    if (!el.style.fontFamily) continue
+    const font = appFont(el.style.fontFamily)
+    if (font) el.style.fontFamily = font
+    else el.style.removeProperty('font-family')
+    if (!el.getAttribute('style')) el.removeAttribute('style')
+  }
   return doc.body.innerHTML
 }
