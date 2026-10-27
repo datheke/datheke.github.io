@@ -1,11 +1,17 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import {
+  ChevronLeft, ChevronRight, FilePlus, FileText, LayoutTemplate, Lock, LogOut, Maximize2, Minimize2, Notebook, PanelLeftClose,
+  PanelLeftOpen, Pencil, Plus, RefreshCw, Trash2,
+} from 'lucide-react'
+import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { desktop, forgetSession, loadSession, resume, signIn } from './auth.ts'
 import { AuthError, OfflineError, readNote, type DriveFile } from './drive.ts'
 import Editor, { Cover, EmojiPicker } from './Editor.tsx'
 import { startFolder } from './folder.ts'
+import { shortDate } from './format.ts'
 import { pickImage, uploadImage } from './images.ts'
 import * as store from './sync.ts'
 import { TEMPLATES } from './templates.ts'
+import { MoreMenu, Resizer } from './ui.tsx'
 
 const UNTITLED = store.UNTITLED
 const byName = (a: DriveFile, b: DriveFile) => a.name.localeCompare(b.name)
@@ -17,6 +23,27 @@ const messageOf = (e: unknown) => e instanceof AuthError ? 'auth'
 // Vista previa en texto de la otra versión (DOMParser no ejecuta nada de lo que lee).
 const plain = (html: string) =>
   new DOMParser().parseFromString(html.replace(/<\/(p|li|h\d|div)>|<br\s*\/?>/gi, '\n'), 'text/html').body.textContent ?? ''
+// Las primeras palabras de la nota para su tarjeta. Se guardan por texto: la lista se vuelve a dibujar en cada tecla.
+const previews = new Map<string, string>()
+function preview(html = '') {
+  let p = previews.get(html)
+  if (p === undefined) {
+    if (previews.size > 500) previews.clear()
+    p = plain(html).replace(/\s+/g, ' ').trim().slice(0, 160)
+    previews.set(html, p)
+  }
+  return p
+}
+
+// Ancho de las columnas, lista oculta y pantalla completa: son de cada aparato (las pantallas no son iguales) y solo
+// valen en pantallas anchas; en el celular se ve una columna a la vez. Sin poder guardar, va el diseño de siempre.
+type Layout = { sidebar: number; list: number; listHidden: boolean; expanded: boolean }
+const LAYOUT: Layout = { sidebar: 240, list: 320, listHidden: false, expanded: false }
+const LIMITS = { sidebar: [180, 360], list: [240, 480] } as const
+const MIN_EDITOR = 380
+function loadLayout(): Layout {
+  try { return { ...LAYOUT, ...JSON.parse(localStorage.getItem('datheke-diseno') ?? '{}') } } catch { return LAYOUT }
+}
 
 export default function App() {
   const [session, setSession] = useState(loadSession)
@@ -27,6 +54,10 @@ export default function App() {
   const [picker, setPicker] = useState(false) // selector de ícono de la nota
   const [problem, setProblem] = useState<string | null>(null) // error de una acción ('auth' = sesión vencida)
   const [waiting, setWaiting] = useState(false) // escritorio: esperando que termine el login en el navegador
+  const [layout, setLayout] = useState(loadLayout)
+  useEffect(() => {
+    try { localStorage.setItem('datheke-diseno', JSON.stringify(layout)) } catch { /* sin guardar: el diseño de siempre */ }
+  }, [layout])
 
   const files = Object.values(s.files)
   const notebooks = files.filter(f => f.appProperties?.kind === 'notebook').sort(byName)
@@ -55,6 +86,22 @@ export default function App() {
   const email = session?.email
   const hasNote = !!note
   const hasDoc = !!doc
+  // Nota fijada: se lee y se copia, pero no se escribe ni se cambia de libreta. Va en Drive: igual en todos los aparatos.
+  const locked = note?.appProperties?.locked === 'true'
+  const notebookName = notebooks.find(nb => nb.id === notebookId)?.name
+  const countOf = (nbId: string) => allNotes.filter(n => n.appProperties?.notebook === nbId).length
+  const columns = layout.expanded ? 'minmax(0, 1fr)'
+    : `${layout.sidebar}px 6px ${layout.listHidden ? '' : `${layout.list}px 6px `}minmax(0, 1fr)`
+  const appClass = ['app', noteId && 'con-nota', layout.expanded && 'expandida', layout.listHidden && 'sin-lista'].filter(Boolean).join(' ')
+
+  // Cada columna entre su mínimo y su máximo, y la nota con al menos MIN_EDITOR de ancho.
+  function resize(which: 'sidebar' | 'list', width: number) {
+    setLayout(l => {
+      const other = which === 'sidebar' ? (l.listHidden ? 0 : l.list) : l.sidebar
+      const max = Math.min(LIMITS[which][1], window.innerWidth - other - MIN_EDITOR - 12)
+      return { ...l, [which]: Math.round(Math.max(LIMITS[which][0], Math.min(max, width))) }
+    })
+  }
 
   const fail = (e: unknown) => setProblem(messageOf(e))
   // Crear necesita un id reservado; sin internet y sin ids avisa en vez de fallar en silencio.
@@ -184,64 +231,106 @@ export default function App() {
   )
 
   return (
-    <div className={noteId ? 'app con-nota' : 'app'}>
-      <nav className="libretas">
+    <div className={appClass} style={{ '--columnas': columns } as CSSProperties}>
+      <nav className="libretas" aria-label="Libretas">
         <div className="cuenta">
-          <span title={session.email}>{session.email}</span>
-          <button className="enlace" onClick={logout}>Salir</button>
+          <span className="avatar" aria-hidden="true">{session.email[0]?.toUpperCase()}</span>
+          <span className="correo" title={session.email}>{session.email}</span>
+          <button className="btn-icono" onClick={logout} title="Salir" aria-label="Salir"><LogOut size={16} /></button>
         </div>
-        <button className={notebookId === null ? 'libreta activa' : 'libreta'} onClick={() => setNotebookId(null)}>
-          Todas las notas <small>{regular.length}</small>
+        <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
+        <button className={notebookId === null ? 'item activo' : 'item'} onClick={() => setNotebookId(null)}>
+          <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
         </button>
+        <div className="seccion">
+          <span>Libretas</span>
+          <button className="btn-icono" title="Nueva libreta" aria-label="Nueva libreta" onClick={() => {
+            const name = prompt('Nombre de la nueva libreta')?.trim()
+            if (name) act(() => setNotebookId(store.create({ kind: 'notebook' }, name)))
+          }}><Plus size={16} /></button>
+        </div>
         {notebooks.map(nb => (
-          <div key={nb.id} className={notebookId === nb.id ? 'libreta activa' : 'libreta'}>
-            <button onClick={() => setNotebookId(nb.id)}>{nb.name}</button>
+          <div key={nb.id} className={notebookId === nb.id ? 'item activo' : 'item'}>
+            <button className="item-nombre" onClick={() => setNotebookId(nb.id)}>
+              <Notebook size={16} /><span>{nb.name}</span><small>{countOf(nb.id)}</small>
+            </button>
             {notebookId === nb.id && <>
-              <button onClick={() => renameNotebook(nb)} title="Renombrar libreta" aria-label="Renombrar libreta">✎</button>
-              <button onClick={() => deleteNotebook(nb)} title="Borrar libreta" aria-label="Borrar libreta">✕</button>
+              <button className="btn-icono" onClick={() => renameNotebook(nb)} title="Renombrar libreta" aria-label="Renombrar libreta"><Pencil size={14} /></button>
+              <button className="btn-icono" onClick={() => deleteNotebook(nb)} title="Borrar libreta" aria-label="Borrar libreta"><Trash2 size={14} /></button>
             </>}
           </div>
         ))}
-        <button className="libreta nueva" onClick={() => {
-          const name = prompt('Nombre de la nueva libreta')?.trim()
-          if (name) act(() => setNotebookId(store.create({ kind: 'notebook' }, name)))
-        }}>+ Libreta</button>
       </nav>
+      <Resizer className="divisor-libretas" label="Ancho de la barra de libretas" value={layout.sidebar}
+        onChange={w => resize('sidebar', w)} reset={() => resize('sidebar', LAYOUT.sidebar)} />
 
-      <section className="lista">
+      <section className="lista" aria-label="Notas">
         <header>
-          <button className="principal" onClick={() => newNote()}>+ Nota</button>
-          <select value="" aria-label="Nueva nota desde plantilla" onChange={e => fromTemplate(e.target.value)}>
-            <option value="">Plantilla…</option>
-            {TEMPLATES.map(t => <option key={t.title} value={t.title}>{t.title}</option>)}
-            {templates.map(t => <option key={t.id} value={t.id}>{t.name || UNTITLED}</option>)}
-          </select>
-          <button onClick={() => store.sync()} title="Sincronizar" aria-label="Sincronizar">↻</button>
-          <span className={pendingCount || s.offline ? 'estado pendiente' : 'estado'} role="status">{status}</span>
+          <div className="lista-titulo">
+            <h2>{notebookName ?? 'Todas las notas'}</h2>
+            <small>{list.length}</small>
+            <button className="btn-icono" onClick={() => store.sync()} title="Sincronizar" aria-label="Sincronizar"><RefreshCw size={16} /></button>
+          </div>
+          <div className="lista-acciones">
+            <button className="principal solo-celular" onClick={() => newNote()}><Plus size={18} /> Nota</button>
+            <select value="" aria-label="Nueva nota desde plantilla" onChange={e => fromTemplate(e.target.value)}>
+              <option value="">Desde plantilla…</option>
+              {TEMPLATES.map(t => <option key={t.title} value={t.title}>{t.title}</option>)}
+              {templates.map(t => <option key={t.id} value={t.id}>{t.name || UNTITLED}</option>)}
+            </select>
+            <span className={pendingCount || s.offline ? 'estado pendiente' : 'estado'} role="status">{status}</span>
+          </div>
         </header>
-        {!ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
-          : list.length === 0 ? <p className="vacio">Sin notas</p>
-          : list.map(([n, depth]) => (
-            <button key={n.id} className={n.id === noteId ? 'nota activa' : 'nota'} style={{ paddingLeft: 12 + depth * 16 }} onClick={() => open(n.id)}>
-              <strong>
-                {depth > 0 && '↳ '}{s.conflicts[n.id] && '⚠️ '}{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}
-              </strong>
-              <small>{new Date(n.modifiedTime).toLocaleString()}</small>
-            </button>
-          ))}
+        <div className="tarjetas">
+          {!ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
+            : list.length === 0 ? <p className="vacio">Sin notas</p>
+            : list.map(([n, depth]) => (
+              <button key={n.id} className={n.id === noteId ? 'nota activa' : 'nota'} style={{ marginLeft: 8 + depth * 16 }} onClick={() => open(n.id)}>
+                <strong>
+                  {depth > 0 && '↳ '}{s.conflicts[n.id] && '⚠️ '}{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}
+                </strong>
+                {s.texts[n.id] && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
+                <small>{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
+              </button>
+            ))}
+        </div>
       </section>
+      <Resizer className="divisor-lista" label="Ancho de la lista de notas" value={layout.list}
+        onChange={w => resize('list', w)} reset={() => resize('list', LAYOUT.list)} />
 
       <main className="editor">
         {note ? <>
-          <header>
-            <button className="volver" onClick={() => open(null)} aria-label="Volver">←</button>
-            <select value={note.appProperties?.notebook} onChange={e => moveNote(e.target.value)} aria-label="Libreta">
-              {notebooks.map(nb => <option key={nb.id} value={nb.id}>{nb.name}</option>)}
-            </select>
-            <button onClick={() => newNote('', '', note.id)}>+ Subnota</button>
-            <button onClick={saveAsTemplate}>Guardar como plantilla</button>
-            <button onClick={deleteNote}>Borrar</button>
+          <header className="nota-barra">
+            <button className="btn-icono volver" onClick={() => open(null)} aria-label="Volver" title="Volver"><ChevronLeft size={20} /></button>
+            <button className="btn-icono solo-pc" disabled={layout.expanded} onClick={() => setLayout(l => ({ ...l, listHidden: !l.listHidden }))}
+              title={layout.listHidden ? 'Mostrar lista de notas' : 'Ocultar lista de notas'}
+              aria-label={layout.listHidden ? 'Mostrar lista de notas' : 'Ocultar lista de notas'}>
+              {layout.listHidden ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+            </button>
+            <button className="btn-icono solo-pc" onClick={() => setLayout(l => ({ ...l, expanded: !l.expanded }))}
+              title={layout.expanded ? 'Salir de pantalla completa' : 'Pantalla completa'}
+              aria-label={layout.expanded ? 'Salir de pantalla completa' : 'Pantalla completa'}>
+              {layout.expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+            </button>
+            <div className="ruta">
+              <select value={note.appProperties?.notebook} onChange={e => moveNote(e.target.value)} disabled={locked}
+                aria-label="Libreta de la nota" title={locked ? 'Nota fijada: toca Editar para moverla' : 'Mover a otra libreta'}>
+                {notebooks.map(nb => <option key={nb.id} value={nb.id}>{nb.name}</option>)}
+              </select>
+              <ChevronRight size={14} aria-hidden="true" />
+              <span className="ruta-nota">{note.name || UNTITLED}</span>
+            </div>
+            <button className={locked ? 'fijar fijada' : 'fijar'} onClick={() => store.patch(note.id, { props: { locked: locked ? null : 'true' } })}
+              title={locked ? 'Cambiar la nota' : 'Fijar: solo leer y copiar, sin cambios sin querer'}>
+              {locked ? <><Pencil size={16} /> Editar</> : <><Lock size={16} /> Fijar</>}
+            </button>
+            <button className="btn-icono" onClick={() => newNote('', '', note.id)} title="Nueva subnota" aria-label="Nueva subnota"><FilePlus size={18} /></button>
+            <MoreMenu items={[
+              { label: 'Guardar como plantilla', icon: <LayoutTemplate size={16} />, onClick: saveAsTemplate },
+              { label: 'Borrar nota', icon: <Trash2 size={16} />, onClick: deleteNote, danger: true },
+            ]} />
           </header>
+          {locked && <p className="aviso-fijada">🔒 Nota fijada: puedes leerla y copiar. Toca <strong>Editar</strong> para cambiarla.</p>}
           {conflict && <div className="conflicto" role="alert">
             <p><strong>⚠️ Esta nota también se cambió en otro dispositivo.</strong> ¿Qué versión quieres conservar?</p>
             <details>
@@ -256,18 +345,20 @@ export default function App() {
           {cover && <Cover id={cover} />}
           <div className="cabecera">
             {parent && <button className="enlace" onClick={() => open(parent.id)}>↑ {parent.name || UNTITLED}</button>}
-            <button className={note.appProperties?.icon ? 'icono' : 'enlace'} aria-label="Ícono de la nota" onClick={() => setPicker(!picker)}>
-              {note.appProperties?.icon ?? 'Agregar ícono'}
-            </button>
-            {note.appProperties?.icon && <button className="enlace" onClick={() => store.patch(note.id, { props: { icon: null } })}>Quitar ícono</button>}
-            <button className="enlace" onClick={changeCover}>{cover ? 'Cambiar portada' : 'Agregar portada'}</button>
-            {cover && <button className="enlace" onClick={() => store.patch(note.id, { props: { cover: null } })}>Quitar portada</button>}
+            {locked ? note.appProperties?.icon && <span className="icono">{note.appProperties.icon}</span> : <>
+              <button className={note.appProperties?.icon ? 'icono' : 'enlace'} aria-label="Ícono de la nota" onClick={() => setPicker(!picker)}>
+                {note.appProperties?.icon ?? 'Agregar ícono'}
+              </button>
+              {note.appProperties?.icon && <button className="enlace" onClick={() => store.patch(note.id, { props: { icon: null } })}>Quitar ícono</button>}
+              <button className="enlace" onClick={changeCover}>{cover ? 'Cambiar portada' : 'Agregar portada'}</button>
+              {cover && <button className="enlace" onClick={() => store.patch(note.id, { props: { cover: null } })}>Quitar portada</button>}
+            </>}
           </div>
-          {picker && <EmojiPicker onPick={icon => { store.patch(note.id, { props: { icon } }); setPicker(false) }} />}
+          {picker && !locked && <EmojiPicker onPick={icon => { store.patch(note.id, { props: { icon } }); setPicker(false) }} />}
           {doc ? <>
-            <input className="titulo" value={doc.title} placeholder="Título" onChange={e => store.edit(note.id, { title: e.target.value })} />
+            <input className="titulo" value={doc.title} placeholder="Título" readOnly={locked} onChange={e => store.edit(note.id, { title: e.target.value })} />
             <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} content={doc.text} onChange={text => store.edit(note.id, { text })}
-              notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} />
+              notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked} />
           </> : <p className="vacio">Cargando…</p>}
         </> : <p className="vacio">Elige o crea una nota</p>}
       </main>
