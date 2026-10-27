@@ -1,5 +1,5 @@
 import {
-  ChevronLeft, ChevronRight, FilePlus, FileText, GripVertical, LayoutTemplate, Lock, LogOut, Maximize2, Minimize2, Notebook,
+  ChevronLeft, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, LogOut, Maximize2, Minimize2, Notebook,
   PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react'
@@ -14,6 +14,8 @@ import { TEMPLATES } from './templates.ts'
 import { firstUnordered, lastUnordered, reorder } from './order.ts'
 import { startSort } from './sortable.ts'
 import { MoreMenu, Resizer } from './ui.tsx'
+import * as vault from './vault.ts'
+import { Create as CreateKey, Unlock } from './Vault.tsx'
 
 const UNTITLED = store.UNTITLED
 const byName = (a: DriveFile, b: DriveFile) => a.name.localeCompare(b.name)
@@ -59,6 +61,9 @@ export default function App() {
   const [layout, setLayout] = useState(loadLayout)
   // Al escribir en la nota (título o texto) la portada se esconde, y vuelve al abrirla de nuevo.
   const [writing, setWriting] = useState(false)
+  // Ventana de la caja fuerte: crear la clave, abrirla antes de proteger una nota, o la clave nueva tras "olvidé la clave".
+  const [keyDialog, setKeyDialog] = useState<{ mode: 'crear' | 'abrir' | 'nueva'; then?: () => void } | null>(null)
+  const unlocked = useSyncExternalStore(vault.subscribe, vault.unlocked)
   useEffect(() => {
     try { localStorage.setItem('datheke-diseno', JSON.stringify(layout)) } catch { /* sin guardar: el diseño de siempre */ }
   }, [layout])
@@ -88,6 +93,13 @@ export default function App() {
     if (settings) store.patch(settings.id, { props: { gemini: key || null } })
     else if (key) store.create({ kind: 'ajustes', gemini: key }, 'Ajustes')
   })
+  // Verificador de la clave de notas (no es la clave): va en Drive para que sirva igual en todos los aparatos.
+  const verifier = settings?.appProperties?.boveda ?? ''
+  const setVerifier = (v: string) => act(() => {
+    if (settings) store.patch(settings.id, { props: { boveda: v } })
+    else store.create({ kind: 'ajustes', boveda: v }, 'Ajustes')
+  })
+  const isLocked = (n?: DriveFile) => n?.appProperties?.protegida === 'true' // nota con clave
   const templates = templatesNb ? allNotes.filter(n => n.appProperties?.notebook === templatesNb.id).sort(byName) : []
   const note = noteId ? s.files[noteId] : undefined
   const doc = noteId ? s.texts[noteId] : undefined
@@ -107,7 +119,10 @@ export default function App() {
   // Privada (sin Gemini): la nota sola, o todas las de una libreta (también las que se creen después).
   const isPrivate = (f?: DriveFile) => f?.appProperties?.privada === 'true'
   const noteNotebook = notebooks.find(nb => nb.id === note?.appProperties?.notebook)
-  const privacy = isPrivate(noteNotebook) ? 'libreta' as const : isPrivate(note) ? 'nota' as const : null
+  const withKey = isLocked(note)
+  const sealedNote = withKey && !unlocked // con clave y la caja cerrada: se pide la clave en lugar de la nota
+  // Una nota con clave también es privada: Gemini nunca la lee.
+  const privacy = isPrivate(noteNotebook) ? 'libreta' as const : isPrivate(note) || withKey ? 'nota' as const : null
   const setPrivate = (f: DriveFile, on: boolean) => store.patch(f.id, { props: { privada: on ? 'true' : null } })
   const notebookName = notebooks.find(nb => nb.id === notebookId)?.name
   const countOf = (nbId: string) => allNotes.filter(n => n.appProperties?.notebook === nbId).length
@@ -155,7 +170,46 @@ export default function App() {
   // Nota que aún no se bajó a este dispositivo.
   useEffect(() => {
     if (noteId && hasNote && !hasDoc) store.ensureText(noteId).catch(e => setProblem(messageOf(e)))
-  }, [noteId, hasNote, hasDoc])
+  }, [noteId, hasNote, hasDoc, unlocked])
+
+  // La caja fuerte se cierra sola tras 5 minutos sin tocar la app (también si quedó en segundo plano).
+  useEffect(() => {
+    const touch = () => vault.touch()
+    const check = () => { if (vault.unlocked() && vault.idleFor() > vault.AUTO_LOCK_MS) store.closeVault() }
+    const every = setInterval(check, 15000)
+    window.addEventListener('pointerdown', touch)
+    window.addEventListener('keydown', touch)
+    document.addEventListener('visibilitychange', check)
+    return () => {
+      clearInterval(every)
+      window.removeEventListener('pointerdown', touch)
+      window.removeEventListener('keydown', touch)
+      document.removeEventListener('visibilitychange', check)
+    }
+  }, [])
+
+  // Proteger: la primera vez se crea la clave; si la caja está cerrada, se abre primero.
+  function protect(n: DriveFile) {
+    const go = () => store.patch(n.id, { props: { protegida: 'true' } })
+    if (!verifier) setKeyDialog({ mode: 'crear', then: go })
+    else if (!vault.unlocked()) setKeyDialog({ mode: 'abrir', then: go })
+    else go()
+  }
+
+  function unprotect(n: DriveFile) {
+    if (confirm(`¿Quitar la clave a "${n.name || UNTITLED}"? Se podrá ver sin clave en este y tus otros aparatos.`))
+      store.patch(n.id, { props: { protegida: null } })
+  }
+
+  // Olvidé la clave: se vuelve a entrar con Google (prueba que es el dueño) y se pone una clave nueva. Las notas se
+  // vuelven a bajar de Drive, donde están sin cifrar; en los otros aparatos se abren con la clave nueva.
+  async function forgotKey() {
+    if (!confirm('Para poner una clave nueva tienes que volver a entrar con tu cuenta de Google (necesita internet). ¿Seguir?')) return
+    try {
+      setSession(await signIn(session?.email))
+      setKeyDialog({ mode: 'nueva' })
+    } catch (e) { fail(e) }
+  }
 
   async function login() {
     if (desktop) setProblem(null)
@@ -324,8 +378,9 @@ export default function App() {
                   <strong>
                     {depth > 0 && '↳ '}{s.conflicts[n.id] && '⚠️ '}{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}
                   </strong>
-                  {s.texts[n.id] && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
-                  <small>{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
+                  {s.texts[n.id] && !(isLocked(n) && !unlocked) && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
+                  {isLocked(n) && !unlocked && <span className="resumen">🔐 Nota con clave</span>}
+                  <small>{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
                 </button>
                 <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
                   onPointerDown={e => startSort(e, (from, to) => saveOrder(siblings(shownParent(n)), from, to))}><GripVertical size={16} /></button>
@@ -357,14 +412,20 @@ export default function App() {
               </select>
               <ChevronRight size={14} aria-hidden="true" />
               <span className="ruta-nota">{note.name || UNTITLED}</span>
-              {privacy && <ShieldCheck size={14} className="privada-icono" aria-label="Privada: sin Gemini" />}
+              {withKey ? <LockKeyhole size={14} className="privada-icono" aria-label="Nota con clave" />
+                : privacy && <ShieldCheck size={14} className="privada-icono" aria-label="Privada: sin Gemini" />}
             </div>
             <button className={locked ? 'fijar fijada' : 'fijar'} onClick={() => store.patch(note.id, { props: { locked: locked ? null : 'true' } })}
               title={locked ? 'Cambiar la nota' : 'Fijar: solo leer y copiar, sin cambios sin querer'}>
               {locked ? <><Pencil size={16} /> Editar</> : <><Lock size={16} /> Fijar</>}
             </button>
             <button className="btn-icono" onClick={() => newNote('', '', note.id)} title="Nueva subnota" aria-label="Nueva subnota"><FilePlus size={18} /></button>
+            {withKey && unlocked && <button className="btn-icono" onClick={() => store.closeVault()} title="Cerrar las notas con clave"
+              aria-label="Cerrar las notas con clave"><LockKeyhole size={18} /></button>}
             <MoreMenu items={[
+              withKey
+                ? { label: 'Quitar clave', icon: <KeyRound size={16} />, onClick: () => unprotect(note) }
+                : { label: 'Proteger con clave', icon: <LockKeyhole size={16} />, onClick: () => protect(note) },
               privacy === 'libreta'
                 ? { label: 'Privada por su libreta', icon: <ShieldCheck size={16} />, onClick: () => alert(`Esta nota es privada porque está en la libreta "${noteNotebook?.name}". Para quitarlo, toca el escudo de la libreta.`) }
                 : privacy === 'nota'
@@ -375,6 +436,10 @@ export default function App() {
             ]} />
           </header>
           {locked && <p className="aviso-fijada">🔒 Nota fijada: puedes leerla, copiar y marcar casillas. Toca <strong>Editar</strong> para cambiarla.</p>}
+          {sealedNote ? <div className="nota-scroll">
+            <h1 className="titulo-cerrado">{note.name || UNTITLED}</h1>
+            <Unlock verifier={verifier} onOpen={() => { store.openVault() }} onForgot={forgotKey} />
+          </div> : <>
           {conflict && <div className="conflicto" role="alert">
             <p><strong>⚠️ Esta nota también se cambió en otro dispositivo.</strong> ¿Qué versión quieres conservar?</p>
             <details>
@@ -409,8 +474,27 @@ export default function App() {
                 privacy={privacy} onPrivate={() => setPrivate(note, true)} />
             </> : <p className="vacio">Cargando…</p>}
           </div>
+          </>}
         </> : <p className="vacio">Elige o crea una nota</p>}
       </main>
+
+      {keyDialog && <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Clave de notas">
+        <div className="ventana">
+          {keyDialog.mode === 'abrir'
+            ? <Unlock compact verifier={verifier} onForgot={() => { setKeyDialog(null); forgotKey() }} onOpen={async () => {
+              await store.openVault()
+              setKeyDialog(null)
+              keyDialog.then?.()
+            }} />
+            : <CreateKey again={keyDialog.mode === 'nueva'} onCancel={() => setKeyDialog(null)} onCreated={async v => {
+              setVerifier(v)
+              await store.openVault()
+              setKeyDialog(null)
+              keyDialog.then?.()
+            }} />}
+          {keyDialog.mode === 'abrir' && <button className="enlace" onClick={() => setKeyDialog(null)}>Cancelar</button>}
+        </div>
+      </div>}
 
       {error && <div className="aviso" role="alert">
         {error === 'auth' ? 'La sesión de Google venció. Tus cambios están guardados en este dispositivo.' : error}
