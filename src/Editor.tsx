@@ -16,7 +16,7 @@ import {
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
 import { imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
-import { appFonts, cleanPaste, isFromApp } from './paste.ts'
+import { appFonts, isFromApp } from './paste.ts'
 import { wordAt } from './word.ts'
 
 // Las opciones con lo que tiene el texto: si no está en la lista (tamaño pegado con su formato original) se agrega.
@@ -184,11 +184,16 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
     ],
     content: initial,
     editorProps: {
-      transformPastedHTML: cleanPaste,
+      // De otro lado entra solo el texto, con el formato de la nota; el original queda para "Mantener formato original".
+      // Lo copiado de la app, y lo que no trae texto (una foto de una página), va como viene.
       handlePaste: (view, event) => {
         const html = event.clipboardData?.getData('text/html')
-        pasting.current = html && !isFromApp(html) ? { from: view.state.selection.from, html } : null
-        return false
+        const text = event.clipboardData?.getData('text/plain')
+        if (pasting.current || !html || !text || isFromApp(html)) return false // pasting: la vuelta de pasteText
+        pasting.current = { from: view.state.selection.from, html }
+        view.pasteText(text, event)
+        pasting.current = null
+        return true
       },
     },
     onUpdate: ({ editor, transaction }) => {
@@ -211,9 +216,11 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
   return <>
     <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} />
     {pasted && <div className="pegado" role="status">
-      Pegado con la letra de la nota.
+      Pegado como texto, con el formato de la nota.
       <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => {
-        editor.chain().focus().insertContentAt({ from: pasted.from, to: pasted.to }, appFonts(pasted.html)).run()
+        // Se vuelve a pegar el original encima, con el pegado del editor: sigue en el renglón como un pegado normal.
+        editor.chain().focus().setTextSelection({ from: pasted.from, to: pasted.to }).run()
+        editor.view.pasteHTML(appFonts(pasted.html))
         setPasted(null)
       }}>Mantener formato original</button>
       <button type="button" aria-label="Cerrar" onClick={() => setPasted(null)}>✕</button>
