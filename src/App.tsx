@@ -1,6 +1,6 @@
 import {
-  ChevronLeft, ChevronRight, FilePlus, FileText, LayoutTemplate, Lock, LogOut, Maximize2, Minimize2, Notebook, PanelLeftClose,
-  PanelLeftOpen, Pencil, Plus, RefreshCw, Trash2,
+  ChevronLeft, ChevronRight, FilePlus, FileText, GripVertical, LayoutTemplate, Lock, LogOut, Maximize2, Minimize2, Notebook,
+  PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Trash2,
 } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { desktop, forgetSession, loadSession, resume, signIn } from './auth.ts'
@@ -11,6 +11,8 @@ import { shortDate } from './format.ts'
 import { pickImage, uploadImage } from './images.ts'
 import * as store from './sync.ts'
 import { TEMPLATES } from './templates.ts'
+import { firstUnordered, lastUnordered, reorder } from './order.ts'
+import { startSort } from './sortable.ts'
 import { MoreMenu, Resizer } from './ui.tsx'
 
 const UNTITLED = store.UNTITLED
@@ -22,7 +24,7 @@ const messageOf = (e: unknown) => e instanceof AuthError ? 'auth'
   : e instanceof OfflineError ? 'Sin conexión: esto necesita internet.' : e instanceof Error ? e.message : String(e)
 // Vista previa en texto de la otra versión (DOMParser no ejecuta nada de lo que lee).
 const plain = (html: string) =>
-  new DOMParser().parseFromString(html.replace(/<\/(p|li|h\d|div)>|<br\s*\/?>/gi, '\n'), 'text/html').body.textContent ?? ''
+  new DOMParser().parseFromString(html.replace(/<\/(p|li|h\d|div|summary)>|<br\s*\/?>/gi, '\n'), 'text/html').body.textContent ?? ''
 // Las primeras palabras de la nota para su tarjeta. Se guardan por texto: la lista se vuelve a dibujar en cada tecla.
 const previews = new Map<string, string>()
 function preview(html = '') {
@@ -60,17 +62,21 @@ export default function App() {
   }, [layout])
 
   const files = Object.values(s.files)
-  const notebooks = files.filter(f => f.appProperties?.kind === 'notebook').sort(byName)
+  const notebooks = files.filter(f => f.appProperties?.kind === 'notebook').sort(lastUnordered(byName))
   const templatesNb = notebooks.find(isTemplates)
   const allNotes = files.filter(f => f.appProperties?.kind === 'note')
   const regular = allNotes.filter(n => n.appProperties?.notebook !== templatesNb?.id) // "Todas las notas" sin plantillas
   const visible = notebookId ? allNotes.filter(n => n.appProperties?.notebook === notebookId) : regular
-  // Subnotas debajo de su nota y con sangría; si la nota madre no está a la vista, la subnota va arriba.
+  // Subnotas debajo de su nota y con sangría; si la nota madre no está a la vista, la subnota va arriba. En cada nivel,
+  // el orden que se les dio arrastrando; las que no tienen, arriba y la más nueva primero.
   const ids = new Set(visible.map(n => n.id))
-  const tree = (parent?: string, depth = 0): [DriveFile, number][] => visible
-    .filter(n => (ids.has(parentOf(n) ?? '') ? parentOf(n) : undefined) === parent).sort(byDate)
-    .flatMap(n => [[n, depth] as [DriveFile, number], ...tree(n.id, depth + 1)])
+  const shownParent = (n: DriveFile) => ids.has(parentOf(n) ?? '') ? parentOf(n) : undefined
+  const siblings = (parent?: string) => visible.filter(n => shownParent(n) === parent).sort(firstUnordered(byDate))
+  const tree = (parent?: string, depth = 0): [DriveFile, number][] =>
+    siblings(parent).flatMap(n => [[n, depth] as [DriveFile, number], ...tree(n.id, depth + 1)])
   const list = tree()
+  const saveOrder = (items: DriveFile[], from: number, to: number) =>
+    reorder(items, from, to).forEach(({ id, orden }) => store.patch(id, { props: { orden } }))
   const descendants = (id: string): DriveFile[] => allNotes.filter(n => parentOf(n) === id).flatMap(n => [n, ...descendants(n.id)])
   const templates = templatesNb ? allNotes.filter(n => n.appProperties?.notebook === templatesNb.id).sort(byName) : []
   const note = noteId ? s.files[noteId] : undefined
@@ -250,7 +256,7 @@ export default function App() {
           }}><Plus size={16} /></button>
         </div>
         {notebooks.map(nb => (
-          <div key={nb.id} className={notebookId === nb.id ? 'item activo' : 'item'}>
+          <div key={nb.id} className={notebookId === nb.id ? 'item activo' : 'item'} data-grupo="libretas">
             <button className="item-nombre" onClick={() => setNotebookId(nb.id)}>
               <Notebook size={16} /><span>{nb.name}</span><small>{countOf(nb.id)}</small>
             </button>
@@ -258,6 +264,8 @@ export default function App() {
               <button className="btn-icono" onClick={() => renameNotebook(nb)} title="Renombrar libreta" aria-label="Renombrar libreta"><Pencil size={14} /></button>
               <button className="btn-icono" onClick={() => deleteNotebook(nb)} title="Borrar libreta" aria-label="Borrar libreta"><Trash2 size={14} /></button>
             </>}
+            <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
+              onPointerDown={e => startSort(e, (from, to) => saveOrder(notebooks, from, to))}><GripVertical size={14} /></button>
           </div>
         ))}
       </nav>
@@ -285,13 +293,18 @@ export default function App() {
           {!ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
             : list.length === 0 ? <p className="vacio">Sin notas</p>
             : list.map(([n, depth]) => (
-              <button key={n.id} className={n.id === noteId ? 'nota activa' : 'nota'} style={{ marginLeft: 8 + depth * 16 }} onClick={() => open(n.id)}>
-                <strong>
-                  {depth > 0 && '↳ '}{s.conflicts[n.id] && '⚠️ '}{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}
-                </strong>
-                {s.texts[n.id] && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
-                <small>{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
-              </button>
+              // Se ordena entre sus hermanas: las del mismo nivel y la misma nota madre (data-grupo).
+              <div key={n.id} className="nota-fila" data-grupo={shownParent(n) ?? 'raiz'} style={{ marginLeft: 8 + depth * 16 }}>
+                <button className={n.id === noteId ? 'nota activa' : 'nota'} onClick={() => open(n.id)}>
+                  <strong>
+                    {depth > 0 && '↳ '}{s.conflicts[n.id] && '⚠️ '}{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}
+                  </strong>
+                  {s.texts[n.id] && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
+                  <small>{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
+                </button>
+                <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
+                  onPointerDown={e => startSort(e, (from, to) => saveOrder(siblings(shownParent(n)), from, to))}><GripVertical size={16} /></button>
+              </div>
             ))}
         </div>
       </section>
@@ -342,24 +355,27 @@ export default function App() {
               <button onClick={() => store.resolve(note.id, 'theirs')}>La del otro dispositivo</button>
             </div>
           </div>}
-          {cover && <Cover id={cover} />}
-          <div className="cabecera">
-            {parent && <button className="enlace" onClick={() => open(parent.id)}>↑ {parent.name || UNTITLED}</button>}
-            {locked ? note.appProperties?.icon && <span className="icono">{note.appProperties.icon}</span> : <>
-              <button className={note.appProperties?.icon ? 'icono' : 'enlace'} aria-label="Ícono de la nota" onClick={() => setPicker(!picker)}>
-                {note.appProperties?.icon ?? 'Agregar ícono'}
-              </button>
-              {note.appProperties?.icon && <button className="enlace" onClick={() => store.patch(note.id, { props: { icon: null } })}>Quitar ícono</button>}
-              <button className="enlace" onClick={changeCover}>{cover ? 'Cambiar portada' : 'Agregar portada'}</button>
-              {cover && <button className="enlace" onClick={() => store.patch(note.id, { props: { cover: null } })}>Quitar portada</button>}
-            </>}
+          {/* Portada, título y texto bajan juntos: al bajar por la nota la portada se va y deja todo el espacio. */}
+          <div className="nota-scroll">
+            {cover && <Cover id={cover} />}
+            <div className="cabecera">
+              {parent && <button className="enlace" onClick={() => open(parent.id)}>↑ {parent.name || UNTITLED}</button>}
+              {locked ? note.appProperties?.icon && <span className="icono">{note.appProperties.icon}</span> : <>
+                <button className={note.appProperties?.icon ? 'icono' : 'enlace'} aria-label="Ícono de la nota" onClick={() => setPicker(!picker)}>
+                  {note.appProperties?.icon ?? 'Agregar ícono'}
+                </button>
+                {note.appProperties?.icon && <button className="enlace" onClick={() => store.patch(note.id, { props: { icon: null } })}>Quitar ícono</button>}
+                <button className="enlace" onClick={changeCover}>{cover ? 'Cambiar portada' : 'Agregar portada'}</button>
+                {cover && <button className="enlace" onClick={() => store.patch(note.id, { props: { cover: null } })}>Quitar portada</button>}
+              </>}
+            </div>
+            {picker && !locked && <EmojiPicker onPick={icon => { store.patch(note.id, { props: { icon } }); setPicker(false) }} />}
+            {doc ? <>
+              <input className="titulo" value={doc.title} placeholder="Título" readOnly={locked} onChange={e => store.edit(note.id, { title: e.target.value })} />
+              <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} content={doc.text} onChange={text => store.edit(note.id, { text })}
+                notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked} />
+            </> : <p className="vacio">Cargando…</p>}
           </div>
-          {picker && !locked && <EmojiPicker onPick={icon => { store.patch(note.id, { props: { icon } }); setPicker(false) }} />}
-          {doc ? <>
-            <input className="titulo" value={doc.title} placeholder="Título" readOnly={locked} onChange={e => store.edit(note.id, { title: e.target.value })} />
-            <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} content={doc.text} onChange={text => store.edit(note.id, { text })}
-              notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked} />
-          </> : <p className="vacio">Cargando…</p>}
         </> : <p className="vacio">Elige o crea una nota</p>}
       </main>
 
