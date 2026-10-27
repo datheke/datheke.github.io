@@ -1,6 +1,6 @@
 import {
   ChevronLeft, ChevronRight, FilePlus, FileText, GripVertical, LayoutTemplate, Lock, LogOut, Maximize2, Minimize2, Notebook,
-  PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Trash2,
+  PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { desktop, forgetSession, loadSession, resume, signIn } from './auth.ts'
@@ -104,6 +104,11 @@ export default function App() {
   const hasDoc = !!doc
   // Nota fijada: se lee y se copia, pero no se escribe ni se cambia de libreta. Va en Drive: igual en todos los aparatos.
   const locked = note?.appProperties?.locked === 'true'
+  // Privada (sin Gemini): la nota sola, o todas las de una libreta (también las que se creen después).
+  const isPrivate = (f?: DriveFile) => f?.appProperties?.privada === 'true'
+  const noteNotebook = notebooks.find(nb => nb.id === note?.appProperties?.notebook)
+  const privacy = isPrivate(noteNotebook) ? 'libreta' as const : isPrivate(note) ? 'nota' as const : null
+  const setPrivate = (f: DriveFile, on: boolean) => store.patch(f.id, { props: { privada: on ? 'true' : null } })
   const notebookName = notebooks.find(nb => nb.id === notebookId)?.name
   const countOf = (nbId: string) => allNotes.filter(n => n.appProperties?.notebook === nbId).length
   const columns = layout.expanded ? 'minmax(0, 1fr)'
@@ -271,7 +276,16 @@ export default function App() {
             <button className="item-nombre" onClick={() => setNotebookId(nb.id)}>
               <Notebook size={16} /><span>{nb.name}</span><small>{countOf(nb.id)}</small>
             </button>
+            {isPrivate(nb) && notebookId !== nb.id && <ShieldCheck size={14} className="privada-icono" aria-label="Libreta privada" />}
             {notebookId === nb.id && <>
+              <button className={isPrivate(nb) ? 'btn-icono privada-icono' : 'btn-icono'} onClick={() => {
+                if (isPrivate(nb) ? confirm(`¿Quitar "privada" a la libreta "${nb.name}"? Gemini podrá volver a leer sus notas (las marcadas una por una siguen privadas).`)
+                  : confirm(`¿Hacer privada la libreta "${nb.name}"? Gemini no podrá leer ninguna de sus notas, tampoco las nuevas. Dictar sigue funcionando (solo envía tu voz).`))
+                  setPrivate(nb, !isPrivate(nb))
+              }} title={isPrivate(nb) ? 'Libreta privada (toca para quitar)' : 'Hacer privada: sin Gemini'}
+                aria-label={isPrivate(nb) ? 'Quitar privada a la libreta' : 'Hacer privada la libreta'}>
+                {isPrivate(nb) ? <ShieldCheck size={14} /> : <Shield size={14} />}
+              </button>
               <button className="btn-icono" onClick={() => renameNotebook(nb)} title="Renombrar libreta" aria-label="Renombrar libreta"><Pencil size={14} /></button>
               <button className="btn-icono" onClick={() => deleteNotebook(nb)} title="Borrar libreta" aria-label="Borrar libreta"><Trash2 size={14} /></button>
             </>}
@@ -343,6 +357,7 @@ export default function App() {
               </select>
               <ChevronRight size={14} aria-hidden="true" />
               <span className="ruta-nota">{note.name || UNTITLED}</span>
+              {privacy && <ShieldCheck size={14} className="privada-icono" aria-label="Privada: sin Gemini" />}
             </div>
             <button className={locked ? 'fijar fijada' : 'fijar'} onClick={() => store.patch(note.id, { props: { locked: locked ? null : 'true' } })}
               title={locked ? 'Cambiar la nota' : 'Fijar: solo leer y copiar, sin cambios sin querer'}>
@@ -350,11 +365,16 @@ export default function App() {
             </button>
             <button className="btn-icono" onClick={() => newNote('', '', note.id)} title="Nueva subnota" aria-label="Nueva subnota"><FilePlus size={18} /></button>
             <MoreMenu items={[
+              privacy === 'libreta'
+                ? { label: 'Privada por su libreta', icon: <ShieldCheck size={16} />, onClick: () => alert(`Esta nota es privada porque está en la libreta "${noteNotebook?.name}". Para quitarlo, toca el escudo de la libreta.`) }
+                : privacy === 'nota'
+                  ? { label: 'Quitar privada (permitir Gemini)', icon: <ShieldOff size={16} />, onClick: () => setPrivate(note, false) }
+                  : { label: 'Privada: sin Gemini', icon: <Shield size={16} />, onClick: () => setPrivate(note, true) },
               { label: 'Guardar como plantilla', icon: <LayoutTemplate size={16} />, onClick: saveAsTemplate },
               { label: 'Borrar nota', icon: <Trash2 size={16} />, onClick: deleteNote, danger: true },
             ]} />
           </header>
-          {locked && <p className="aviso-fijada">🔒 Nota fijada: puedes leerla y copiar. Toca <strong>Editar</strong> para cambiarla.</p>}
+          {locked && <p className="aviso-fijada">🔒 Nota fijada: puedes leerla, copiar y marcar casillas. Toca <strong>Editar</strong> para cambiarla.</p>}
           {conflict && <div className="conflicto" role="alert">
             <p><strong>⚠️ Esta nota también se cambió en otro dispositivo.</strong> ¿Qué versión quieres conservar?</p>
             <details>
@@ -385,7 +405,8 @@ export default function App() {
               <input className="titulo" value={doc.title} placeholder="Título" readOnly={locked} onChange={e => store.edit(note.id, { title: e.target.value })} />
               <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} content={doc.text} onChange={text => store.edit(note.id, { text })}
                 notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked}
-                geminiKey={geminiKey} onGeminiKey={setGeminiKey} />
+                geminiKey={geminiKey} onGeminiKey={setGeminiKey}
+                privacy={privacy} onPrivate={() => setPrivate(note, true)} />
             </> : <p className="vacio">Cargando…</p>}
           </div>
         </> : <p className="vacio">Elige o crea una nota</p>}

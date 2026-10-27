@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { OfflineError } from './drive.ts'
-import { ask, askAudio, checkKey, clean, encodeWav, GeminiError, MODELS } from './gemini.ts'
+import { ask, askAudio, checkKey, clean, encodeWav, GeminiError, MODELS, sensitive } from './gemini.ts'
 
 function mockFetch(...responses: (Response | Error)[]) {
   const calls: { url: string; init: RequestInit }[] = []
@@ -94,4 +94,11 @@ test('el dictado le dice a Gemini que cumpla los pedidos, no que los copie', asy
   const calls = mockFetch(answer('<h2>Colada morada</h2>'))
   await askAudio('QUJD', 'k')
   assert.match(JSON.parse(String(calls[0].init.body)).contents[0].parts[0].text, /PEDIDO[\s\S]*CÚMPLELO/)
+})
+
+test('red de seguridad: avisa con claves y cuentas, no con texto común', () => {
+  assert.deepEqual(sensitive('SRI: usuario 1712345678, Contraseña Ab#2026'), ['contraseña', 'usuario', 'números largos'])
+  assert.deepEqual(sensitive('IESS Clave: xyz'), ['clave'])
+  assert.deepEqual(sensitive('Número de cuenta: 2201'), ['cuenta bancaria'])
+  assert.deepEqual(sensitive('Comprar pan y tener en cuenta el precio, me di cuenta tarde. Son 12 huevos.'), [])
 })

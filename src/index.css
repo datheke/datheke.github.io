@@ -265,3 +265,7 @@ body.cambiando-ancho { cursor: col-resize; }
 @keyframes onda { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
 @keyframes latido { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .ondas i, .gemini-pensando { animation: none; } }
+.gemini-aviso { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 8px; background: #fff7ed; border: 1px solid #fdba74; color: #7c2d12; }
+.gemini-aviso svg, .gemini-privada svg { vertical-align: -3px; }
+.gemini-privada { color: #166534; font-size: 13px; }
+.privada-icono { color: #15803d; flex-shrink: 0; }
