@@ -85,3 +85,30 @@ export async function saveFile(id: string | undefined, meta: Meta, content?: str
   const res = await call(`${UPLOAD}${path}?uploadType=multipart&fields=${FIELDS}`, { method, headers: { 'Content-Type': `multipart/related; boundary=${b}` }, body })
   return res.json()
 }
+
+// Archivos visibles en "Mi unidad" (permiso drive.file: solo los que crea Datheke). Los usa el respaldo semanal.
+const FOLDER = 'application/vnd.google-apps.folder'
+
+export async function listVisible(q: string): Promise<DriveFile[]> {
+  const p = new URLSearchParams({ q: `${q} and trashed=false`, spaces: 'drive', fields: `files(${FIELDS})`, pageSize: '100' })
+  return (await (await call(`${API}/files?${p}`)).json()).files
+}
+
+export async function createFolder(name: string): Promise<string> {
+  const res = await call(`${API}/files?fields=id`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, mimeType: FOLDER }) })
+  return (await res.json()).id
+}
+
+export const findFolder = async (name: string) =>
+  (await listVisible(`name='${name.replace(/'/g, "\\'")}' and mimeType='${FOLDER}'`))[0]?.id as string | undefined
+
+export async function uploadVisible(name: string, parent: string, content: Blob): Promise<string> {
+  const b = crypto.randomUUID()
+  const body = new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents: [parent] })}\r\n`,
+    `--${b}\r\nContent-Type: ${content.type || 'application/octet-stream'}\r\n\r\n`, content, `\r\n--${b}--`])
+  const res = await call(`${UPLOAD}?uploadType=multipart&fields=id`, { method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${b}` }, body })
+  return (await res.json()).id
+}
+
+export const renameFile = (id: string, name: string) =>
+  call(`${API}/files/${id}?fields=id`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })

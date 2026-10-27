@@ -1,3 +1,4 @@
+import { noteBody, notePage, plainHtml } from './exportPage.ts'
 import { imageBlob } from './images.ts'
 import * as store from './sync.ts'
 
@@ -12,18 +13,6 @@ export function safeName(s: string) {
   const name = s.replace(/[\\/:*?"<>|\x00-\x1f]/g, '-').trim().replace(/[. ]+$/, '').slice(0, 80) || store.UNTITLED
   return RESERVED.test(name) ? `_${name}` : name
 }
-
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-
-// script-src 'none': el archivo se abre en el navegador y nunca ejecuta nada de lo que traiga la nota.
-const page = (title: string, body: string) => `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="script-src 'none'">
-<title>${esc(title)}</title>
-<style>body{font-family:system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;line-height:1.6}img{max-width:100%}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}</style>
-</head><body><h1>${esc(title)}</h1>
-${body}
-</body></html>
-`
 
 // Qué archivo le toca a cada nota bajada (sin repetir nombres dentro de una libreta) y qué fotos usa.
 export function plan({ files, texts }: Pick<store.State, 'files' | 'texts'>) {
@@ -40,8 +29,12 @@ export function plan({ files, texts }: Pick<store.State, 'files' | 'texts'>) {
     for (let n = 2; used.has(path.toLowerCase()); n++) path = `${dir}/${safeName(title)} (${n}).html`
     used.add(path.toLowerCase())
     const images: string[] = []
-    const body = t.text.replace(/src="drive:([\w-]+)"/g, (_, id: string) => { images.push(id); return `src="../fotos/${id}.jpg"` })
-    out.set(f.id, { path, html: page(title, body), images })
+    const body = plainHtml(t.text).replace(/src="drive:([\w-]+)"/g, (_, id: string) => { images.push(id); return `src="../fotos/${id}.jpg"` })
+    // Se ve como en la app: portada e ícono arriba, y el mismo estilo (exportPage.ts).
+    const cover = f.appProperties?.cover
+    if (cover) images.push(cover)
+    const html = notePage(title, noteBody({ title, html: body, icon: f.appProperties?.icon, cover: cover ? `../fotos/${cover}.jpg` : '' }))
+    out.set(f.id, { path, html, images })
   }
   return out
 }

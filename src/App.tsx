@@ -2,7 +2,7 @@ import {
   ChevronLeft, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, LogOut, Maximize2, Minimize2, Notebook,
   PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
-import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { desktop, forgetSession, loadSession, resume, signIn } from './auth.ts'
 import { AuthError, OfflineError, readNote, type DriveFile } from './drive.ts'
 import Editor, { Cover, EmojiPicker } from './Editor.tsx'
@@ -15,6 +15,7 @@ import { firstUnordered, lastUnordered, reorder } from './order.ts'
 import { startSort } from './sortable.ts'
 import { MoreMenu, Resizer } from './ui.tsx'
 import * as vault from './vault.ts'
+import { buildZip, changedSince, EVERY_MS, NeedsPermission, upload as uploadBackup } from './backup.ts'
 import { Create as CreateKey, Unlock } from './Vault.tsx'
 
 const UNTITLED = store.UNTITLED
@@ -22,6 +23,7 @@ const UNTITLED = store.UNTITLED
 const TRASH_DAYS = 30
 const daysLeft = (f: DriveFile) => Math.max(0, TRASH_DAYS - Math.floor((Date.now() - Date.parse(f.appProperties?.borrada ?? '')) / 86400_000))
 const nowIso = () => new Date().toISOString()
+const backupOld = (last: string) => !last || Date.parse(last) + EVERY_MS < Date.now()
 const byName = (a: DriveFile, b: DriveFile) => a.name.localeCompare(b.name)
 const byDate = (a: DriveFile, b: DriveFile) => b.modifiedTime.localeCompare(a.modifiedTime)
 const isTemplates = (f: DriveFile) => f.appProperties?.templates === 'true' // libreta "Plantillas"
@@ -69,6 +71,9 @@ export default function App() {
   // Ventana de la caja fuerte: crear la clave, abrirla antes de proteger una nota, o la clave nueva tras "olvidé la clave".
   const [keyDialog, setKeyDialog] = useState<{ mode: 'crear' | 'abrir' | 'nueva'; then?: () => void } | null>(null)
   const unlocked = useSyncExternalStore(vault.subscribe, vault.unlocked)
+  // Respaldo semanal (backup.ts): estado del último intento en este aparato.
+  const [backup, setBackup] = useState<{ busy?: boolean; msg?: string; needsLogin?: boolean }>({})
+  const backingUp = useRef(false)
   useEffect(() => {
     try { localStorage.setItem('datheke-diseno', JSON.stringify(layout)) } catch { /* sin guardar: el diseño de siempre */ }
   }, [layout])
@@ -109,6 +114,11 @@ export default function App() {
     else store.create({ kind: 'ajustes', boveda: v }, 'Ajustes')
   })
   const isLocked = (n?: DriveFile) => n?.appProperties?.protegida === 'true' // nota con clave
+  const lastBackup = settings?.appProperties?.respaldo ?? ''
+  const setLastBackup = (when: string) => act(() => {
+    if (settings) store.patch(settings.id, { props: { respaldo: when } })
+    else store.create({ kind: 'ajustes', respaldo: when }, 'Ajustes')
+  })
   const templates = templatesNb ? allNotes.filter(n => n.appProperties?.notebook === templatesNb.id).sort(byName) : []
   const note = noteId ? s.files[noteId] : undefined
   const doc = noteId ? s.texts[noteId] : undefined
@@ -188,6 +198,25 @@ export default function App() {
     if (!ready || !s.synced) return
     for (const t of trash) if (daysLeft(t) === 0) store.remove(t.id)
   }, [ready, s.synced, trash])
+
+  // Respaldo: a mano ("Hacer ahora") o solo, una vez por semana y solo si hubo cambios. Va sin cifrar (backup.ts).
+  async function doBackup(manual: boolean) {
+    if (backingUp.current) return
+    backingUp.current = true
+    setBackup({ busy: true, msg: 'Haciendo el respaldo…' })
+    try {
+      await uploadBackup(await buildZip())
+      setLastBackup(nowIso())
+      setBackup({ msg: manual ? 'Listo: está en tu Drive, carpeta "Datheke".' : undefined })
+    } catch (e) {
+      if (e instanceof NeedsPermission) setBackup({ needsLogin: true, msg: 'Para guardar el respaldo en tu Drive, Datheke necesita un permiso más.' })
+      else setBackup({ msg: `No se pudo hacer el respaldo: ${messageOf(e) === 'auth' ? 'la sesión venció' : messageOf(e)}` })
+    } finally { backingUp.current = false }
+  }
+
+  const backupDue = ready && s.synced && !s.offline && !backup.needsLogin
+    && backupOld(lastBackup) && changedSince(files, lastBackup)
+  useEffect(() => { if (backupDue) queueMicrotask(() => doBackup(false)) }, [backupDue]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // La caja fuerte se cierra sola tras 5 minutos sin tocar la app (también si quedó en segundo plano).
   useEffect(() => {
@@ -394,6 +423,12 @@ export default function App() {
         <button className={trashView ? 'item activo basurero' : 'item basurero'} onClick={() => { setTrashView(true); setNotebookId(null) }}>
           <Trash2 size={16} /><span>Basurero</span><small>{trash.length || ''}</small>
         </button>
+        <div className="respaldo">
+          <span>Respaldo en Drive: {lastBackup ? shortDate(lastBackup) : 'aún no'}</span>
+          {backup.needsLogin ? <button onClick={login}>Dar permiso</button>
+            : <button onClick={() => doBackup(true)} disabled={backup.busy}>{backup.busy ? 'Haciendo…' : 'Hacer ahora'}</button>}
+          {backup.msg && <small role="status">{backup.msg}</small>}
+        </div>
       </nav>
       <Resizer className="divisor-libretas" label="Ancho de la barra de libretas" value={layout.sidebar}
         onChange={w => resize('sidebar', w)} reset={() => resize('sidebar', LAYOUT.sidebar)} />

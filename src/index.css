@@ -291,3 +291,6 @@ body.cambiando-ancho { cursor: col-resize; }
 .aviso-basurero button { padding: 5px 12px; font-size: 13px; }
 button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .vaciar { margin-left: auto; padding: 3px 10px; font-size: 12px; }
+.respaldo { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: auto; padding: 12px 10px 4px; font-size: 12px; color: var(--suave); }
+.respaldo button { padding: 3px 10px; font-size: 12px; }
+.respaldo small { flex-basis: 100%; }
