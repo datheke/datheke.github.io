@@ -6,7 +6,7 @@ import { TableKit } from '@tiptap/extension-table'
 import { TextStyleKit } from '@tiptap/extension-text-style'
 import { Placeholder } from '@tiptap/extensions'
 import { PluginKey } from '@tiptap/pm/state'
-import { EditorContent, Extension, mergeAttributes, Node, ReactRenderer, useEditor, useEditorState, type Editor as TiptapEditor, type Range } from '@tiptap/react'
+import { EditorContent, Extension, mergeAttributes, Node, ReactRenderer, useEditor, useEditorState, type ChainedCommands, type Editor as TiptapEditor, type Range } from '@tiptap/react'
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
 import StarterKit from '@tiptap/starter-kit'
 import {
@@ -15,8 +15,10 @@ import {
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
 import { imageUrl, pickImage, uploadImage } from './images.ts'
+import { wordAt } from './word.ts'
 
-const FONTS = [['', 'Fuente'], ['Georgia, serif', 'Serif'], ['ui-monospace, monospace', 'Monoespaciada'], ['"Comic Sans MS", cursive', 'Manuscrita']]
+// Fuentes incluidas en la app (main.tsx): se ven igual en PC, celular y web, también sin internet.
+const FONTS = [['', 'Fuente'], ['"Lora Variable", serif', 'Serif'], ['"JetBrains Mono Variable", monospace', 'Monoespaciada'], ['"Caveat Variable", cursive', 'Manuscrita']]
 const SIZES = [['', 'Tamaño'], ['12px', '12'], ['14px', '14'], ['18px', '18'], ['24px', '24'], ['32px', '32']]
 const EMOJIS = '😀 😂 😍 🥰 😎 🤔 😢 😡 👍 👎 👏 🙏 💪 🎉 ❤️ ⭐ 🔥 ✅ ❌ ⚠️ 💡 📌 📎 📝 📅 ⏰ 🛒 🏠 💼 💰 📚 🎓 ✈️ 🚗 🍎 🍕 ☕ 🎵 🐶 🌱'.split(' ')
 
@@ -212,8 +214,9 @@ export function Cover({ id }: { id: string }) {
 function Btn({ label, onClick, active, disabled, children }: {
   label: string; onClick: () => void; active?: boolean; disabled?: boolean; children: ReactNode
 }) {
+  // onMouseDown: tocar el botón no le quita el foco al texto (en el celular se perdía la selección).
   return <button type="button" title={label} aria-label={label} aria-pressed={active} disabled={disabled}
-    className={active ? 'activo' : undefined} onClick={onClick}>{children}</button>
+    className={active ? 'activo' : undefined} onMouseDown={e => e.preventDefault()} onClick={onClick}>{children}</button>
 }
 
 function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploading: boolean; onPhoto: () => void }) {
@@ -231,6 +234,17 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
     }),
   })
   const c = () => editor.chain().focus()
+  // Formatos de letra: sin selección van a la palabra del cursor (como en Word) y el cursor queda donde estaba.
+  // focus = false en los colores: mover el foco cerraría el selector de color mientras se elige.
+  function mark(apply: (ch: ChainedCommands) => ChainedCommands, focus = true) {
+    const { empty, from, $from } = editor.state.selection
+    const word = empty ? wordAt($from) : null
+    let ch = focus ? editor.chain().focus() : editor.chain()
+    if (word) ch = ch.setTextSelection(word)
+    ch = apply(ch)
+    if (word) ch = ch.setTextSelection(from)
+    ch.run()
+  }
 
   function link() {
     const href = prompt('Dirección del enlace (vacío para quitarlo)', editor.getAttributes('link').href ?? 'https://')
@@ -251,22 +265,21 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
         <option value={2}>Título 2</option>
         <option value={3}>Título 3</option>
       </select>
-      <select aria-label="Fuente" value={s.font} onChange={e => e.target.value ? c().setFontFamily(e.target.value).run() : c().unsetFontFamily().run()}>
+      <select aria-label="Fuente" value={s.font} onChange={e => { const v = e.target.value; mark(ch => v ? ch.setFontFamily(v) : ch.unsetFontFamily()) }}>
         {FONTS.map(([value, label]) => <option key={label} value={value}>{label}</option>)}
       </select>
-      <select aria-label="Tamaño de letra" value={s.size} onChange={e => e.target.value ? c().setFontSize(e.target.value).run() : c().unsetFontSize().run()}>
+      <select aria-label="Tamaño de letra" value={s.size} onChange={e => { const v = e.target.value; mark(ch => v ? ch.setFontSize(v) : ch.unsetFontSize()) }}>
         {SIZES.map(([value, label]) => <option key={label} value={value}>{label}</option>)}
       </select>
-      <Btn label="Negrita" active={s.bold} onClick={() => c().toggleBold().run()}><Bold size={18} /></Btn>
-      <Btn label="Cursiva" active={s.italic} onClick={() => c().toggleItalic().run()}><Italic size={18} /></Btn>
-      <Btn label="Subrayado" active={s.underline} onClick={() => c().toggleUnderline().run()}><Underline size={18} /></Btn>
-      <Btn label="Tachado" active={s.strike} onClick={() => c().toggleStrike().run()}><Strikethrough size={18} /></Btn>
-      {/* Sin focus(): mover el foco cerraría el selector de color mientras se elige. */}
+      <Btn label="Negrita" active={s.bold} onClick={() => mark(ch => ch.toggleBold())}><Bold size={18} /></Btn>
+      <Btn label="Cursiva" active={s.italic} onClick={() => mark(ch => ch.toggleItalic())}><Italic size={18} /></Btn>
+      <Btn label="Subrayado" active={s.underline} onClick={() => mark(ch => ch.toggleUnderline())}><Underline size={18} /></Btn>
+      <Btn label="Tachado" active={s.strike} onClick={() => mark(ch => ch.toggleStrike())}><Strikethrough size={18} /></Btn>
       <label className="color" title="Color de letra">
-        <Baseline size={18} /><input type="color" aria-label="Color de letra" onChange={e => editor.chain().setColor(e.target.value).run()} />
+        <Baseline size={18} /><input type="color" aria-label="Color de letra" onChange={e => { const v = e.target.value; mark(ch => ch.setColor(v), false) }} />
       </label>
       <label className="color" title="Resaltar">
-        <Highlighter size={18} /><input type="color" aria-label="Color de resaltado" defaultValue="#fff59d" onChange={e => editor.chain().setBackgroundColor(e.target.value).run()} />
+        <Highlighter size={18} /><input type="color" aria-label="Color de resaltado" defaultValue="#fff59d" onChange={e => { const v = e.target.value; mark(ch => ch.setBackgroundColor(v), false) }} />
       </label>
       <Btn label="Lista con viñetas" active={s.bullet} onClick={() => c().toggleBulletList().run()}><List size={18} /></Btn>
       <Btn label="Lista numerada" active={s.ordered} onClick={() => c().toggleOrderedList().run()}><ListOrdered size={18} /></Btn>
