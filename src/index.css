@@ -58,7 +58,8 @@ div.item { padding: 3px 4px 3px 10px; }
 .divisor::after { content: ''; position: absolute; inset: 0 2px; background: var(--borde); transition: background .15s; }
 .divisor:hover::after, .divisor:focus-visible::after { background: var(--acento); }
 .divisor:focus-visible { outline: none; }
-body.arrastrando { cursor: col-resize; user-select: none; }
+body.arrastrando { cursor: grabbing; user-select: none; }
+body.cambiando-ancho { cursor: col-resize; }
 
 .lista { background: var(--lista); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .lista header { display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 10px; border-bottom: 1px solid var(--borde); }
@@ -74,7 +75,8 @@ body.arrastrando { cursor: col-resize; user-select: none; }
 .conflicto div { display: flex; flex-wrap: wrap; gap: 8px; }
 .conflicto .otra { white-space: pre-wrap; background: #fff; border-radius: 6px; padding: 8px; margin-top: 6px; max-height: 200px; overflow-y: auto; }
 .tarjetas { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 8px 8px 16px 0; }
-.nota { display: flex; flex-direction: column; gap: 4px; text-align: left; border: 1px solid transparent; border-radius: 10px; padding: 12px 14px; }
+.nota-fila { position: relative; border-radius: 10px; }
+.nota { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; border: 1px solid transparent; border-radius: 10px; padding: 12px 34px 12px 14px; }
 .nota:hover { background: #fff; }
 .nota.activa { background: #fff; border-color: var(--borde); box-shadow: 0 1px 3px #0000000f, inset 3px 0 var(--acento); }
 .nota strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -100,8 +102,9 @@ body.arrastrando { cursor: col-resize; user-select: none; }
 .mas-menu button:hover { background: var(--hover); }
 .mas-menu .peligro { color: #b91c1c; }
 .editor .titulo { border: none; font-size: 26px; font-weight: 700; width: 100%; max-width: var(--hoja); margin: 0 auto; padding: 16px var(--margen) 8px; outline: none; }
-.barra { display: flex; align-items: center; gap: 2px; padding: 6px 16px; border-bottom: 1px solid var(--borde); overflow-x: auto; flex-shrink: 0; }
-.barra > * { flex-shrink: 0; }
+/* Barra de formato fija arriba al bajar por la nota; en pantallas anchas baja de renglón en vez de esconder botones. */
+.barra-fija { position: sticky; top: 0; z-index: 6; background: var(--fondo); }
+.barra { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px 16px; border-bottom: 1px solid var(--borde); }
 .barra button { border: none; padding: 6px; display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; }
 .barra button:hover:not(:disabled) { background: var(--lista); }
 .barra button.activo { background: #2f9e5b22; color: var(--acento); }
@@ -111,12 +114,15 @@ body.arrastrando { cursor: col-resize; user-select: none; }
 .paleta button { min-width: 32px; min-height: 32px; padding: 4px 8px; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; }
 .paleta button[aria-pressed="true"] { border-color: var(--acento); box-shadow: 0 0 0 1px var(--acento); }
 .paleta span { width: 20px; height: 20px; border-radius: 4px; border: 1px solid #0002; }
-.pegado { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 16px; font-size: 13px; color: var(--suave); background: var(--lista); border-bottom: 1px solid var(--borde); }
-.pegado button { padding: 4px 8px; font-size: 13px; }
+.pegado { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 16px; font-size: 13px; color: #713f12; background: #fef9c3; border-bottom: 1px solid #fde68a; }
+.pegado .principal { padding: 5px 12px; font-size: 13px; }
+.pegado .btn-icono { width: 28px; height: 28px; margin-left: auto; color: #713f12; }
 
 /* La letra de la nota: la misma en todos los aparatos, y la que toma lo pegado de otro lado (paste.ts). */
-.contenido { flex: 1; min-height: 0; overflow-y: auto; }
-.contenido .tiptap { min-height: 100%; max-width: var(--hoja); margin: 0 auto; padding: 8px var(--margen) 48px; font-family: 'Lora Variable', Georgia, serif; font-size: 16px; line-height: 1.6; outline: none; overflow-wrap: anywhere; }
+/* Portada, título y texto en un mismo desplazamiento. */
+.nota-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.contenido-marco { position: relative; }
+.contenido .tiptap { min-height: 40vh; max-width: var(--hoja); margin: 0 auto; padding: 8px var(--margen) 48px; font-family: 'Lora Variable', Georgia, serif; font-size: 16px; line-height: 1.6; outline: none; overflow-wrap: anywhere; }
 .tiptap pre { white-space: pre-wrap; }
 .tiptap p { margin: 0 0 .5em; }
 .tiptap h1, .tiptap h2, .tiptap h3 { line-height: 1.25; margin: .8em 0 .4em; }
@@ -164,7 +170,30 @@ body.arrastrando { cursor: col-resize; user-select: none; }
 .emojis button { border: none; font-size: 22px; padding: 4px; line-height: 1; }
 .emojis button:hover { background: var(--lista); }
 
-.portada { width: 100%; height: 180px; object-fit: cover; display: block; background: var(--lista); flex-shrink: 0; }
+.portada { width: 100%; height: 160px; object-fit: cover; display: block; background: var(--lista); flex-shrink: 0; }
+
+/* Agarraderas ⠿: bloques de la nota, notas de la lista y libretas. Se arrastran con mouse, dedo o lápiz. */
+.agarre, .agarre-lista { display: grid; place-items: center; padding: 0; border: none; border-radius: 4px; color: var(--suave); cursor: grab; touch-action: none; }
+.agarre { position: absolute; z-index: 4; width: 22px; height: 24px; opacity: .65; }
+.agarre:hover, .agarre-lista:hover { background: var(--hover); color: var(--texto); opacity: 1; }
+.linea-soltar { position: absolute; z-index: 4; height: 3px; border-radius: 2px; background: var(--acento); pointer-events: none; }
+.agarre-lista { width: 24px; height: 28px; flex-shrink: 0; opacity: 0; }
+.nota-fila .agarre-lista { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
+.nota-fila:hover .agarre-lista, .nota.activa + .agarre-lista, .item:hover .agarre-lista, .item.activo .agarre-lista { opacity: .7; }
+@media (hover: none) { .nota-fila .agarre-lista { opacity: .5; } }
+.soltar-arriba { box-shadow: 0 -3px 0 var(--acento); }
+.soltar-abajo { box-shadow: 0 3px 0 var(--acento); }
+.soltar-izq { box-shadow: -3px 0 0 var(--acento); }
+.soltar-der { box-shadow: 3px 0 0 var(--acento); }
+.arrastrado { opacity: .45; }
+
+/* Barra sobre lo seleccionado. */
+.burbuja { display: flex; flex-direction: column; background: var(--fondo); border: 1px solid var(--borde); border-radius: 10px; box-shadow: 0 6px 20px #0000002a; z-index: 30; }
+.burbuja-fila { display: flex; gap: 2px; padding: 4px; }
+.burbuja-fila button { border: none; width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; }
+.burbuja-fila button:hover { background: var(--hover); }
+.burbuja-fila button.activo { background: #2f9e5b22; color: var(--acento); }
+.burbuja .paleta { border-bottom: none; border-top: 1px solid var(--borde); padding: 6px; max-width: 300px; }
 .cabecera { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; max-width: var(--hoja); margin: 0 auto; padding: 12px var(--margen) 0; font-size: 13px; color: var(--suave); }
 .cabecera .icono { border: none; padding: 0; font-size: 36px; line-height: 1; }
 
@@ -198,6 +227,7 @@ body.arrastrando { cursor: col-resize; user-select: none; }
   .ruta { margin: 0 2px; }
   .fijar { padding: 6px 10px; }
   :root { --margen: 20px; }
-  .barra { padding: 6px 8px; }
-  .portada { height: 120px; }
+  .barra { padding: 6px 8px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .barra > * { flex-shrink: 0; }
+  .portada { height: 110px; }
 }

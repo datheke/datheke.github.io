@@ -13,11 +13,11 @@ export function Resizer({ label, value, onChange, reset, className }: {
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
-      document.body.classList.remove('arrastrando')
+      document.body.classList.remove('arrastrando', 'cambiando-ancho')
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
-    document.body.classList.add('arrastrando') // que el texto no se seleccione mientras se arrastra
+    document.body.classList.add('arrastrando', 'cambiando-ancho') // que el texto no se seleccione mientras se arrastra
   }
   return <div className={`divisor ${className}`} role="separator" aria-orientation="vertical" aria-label={label}
     aria-valuenow={value} tabIndex={0} title={`${label} (doble clic: ancho normal)`}

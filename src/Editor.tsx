@@ -8,15 +8,16 @@ import { TextStyleKit } from '@tiptap/extension-text-style'
 import { Placeholder } from '@tiptap/extensions'
 import { PluginKey } from '@tiptap/pm/state'
 import { EditorContent, Extension, mergeAttributes, Node, ReactRenderer, useEditor, useEditorState, type ChainedCommands, type Editor as TiptapEditor, type Range } from '@tiptap/react'
+import { BubbleMenu } from '@tiptap/react/menus'
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
 import StarterKit from '@tiptap/starter-kit'
 import {
-  ArrowDown, ArrowUp, Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, Highlighter, ImagePlus, Italic, Link, List,
-  ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Redo2, RemoveFormatting, Smile, Strikethrough, Table,
-  TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
+  ArrowDown, ArrowUp, Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, ClipboardPaste, GripVertical, Highlighter,
+  ImagePlus, Italic, Link, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Redo2, RemoveFormatting, Smile,
+  Strikethrough, Table, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
 } from 'lucide-react'
-import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
-import { moveBlock } from './blocks.ts'
+import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react'
+import { moveBlock, movableDepth, moveTo } from './blocks.ts'
 import { imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
 import { appFonts, isFromApp } from './paste.ts'
@@ -270,6 +271,85 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   // false: cambiar entre fijada y editable no es un cambio de la nota (si no, se marcaba para subir al abrirla).
   useEffect(() => { if (editor.isEditable !== editable) editor.setEditable(editable, false) }, [editor, editable])
 
+  // Agarradera ⠿ para arrastrar bloques, como en Evernote: junto al bloque bajo el mouse o, en el celular (sin mouse),
+  // junto al del cursor. Se mueve lo mismo que con Subir/Bajar (movableDepth), entre sus hermanos.
+  const frame = useRef<HTMLDivElement>(null)
+  const dragging = useRef(false)
+  const [grip, setGrip] = useState<{ start: number; top: number; left: number } | null>(null)
+  const [dropLine, setDropLine] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  function gripAt(pos: number) {
+    const box = frame.current
+    if (!box || !editor.isEditable) return setGrip(null)
+    const $pos = editor.state.doc.resolve(pos)
+    const depth = movableDepth($pos)
+    const start = depth > 0 ? $pos.before(depth) : -1
+    const dom = start >= 0 ? editor.view.nodeDOM(start) : null
+    if (!(dom instanceof HTMLElement)) return setGrip(null)
+    const r = dom.getBoundingClientRect(), b = box.getBoundingClientRect()
+    setGrip({ start, top: r.top - b.top + 2, left: Math.max(0, r.left - b.left - 26) })
+  }
+
+  useEffect(() => {
+    if (!matchMedia('(hover: none)').matches) return
+    const follow = () => { if (!dragging.current) gripAt(editor.state.selection.from) }
+    editor.on('selectionUpdate', follow)
+    editor.on('update', follow)
+    return () => { editor.off('selectionUpdate', follow); editor.off('update', follow) }
+  })
+
+  function hover(e: { clientX: number; clientY: number }) {
+    if (dragging.current) return
+    const b = editor.view.dom.getBoundingClientRect()
+    const hit = editor.view.posAtCoords({ left: Math.min(Math.max(e.clientX, b.left + 40), b.right - 8), top: e.clientY })
+    if (hit) gripAt(hit.pos)
+  }
+
+  function startDrag(e: ReactPointerEvent) {
+    const box = frame.current
+    if (!grip || !box) return
+    e.preventDefault()
+    const view = editor.view
+    const $start = view.state.doc.resolve(grip.start)
+    const index = $start.index()
+    const doms: HTMLElement[] = []
+    let p = $start.start()
+    $start.parent.forEach(child => { const d = view.nodeDOM(p); if (d instanceof HTMLElement) doms.push(d); p += child.nodeSize })
+    if (doms.length !== $start.parent.childCount) return
+    const scroller = box.closest<HTMLElement>('.nota-scroll')
+    let to = index
+    dragging.current = true
+    document.body.classList.add('arrastrando')
+    const move = (ev: PointerEvent) => {
+      const rs = doms.map(d => d.getBoundingClientRect()), b = box.getBoundingClientRect()
+      let gap = rs.findIndex(r => ev.clientY < r.top + r.height / 2)
+      if (gap < 0) gap = rs.length
+      const ref = rs[Math.min(gap, rs.length - 1)]
+      setDropLine({ top: (gap < rs.length ? ref.top - 3 : ref.bottom + 1) - b.top, left: ref.left - b.left, width: ref.width })
+      to = gap > index ? gap - 1 : gap
+      if (scroller) {
+        const s = scroller.getBoundingClientRect()
+        scroller.scrollTop += ev.clientY < s.top + 50 ? -14 : ev.clientY > s.bottom - 50 ? 14 : 0
+      }
+    }
+    const end = (drop: boolean) => () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', ok)
+      window.removeEventListener('pointercancel', cancel)
+      document.body.classList.remove('arrastrando')
+      dragging.current = false
+      setDropLine(null)
+      setGrip(null)
+      const tr = drop ? moveTo(view.state, grip.start, to) : null
+      if (tr) view.dispatch(tr)
+      view.focus()
+    }
+    const ok = end(true), cancel = end(false)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', ok)
+    window.addEventListener('pointercancel', cancel)
+  }
+
   // Pegar una captura o soltar fotos las sube a Drive. Si lo pegado trae texto (Word, web), se deja a TipTap.
   function onFiles(e: { preventDefault(): void; stopPropagation(): void }, data: DataTransfer | null) {
     const images = [...(data?.files ?? [])].filter(f => f.type.startsWith('image/'))
@@ -279,24 +359,34 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     addImages(editor, images)
   }
 
+  // La barra de formato y el aviso de pegado quedan fijos arriba al bajar por la nota (la portada se va con el texto).
   return <>
-    {editable && <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} />}
-    {editable && pasted && <div className="pegado" role="status">
-      Pegado como texto, con el formato de la nota.
-      <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => {
-        // Se vuelve a pegar el original encima, con el pegado del editor: sigue en el renglón como un pegado normal.
-        editor.chain().focus().setTextSelection({ from: pasted.from, to: pasted.to }).run()
-        editor.view.pasteHTML(appFonts(pasted.html))
-        setPasted(null)
-      }}>Mantener formato original</button>
-      <button type="button" aria-label="Cerrar" onClick={() => setPasted(null)}>✕</button>
+    {editable && <div className="barra-fija">
+      <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} />
+      {pasted && <div className="pegado" role="status">
+        <ClipboardPaste size={16} aria-hidden="true" /> Se pegó solo el texto, con el formato de la nota.
+        <button type="button" className="principal" onMouseDown={e => e.preventDefault()} onClick={() => {
+          // Se vuelve a pegar el original encima, con el pegado del editor: sigue en el renglón como un pegado normal.
+          editor.chain().focus().setTextSelection({ from: pasted.from, to: pasted.to }).run()
+          editor.view.pasteHTML(appFonts(pasted.html))
+          setPasted(null)
+        }}>Mantener formato original</button>
+        <button type="button" className="btn-icono" aria-label="Cerrar" onClick={() => setPasted(null)}>✕</button>
+      </div>}
     </div>}
-    <EditorContent editor={editor} className="contenido"
-      onPasteCapture={e => onFiles(e, e.clipboardData)} onDropCapture={e => onFiles(e, e.dataTransfer)}
-      onClick={e => {
-        const id = (e.target as HTMLElement).closest<HTMLElement>('[data-type="mention"]')?.dataset.id
-        if (id) onOpenNote(id)
-      }} />
+    <div className="contenido-marco" ref={frame} onMouseMove={hover} onMouseLeave={() => { if (!dragging.current) setGrip(null) }}>
+      <EditorContent editor={editor} className="contenido"
+        onPasteCapture={e => onFiles(e, e.clipboardData)} onDropCapture={e => onFiles(e, e.dataTransfer)}
+        onClick={e => {
+          const id = (e.target as HTMLElement).closest<HTMLElement>('[data-type="mention"]')?.dataset.id
+          if (id) onOpenNote(id)
+        }} />
+      {editable && grip && <button type="button" className="agarre" tabIndex={-1} style={{ top: grip.top, left: grip.left }}
+        title="Arrastra para mover (o Alt+↑ / Alt+↓)" aria-label="Arrastrar para mover" onPointerDown={startDrag}>
+        <GripVertical size={16} />
+      </button>}
+      {dropLine && <div className="linea-soltar" style={dropLine} />}
+    </div>
   </>
 }
 
@@ -351,6 +441,8 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
   })
   const c = () => editor.chain().focus()
   const font = appFont(s.font)
+  const [bubble, setBubble] = useState<'text' | 'highlight' | null>(null)
+  const [touch] = useState(() => matchMedia('(pointer: coarse)').matches)
   // Formatos de letra: sin selección van a la palabra del cursor (como en Word) y el cursor queda donde estaba.
   function mark(apply: (ch: ChainedCommands) => ChainedCommands) {
     const { empty, from, $from } = editor.state.selection
@@ -457,6 +549,27 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
       onPick={v => { mark(ch => v ? ch.setColor(v) : ch.unsetColor()); setPanel(null) }} />}
     {panel === 'highlight' && <Palette label="Color de resaltado" colors={HIGHLIGHTS} current={s.highlight}
       onPick={v => { mark(ch => v ? ch.setBackgroundColor(v) : ch.unsetBackgroundColor()); setPanel(null) }} />}
+    {/* Barra sobre lo seleccionado, como en Evernote. En el celular va debajo: arriba está el menú de copiar del teléfono. */}
+    <BubbleMenu editor={editor} className="burbuja" options={{ placement: touch ? 'bottom' : 'top', offset: 8 }}>
+      <div className="burbuja-fila" role="toolbar" aria-label="Formato de lo seleccionado">
+        <Btn label="Negrita" active={s.bold} onClick={() => mark(ch => ch.toggleBold())}><Bold size={16} /></Btn>
+        <Btn label="Cursiva" active={s.italic} onClick={() => mark(ch => ch.toggleItalic())}><Italic size={16} /></Btn>
+        <Btn label="Subrayado" active={s.underline} onClick={() => mark(ch => ch.toggleUnderline())}><Underline size={16} /></Btn>
+        <Btn label="Tachado" active={s.strike} onClick={() => mark(ch => ch.toggleStrike())}><Strikethrough size={16} /></Btn>
+        <Btn label="Color de letra" active={bubble === 'text'} onClick={() => setBubble(bubble === 'text' ? null : 'text')}>
+          <Baseline size={16} color={s.color || undefined} />
+        </Btn>
+        <Btn label="Resaltar" active={bubble === 'highlight'} onClick={() => setBubble(bubble === 'highlight' ? null : 'highlight')}>
+          <Highlighter size={16} style={s.highlight ? { background: s.highlight, borderRadius: 4 } : undefined} />
+        </Btn>
+        <Btn label="Enlace" active={s.link} onClick={link}><Link size={16} /></Btn>
+        <Btn label="Quitar formato" onClick={() => c().unsetAllMarks().run()}><RemoveFormatting size={16} /></Btn>
+      </div>
+      {bubble === 'text' && <Palette label="Color de letra" colors={TEXT_COLORS} current={s.color}
+        onPick={v => { mark(ch => v ? ch.setColor(v) : ch.unsetColor()); setBubble(null) }} />}
+      {bubble === 'highlight' && <Palette label="Color de resaltado" colors={HIGHLIGHTS} current={s.highlight}
+        onPick={v => { mark(ch => v ? ch.setBackgroundColor(v) : ch.unsetBackgroundColor()); setBubble(null) }} />}
+    </BubbleMenu>
   </>
 }
 
