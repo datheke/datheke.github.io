@@ -15,10 +15,22 @@ import {
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
 import { imageUrl, pickImage, uploadImage } from './images.ts'
+import { cleanPaste, isFromApp } from './paste.ts'
 import { wordAt } from './word.ts'
 
-// Fuentes incluidas en la app (main.tsx): se ven igual en PC, celular y web, también sin internet.
-const FONTS = [['', 'Fuente'], ['"Lora Variable", serif', 'Serif'], ['"JetBrains Mono Variable", monospace', 'Monoespaciada'], ['"Caveat Variable", cursive', 'Manuscrita']]
+// Fuentes incluidas en la app (main.tsx, fonts.css): se ven igual en PC, celular y web, también sin internet.
+// Sin elegir, el texto va con la letra de la nota (Lora, index.css).
+const FONTS = [
+  ['', 'Fuente'], ['Arial, sans-serif', 'Arial'], ['Calibri, sans-serif', 'Calibri'], ['Cambria, serif', 'Cambria'],
+  ['"Courier New", monospace', 'Courier New'], ['Garamond, serif', 'Garamond'], ['Georgia, serif', 'Georgia'],
+  ['"Times New Roman", serif', 'Times New Roman'], ['"Inter Variable", sans-serif', 'Moderna'], ['"Lora Variable", serif', 'Serif'],
+  ['"JetBrains Mono Variable", monospace', 'Monoespaciada'], ['"Caveat Variable", cursive', 'Manuscrita'],
+]
+// Paletas propias en vez del selector de color del sistema, que en la app de Android no abre.
+const TEXT_COLORS = [['', 'Automático'], ['#000000', 'Negro'], ['#595959', 'Gris'], ['#c00000', 'Rojo oscuro'], ['#ff0000', 'Rojo'],
+  ['#e36c09', 'Naranja'], ['#bf9000', 'Dorado'], ['#00b050', 'Verde'], ['#0070c0', 'Azul'], ['#002060', 'Azul oscuro'], ['#7030a0', 'Morado']]
+const HIGHLIGHTS = [['', 'Sin resaltado'], ['#fff59d', 'Amarillo'], ['#c8e6c9', 'Verde'], ['#b3e5fc', 'Celeste'], ['#f8bbd0', 'Rosado'],
+  ['#ffe0b2', 'Naranja'], ['#e1bee7', 'Lila'], ['#e0e0e0', 'Gris']]
 const SIZES = [['', 'Tamaño'], ['12px', '12'], ['14px', '14'], ['18px', '18'], ['24px', '24'], ['32px', '32']]
 const EMOJIS = '😀 😂 😍 🥰 😎 🤔 😢 😡 👍 👎 👏 🙏 💪 🎉 ❤️ ⭐ 🔥 ✅ ❌ ⚠️ 💡 📌 📎 📝 📅 ⏰ 🛒 🏠 💼 💰 📚 🎓 ✈️ 🚗 🍎 🍕 ☕ 🎵 🐶 🌱'.split(' ')
 
@@ -120,6 +132,9 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
   const latest = useRef({ onChange, notes, onError })
   useEffect(() => { latest.current = { onChange, notes, onError } })
   const [uploading, setUploading] = useState(0)
+  // Lo último que se pegó (dónde quedó y el original), para "Mantener formato original"; se olvida con el siguiente cambio.
+  const pasting = useRef<{ from: number; html: string } | null>(null)
+  const [pasted, setPasted] = useState<{ from: number; to: number; html: string } | null>(null)
 
   async function addImages(editor: TiptapEditor, files: File[]) {
     for (const file of files) {
@@ -170,7 +185,20 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
       }),
     ],
     content,
-    onUpdate: ({ editor }) => latest.current.onChange(editor.getHTML()),
+    editorProps: {
+      transformPastedHTML: cleanPaste,
+      handlePaste: (view, event) => {
+        const html = event.clipboardData?.getData('text/html')
+        pasting.current = html && !isFromApp(html) ? { from: view.state.selection.from, html } : null
+        return false
+      },
+    },
+    onUpdate: ({ editor, transaction }) => {
+      latest.current.onChange(editor.getHTML())
+      const p = pasting.current
+      pasting.current = null
+      setPasted(p && transaction.getMeta('uiEvent') === 'paste' ? { ...p, to: editor.state.selection.to } : null)
+    },
   })
 
   // Pegar una captura o soltar fotos las sube a Drive. Si lo pegado trae texto (Word, web), se deja a TipTap.
@@ -184,6 +212,14 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
 
   return <>
     <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} />
+    {pasted && <div className="pegado" role="status">
+      Pegado con la letra de la nota.
+      <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => {
+        editor.chain().focus().insertContentAt({ from: pasted.from, to: pasted.to }, pasted.html).run()
+        setPasted(null)
+      }}>Mantener formato original</button>
+      <button type="button" aria-label="Cerrar" onClick={() => setPasted(null)}>✕</button>
+    </div>}
     <EditorContent editor={editor} className="contenido"
       onPasteCapture={e => onFiles(e, e.clipboardData)} onDropCapture={e => onFiles(e, e.dataTransfer)}
       onClick={e => {
@@ -220,13 +256,16 @@ function Btn({ label, onClick, active, disabled, children }: {
 }
 
 function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploading: boolean; onPhoto: () => void }) {
-  const [emojis, setEmojis] = useState(false)
+  const [panel, setPanel] = useState<'emojis' | 'text' | 'highlight' | null>(null)
+  const toggle = (p: typeof panel) => setPanel(panel === p ? null : p)
   const s = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
       block: [1, 2, 3].find(level => e.isActive('heading', { level })) ?? 0,
       font: e.getAttributes('textStyle').fontFamily ?? '',
       size: e.getAttributes('textStyle').fontSize ?? '',
+      color: e.getAttributes('textStyle').color ?? '',
+      highlight: e.getAttributes('textStyle').backgroundColor ?? '',
       bold: e.isActive('bold'), italic: e.isActive('italic'), underline: e.isActive('underline'), strike: e.isActive('strike'),
       bullet: e.isActive('bulletList'), ordered: e.isActive('orderedList'), task: e.isActive('taskList'),
       link: e.isActive('link'), table: e.isActive('table'),
@@ -235,11 +274,10 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
   })
   const c = () => editor.chain().focus()
   // Formatos de letra: sin selección van a la palabra del cursor (como en Word) y el cursor queda donde estaba.
-  // focus = false en los colores: mover el foco cerraría el selector de color mientras se elige.
-  function mark(apply: (ch: ChainedCommands) => ChainedCommands, focus = true) {
+  function mark(apply: (ch: ChainedCommands) => ChainedCommands) {
     const { empty, from, $from } = editor.state.selection
     const word = empty ? wordAt($from) : null
-    let ch = focus ? editor.chain().focus() : editor.chain()
+    let ch = editor.chain().focus()
     if (word) ch = ch.setTextSelection(word)
     ch = apply(ch)
     if (word) ch = ch.setTextSelection(from)
@@ -257,8 +295,10 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
     <div className="barra" role="toolbar" aria-label="Formato">
       <select aria-label="Estilo de párrafo" value={s.block} onChange={e => {
         const level = Number(e.target.value) as 0 | 1 | 2 | 3
-        if (level) c().setHeading({ level }).run()
-        else c().setParagraph().run()
+        if (!level) return c().setParagraph().run()
+        // El título trae su tamaño: se quita el tamaño fijo del texto (pegado o elegido), que si no lo tapa.
+        const { from, to, $from, $to } = editor.state.selection
+        c().setHeading({ level }).setTextSelection({ from: $from.start(), to: $to.end() }).unsetFontSize().setTextSelection({ from, to }).run()
       }}>
         <option value={0}>Normal</option>
         <option value={1}>Título 1</option>
@@ -275,17 +315,15 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
       <Btn label="Cursiva" active={s.italic} onClick={() => mark(ch => ch.toggleItalic())}><Italic size={18} /></Btn>
       <Btn label="Subrayado" active={s.underline} onClick={() => mark(ch => ch.toggleUnderline())}><Underline size={18} /></Btn>
       <Btn label="Tachado" active={s.strike} onClick={() => mark(ch => ch.toggleStrike())}><Strikethrough size={18} /></Btn>
-      <label className="color" title="Color de letra">
-        <Baseline size={18} /><input type="color" aria-label="Color de letra" onChange={e => { const v = e.target.value; mark(ch => ch.setColor(v), false) }} />
-      </label>
-      <label className="color" title="Resaltar">
-        <Highlighter size={18} /><input type="color" aria-label="Color de resaltado" defaultValue="#fff59d" onChange={e => { const v = e.target.value; mark(ch => ch.setBackgroundColor(v), false) }} />
-      </label>
+      <Btn label="Color de letra" active={panel === 'text'} onClick={() => toggle('text')}><Baseline size={18} color={s.color || undefined} /></Btn>
+      <Btn label="Resaltar" active={panel === 'highlight'} onClick={() => toggle('highlight')}>
+        <Highlighter size={18} style={s.highlight ? { background: s.highlight, borderRadius: 4 } : undefined} />
+      </Btn>
       <Btn label="Lista con viñetas" active={s.bullet} onClick={() => c().toggleBulletList().run()}><List size={18} /></Btn>
       <Btn label="Lista numerada" active={s.ordered} onClick={() => c().toggleOrderedList().run()}><ListOrdered size={18} /></Btn>
       <Btn label="Casillas" active={s.task} onClick={() => c().toggleTaskList().run()}><ListTodo size={18} /></Btn>
       <Btn label="Foto" disabled={uploading} onClick={onPhoto}><ImagePlus size={18} /></Btn>
-      <Btn label="Emoji" active={emojis} onClick={() => setEmojis(!emojis)}><Smile size={18} /></Btn>
+      <Btn label="Emoji" active={panel === 'emojis'} onClick={() => toggle('emojis')}><Smile size={18} /></Btn>
       <Btn label="Enlace" active={s.link} onClick={link}><Link size={18} /></Btn>
       {s.table ? <>
         <Btn label="Agregar fila" onClick={() => c().addRowAfter().run()}><BetweenHorizontalEnd size={18} /></Btn>
@@ -299,6 +337,23 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
       <Btn label="Rehacer" disabled={!s.redo} onClick={() => c().redo().run()}><Redo2 size={18} /></Btn>
       {uploading && <span className="estado">Subiendo foto…</span>}
     </div>
-    {emojis && <EmojiPicker onPick={e => { c().insertContent(e).run(); setEmojis(false) }} />}
+    {panel === 'emojis' && <EmojiPicker onPick={e => { c().insertContent(e).run(); setPanel(null) }} />}
+    {panel === 'text' && <Palette label="Color de letra" colors={TEXT_COLORS} current={s.color}
+      onPick={v => { mark(ch => v ? ch.setColor(v) : ch.unsetColor()); setPanel(null) }} />}
+    {panel === 'highlight' && <Palette label="Color de resaltado" colors={HIGHLIGHTS} current={s.highlight}
+      onPick={v => { mark(ch => v ? ch.setBackgroundColor(v) : ch.unsetBackgroundColor()); setPanel(null) }} />}
   </>
+}
+
+function Palette({ label, colors, current, onPick }: { label: string; colors: string[][]; current: string; onPick: (color: string) => void }) {
+  return (
+    <div className="paleta" role="group" aria-label={label}>
+      {colors.map(([value, name]) => (
+        <button key={name} type="button" title={name} aria-label={name} aria-pressed={value.toLowerCase() === current.toLowerCase()}
+          onMouseDown={e => e.preventDefault()} onClick={() => onPick(value)}>
+          {value ? <span style={{ background: value }} /> : name}
+        </button>
+      ))}
+    </div>
+  )
 }
