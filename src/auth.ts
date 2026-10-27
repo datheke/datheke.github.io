@@ -10,7 +10,10 @@ const CLIENT_ID = '561260224283-pgslf9i4qll8teqtnuqhqg3ai8plmcbf.apps.googleuser
 const DESKTOP_ID = '561260224283-chjgsvuo7t5f1p9l9gk0kl8srf669u8j.apps.googleusercontent.com'
 // Google no lo trata como secreto en apps instaladas, pero se pasa al compilar para no dejarlo en el repositorio público.
 const DESKTOP_SECRET: string = import.meta.env.VITE_GOOGLE_DESKTOP_SECRET ?? ''
+// appdata: la carpeta oculta de las notas (obligatorio). file: solo los archivos que crea Datheke en "Mi unidad"
+// (el respaldo semanal); si no se marca, la app funciona igual y el respaldo pide permiso.
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata'
+const SCOPES = `${SCOPE} https://www.googleapis.com/auth/drive.file`
 const KEY = 'datheke-sesion'
 export const desktop = isTauri()
 
@@ -37,7 +40,7 @@ function requestToken(email?: string): Promise<{ token: string; expires: number 
     if (typeof google === 'undefined') return reject(new Error('Google aún no carga, intenta de nuevo.'))
     google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
-      scope: SCOPE,
+      scope: SCOPES,
       callback: r => {
         if (r.error) reject(new Error(r.error))
         else if (!r.scope.split(' ').includes(SCOPE)) reject(new Error('Falta marcar el permiso de Google Drive.'))
@@ -107,7 +110,7 @@ async function desktopLogin(email?: string): Promise<Tokens> {
   })
   try {
     await openUrl(`https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
-      client_id: DESKTOP_ID, redirect_uri, response_type: 'code', scope: SCOPE, state,
+      client_id: DESKTOP_ID, redirect_uri, response_type: 'code', scope: SCOPES, state,
       code_challenge: challenge, code_challenge_method: 'S256', access_type: 'offline', prompt: 'consent',
       ...(email ? { login_hint: email } : {}),
     })}`)
