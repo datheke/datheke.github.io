@@ -218,7 +218,7 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose }:
 
       {phase.at === 'menu' && mode === 'voz' && <div className="gemini-fila">
         <button type="button" className="principal grande" onClick={record}><AudioLines size={18} /> Empezar a hablar</button>
-        <span className="gemini-ayuda">Habla de corrido; Gemini lo escribe ordenado{empty ? '' : ' debajo del renglón donde estás'}.</span>
+        <span className="gemini-ayuda">Dicta algo para anotar o pídele algo ("créame la lista de…"); el resultado va {empty ? 'en la nota' : 'debajo del renglón donde estás'}.</span>
       </div>}
 
       {phase.at === 'menu' && mode === 'ia' && <>
