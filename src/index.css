@@ -7,6 +7,8 @@
   --barra: #1d1f21;
   --barra-texto: #d4d4d4;
   --acento: #2f9e5b;
+  --hoja: 760px; /* ancho de la nota con sus márgenes: en pantallas anchas los renglones no se van de largo */
+  --margen: 32px;
   font-family: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--texto);
   background: var(--fondo);
@@ -55,7 +57,7 @@ button.libreta, .libreta > button:first-child { padding: 6px 10px; }
 
 .editor { display: flex; flex-direction: column; min-width: 0; }
 .editor select { border: 1px solid var(--borde); border-radius: 6px; padding: 5px; background: none; margin-right: auto; }
-.editor .titulo { border: none; font-size: 26px; font-weight: 700; padding: 16px 24px 8px; outline: none; }
+.editor .titulo { border: none; font-size: 26px; font-weight: 700; width: 100%; max-width: var(--hoja); margin: 0 auto; padding: 16px var(--margen) 8px; outline: none; }
 .barra { display: flex; align-items: center; gap: 2px; padding: 6px 16px; border-bottom: 1px solid var(--borde); overflow-x: auto; flex-shrink: 0; }
 .barra > * { flex-shrink: 0; }
 .barra button { border: none; padding: 6px; display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; }
@@ -72,7 +74,8 @@ button.libreta, .libreta > button:first-child { padding: 6px 10px; }
 
 /* La letra de la nota: la misma en todos los aparatos, y la que toma lo pegado de otro lado (paste.ts). */
 .contenido { flex: 1; min-height: 0; overflow-y: auto; }
-.contenido .tiptap { min-height: 100%; padding: 8px 24px 24px; font-family: 'Lora Variable', Georgia, serif; font-size: 16px; line-height: 1.6; outline: none; }
+.contenido .tiptap { min-height: 100%; max-width: var(--hoja); margin: 0 auto; padding: 8px var(--margen) 48px; font-family: 'Lora Variable', Georgia, serif; font-size: 16px; line-height: 1.6; outline: none; overflow-wrap: anywhere; }
+.tiptap pre { white-space: pre-wrap; }
 .tiptap p { margin: 0 0 .5em; }
 .tiptap h1, .tiptap h2, .tiptap h3 { line-height: 1.25; margin: .8em 0 .4em; }
 /* El título de un desplegable lleva los mismos tamaños que los títulos (data-level, 0 = Normal). */
@@ -121,7 +124,7 @@ button.libreta, .libreta > button:first-child { padding: 6px 10px; }
 
 .editor header { flex-wrap: wrap; }
 .portada { width: 100%; height: 180px; object-fit: cover; display: block; background: var(--lista); flex-shrink: 0; }
-.cabecera { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px 24px 0; font-size: 13px; color: var(--suave); }
+.cabecera { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; width: 100%; max-width: var(--hoja); margin: 0 auto; padding: 12px var(--margen) 0; font-size: 13px; color: var(--suave); }
 .cabecera .icono { border: none; padding: 0; font-size: 36px; line-height: 1; }
 .volver { display: none; }
 
@@ -136,8 +139,7 @@ button.libreta, .libreta > button:first-child { padding: 6px 10px; }
   .app.con-nota .libretas, .app.con-nota .lista, .app:not(.con-nota) .editor { display: none; }
   .app.con-nota { grid-template-rows: 1fr; }
   .volver { display: inline-block; }
-  .editor .titulo, .contenido .tiptap { padding-left: 16px; padding-right: 16px; }
+  :root { --margen: 20px; }
   .barra { padding: 6px 8px; }
-  .cabecera { padding: 12px 16px 0; }
   .portada { height: 120px; }
 }
