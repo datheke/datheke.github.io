@@ -75,9 +75,11 @@ button.libreta, .libreta > button:first-child { padding: 6px 10px; }
 .contenido .tiptap { min-height: 100%; padding: 8px 24px 24px; font-family: 'Lora Variable', Georgia, serif; font-size: 16px; line-height: 1.6; outline: none; }
 .tiptap p { margin: 0 0 .5em; }
 .tiptap h1, .tiptap h2, .tiptap h3 { line-height: 1.25; margin: .8em 0 .4em; }
-.tiptap h1 { font-size: 1.8em; font-weight: 700; }
-.tiptap h2 { font-size: 1.45em; font-weight: 700; }
-.tiptap h3 { font-size: 1.2em; font-weight: 600; }
+/* El título de un desplegable lleva los mismos tamaños que los títulos (data-level, 0 = Normal). */
+.tiptap h1, .tiptap summary[data-level="1"] { font-size: 1.8em; font-weight: 700; }
+.tiptap h2, .tiptap summary[data-level="2"] { font-size: 1.45em; font-weight: 700; }
+.tiptap h3, .tiptap summary[data-level="3"] { font-size: 1.2em; font-weight: 600; }
+.tiptap summary[data-level]:not([data-level="0"]) { line-height: 1.25; }
 .tiptap a { color: var(--acento); }
 .tiptap blockquote { border-left: 3px solid var(--borde); margin: 0 0 .5em; padding-left: 12px; color: var(--suave); }
 .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 4px; }
@@ -106,7 +108,7 @@ button.libreta, .libreta > button:first-child { padding: 6px 10px; }
 .tiptap .details > button::before { content: '▶'; transition: transform .15s; }
 .tiptap .details.is-open > button::before { transform: rotate(90deg); }
 .tiptap .details > div { flex: 1; min-width: 0; }
-.tiptap .details summary { font-weight: 600; list-style: none; }
+.tiptap .details summary { list-style: none; }
 .tiptap .details summary::-webkit-details-marker { display: none; }
 
 .menu { background: var(--fondo); border: 1px solid var(--borde); border-radius: 8px; box-shadow: 0 6px 24px #0002; padding: 4px; max-height: 280px; overflow-y: auto; min-width: 200px; z-index: 10; }
