@@ -11,11 +11,12 @@ import { EditorContent, Extension, mergeAttributes, Node, ReactRenderer, useEdit
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
 import StarterKit from '@tiptap/starter-kit'
 import {
-  Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, Highlighter, ImagePlus, Italic, Link, List, ListIndentDecrease,
-  ListIndentIncrease, ListOrdered, ListTodo, Redo2, RemoveFormatting, Smile, Strikethrough, Table, TextAlignCenter, TextAlignEnd,
-  TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
+  ArrowDown, ArrowUp, Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, Highlighter, ImagePlus, Italic, Link, List,
+  ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Redo2, RemoveFormatting, Smile, Strikethrough, Table,
+  TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from 'react'
+import { moveBlock } from './blocks.ts'
 import { imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
 import { appFonts, isFromApp } from './paste.ts'
@@ -160,16 +161,30 @@ const Summary = DetailsSummary.extend({
   },
 })
 
+// Alt+↑ / Alt+↓ hacen lo mismo que los botones Subir y Bajar.
+const MoveBlocks = Extension.create({
+  name: 'moveBlocks',
+  addKeyboardShortcuts() {
+    const move = (dir: -1 | 1) => () => {
+      const tr = moveBlock(this.editor.state, dir)
+      if (tr) this.editor.view.dispatch(tr)
+      return !!tr
+    }
+    return { 'Alt-ArrowUp': move(-1), 'Alt-ArrowDown': move(1) }
+  },
+})
+
 type Props = {
   content: string
   onChange: (html: string) => void
   notes: { id: string; label: string }[]
   onOpenNote: (id: string) => void
   onError: (e: unknown) => void
+  editable: boolean // false = nota fijada: se lee y se copia, no se cambia
 }
 
 // El contenido solo se usa al crear el editor; App lo vuelve a montar (key) al cambiar de nota.
-export default function Editor({ content, onChange, notes, onOpenNote, onError }: Props) {
+export default function Editor({ content, onChange, notes, onOpenNote, onError, editable }: Props) {
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
   const latest = useRef({ onChange, notes, onError })
   useEffect(() => { latest.current = { onChange, notes, onError } })
@@ -215,7 +230,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
     extensions: [
       StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true }), TableKit, DriveImage, Callout,
       Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), Summary, DetailsContent,
-      TextAlign.configure({ types: BLOCKS }), ParagraphFormat,
+      TextAlign.configure({ types: BLOCKS }), ParagraphFormat, MoveBlocks,
       Placeholder.configure({ placeholder: 'Escribe / para insertar tablas, fotos, casillas, recuadros…' }),
       // Los comandos y el buscador de "@" leen refs solo al usarse (al escribir), no al dibujar.
       // eslint-disable-next-line react-hooks/refs
@@ -230,6 +245,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
       }),
     ],
     content: initial,
+    editable,
     editorProps: {
       // De otro lado entra solo el texto, con el formato de la nota; el original queda para "Mantener formato original".
       // Lo copiado de la app, y lo que no trae texto (una foto de una página), va como viene.
@@ -251,18 +267,21 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError }
     },
   })
 
+  // false: cambiar entre fijada y editable no es un cambio de la nota (si no, se marcaba para subir al abrirla).
+  useEffect(() => { if (editor.isEditable !== editable) editor.setEditable(editable, false) }, [editor, editable])
+
   // Pegar una captura o soltar fotos las sube a Drive. Si lo pegado trae texto (Word, web), se deja a TipTap.
   function onFiles(e: { preventDefault(): void; stopPropagation(): void }, data: DataTransfer | null) {
     const images = [...(data?.files ?? [])].filter(f => f.type.startsWith('image/'))
-    if (!images.length || data?.types.includes('text/html')) return
+    if (!editable || !images.length || data?.types.includes('text/html')) return
     e.preventDefault()
     e.stopPropagation()
     addImages(editor, images)
   }
 
   return <>
-    <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} />
-    {pasted && <div className="pegado" role="status">
+    {editable && <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} />}
+    {editable && pasted && <div className="pegado" role="status">
       Pegado como texto, con el formato de la nota.
       <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => {
         // Se vuelve a pegar el original encima, con el pegado del editor: sigue en el renglón como un pegado normal.
@@ -326,6 +345,7 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
         bullet: e.isActive('bulletList'), ordered: e.isActive('orderedList'), task: e.isActive('taskList'),
         link: e.isActive('link'), table: e.isActive('table'),
         undo: e.can().undo(), redo: e.can().redo(),
+        up: !!moveBlock(e.state, -1), down: !!moveBlock(e.state, 1),
       }
     },
   })
@@ -357,6 +377,12 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
     const item = ['taskItem', 'listItem'].find(t => editor.isActive(t))
     if (item && (delta > 0 ? c().sinkListItem(item).run() : c().liftListItem(item).run())) return
     setBlocks(a => ({ indent: Math.min(MAX_INDENT, Math.max(0, Number(a.indent) + delta)) }))
+  }
+
+  function move(dir: -1 | 1) {
+    const tr = moveBlock(editor.state, dir)
+    if (tr) editor.view.dispatch(tr)
+    editor.commands.focus()
   }
 
   function link() {
@@ -408,6 +434,8 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
       <Btn label="Lista numerada" active={s.ordered} onClick={() => c().toggleOrderedList().run()}><ListOrdered size={18} /></Btn>
       <Btn label="Disminuir sangría" onClick={() => indent(-1)}><ListIndentDecrease size={18} /></Btn>
       <Btn label="Aumentar sangría" onClick={() => indent(1)}><ListIndentIncrease size={18} /></Btn>
+      <Btn label="Subir (desplegable, renglón o párrafo) · Alt+↑" disabled={!s.up} onClick={() => move(-1)}><ArrowUp size={18} /></Btn>
+      <Btn label="Bajar (desplegable, renglón o párrafo) · Alt+↓" disabled={!s.down} onClick={() => move(1)}><ArrowDown size={18} /></Btn>
       <Btn label="Casillas" active={s.task} onClick={() => c().toggleTaskList().run()}><ListTodo size={18} /></Btn>
       <Btn label="Foto" disabled={uploading} onClick={onPhoto}><ImagePlus size={18} /></Btn>
       <Btn label="Emoji" active={panel === 'emojis'} onClick={() => toggle('emojis')}><Smile size={18} /></Btn>
