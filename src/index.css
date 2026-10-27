@@ -7,7 +7,7 @@
   --barra: #1d1f21;
   --barra-texto: #d4d4d4;
   --acento: #2f9e5b;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--texto);
   background: var(--fondo);
 }
