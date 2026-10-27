@@ -232,3 +232,35 @@ body.cambiando-ancho { cursor: col-resize; }
   .barra > * { flex-shrink: 0; }
   .portada { height: 90px; }
 }
+
+/* Gemini: panel bajo la barra de formato (GeminiPanel.tsx). Sus íconos en el azul-morado de Gemini. */
+.chispa { color: #5b6cf0; }
+.gemini { display: flex; flex-direction: column; gap: 8px; padding: 10px 16px 12px; font-size: 14px; border-bottom: 1px solid var(--borde);
+  background: linear-gradient(135deg, #eef2ff, #f5f0ff 60%, #fdf2f8); }
+.gemini p, .gemini ol { margin: 0; }
+.gemini ol { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.gemini button { display: inline-flex; align-items: center; gap: 6px; background: var(--fondo); }
+.gemini button.principal { background: #5b6cf0; border-color: #5b6cf0; color: #fff; padding: 6px 14px; }
+.gemini button.principal:disabled { opacity: .5; }
+.gemini button.grande { padding: 10px 18px; font-size: 15px; }
+.gemini input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid #c7d2fe; border-radius: 8px; font: inherit; background: var(--fondo); }
+.gemini .error { color: #b91c1c; }
+.gemini-cabeza { display: flex; align-items: center; justify-content: space-between; }
+.gemini-cabeza strong { display: inline-flex; align-items: center; gap: 6px; color: #4338ca; }
+.gemini-cabeza .btn-icono { width: 28px; height: 28px; background: none; }
+.gemini-fila { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.gemini-tareas { display: flex; flex-wrap: wrap; gap: 6px; }
+.gemini-tareas button { border-color: #c7d2fe; border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+.gemini-tareas button:hover { border-color: #5b6cf0; }
+.gemini-ayuda, .gemini-nota { color: var(--suave); font-size: 12.5px; }
+.gemini-desvincular { align-self: flex-start; font-size: 12px; color: var(--suave); background: none !important; border: none; padding: 0; }
+.gemini-pensando { display: inline-flex; align-items: center; gap: 6px; color: #4338ca; animation: latido 1.2s ease-in-out infinite; }
+.gemini-resultado { max-height: 40vh; overflow-y: auto; white-space: pre-wrap; padding: 10px 12px; border-radius: 8px; background: var(--fondo); border: 1px solid #c7d2fe; font-family: 'Lora Variable', Georgia, serif; }
+.gemini-grabando { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: #4338ca; }
+.ondas { display: inline-flex; align-items: center; gap: 3px; height: 22px; }
+.ondas i { width: 4px; height: 100%; border-radius: 2px; background: linear-gradient(#5b6cf0, #c026d3); animation: onda .9s ease-in-out infinite; }
+.ondas i:nth-child(2) { animation-delay: .15s; } .ondas i:nth-child(3) { animation-delay: .3s; }
+.ondas i:nth-child(4) { animation-delay: .45s; } .ondas i:nth-child(5) { animation-delay: .6s; }
+@keyframes onda { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
+@keyframes latido { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .ondas i, .gemini-pensando { animation: none; } }

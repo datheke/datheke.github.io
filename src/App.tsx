@@ -80,6 +80,14 @@ export default function App() {
   const saveOrder = (items: DriveFile[], from: number, to: number) =>
     reorder(items, from, to).forEach(({ id, orden }) => store.patch(id, { props: { orden } }))
   const descendants = (id: string): DriveFile[] => allNotes.filter(n => parentOf(n) === id).flatMap(n => [n, ...descendants(n.id)])
+  // Ajustes de la cuenta (por ahora la clave de Gemini): un archivo sin contenido en la carpeta oculta de Drive,
+  // así se vincula una vez y sirve en todos los aparatos de esa persona.
+  const settings = files.find(f => f.appProperties?.kind === 'ajustes')
+  const geminiKey = settings?.appProperties?.gemini ?? ''
+  const setGeminiKey = (key: string) => act(() => {
+    if (settings) store.patch(settings.id, { props: { gemini: key || null } })
+    else if (key) store.create({ kind: 'ajustes', gemini: key }, 'Ajustes')
+  })
   const templates = templatesNb ? allNotes.filter(n => n.appProperties?.notebook === templatesNb.id).sort(byName) : []
   const note = noteId ? s.files[noteId] : undefined
   const doc = noteId ? s.texts[noteId] : undefined
@@ -376,7 +384,8 @@ export default function App() {
             {doc ? <>
               <input className="titulo" value={doc.title} placeholder="Título" readOnly={locked} onChange={e => store.edit(note.id, { title: e.target.value })} />
               <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} content={doc.text} onChange={text => store.edit(note.id, { text })}
-                notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked} />
+                notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked}
+                geminiKey={geminiKey} onGeminiKey={setGeminiKey} />
             </> : <p className="vacio">Cargando…</p>}
           </div>
         </> : <p className="vacio">Elige o crea una nota</p>}

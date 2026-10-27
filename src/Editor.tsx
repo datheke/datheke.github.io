@@ -12,12 +12,13 @@ import { BubbleMenu } from '@tiptap/react/menus'
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
 import StarterKit from '@tiptap/starter-kit'
 import {
-  Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, ClipboardPaste, GripVertical, Highlighter,
+  AudioLines, Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, ClipboardPaste, GripVertical, Highlighter,
   ImagePlus, Italic, Link, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Redo2, RemoveFormatting, Smile,
-  Strikethrough, Table, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
+  Sparkles, Strikethrough, Table, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react'
 import { moveBlock, movableDepth, moveTo } from './blocks.ts'
+import GeminiPanel from './GeminiPanel.tsx'
 import { imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
 import { appFonts, isFromApp } from './paste.ts'
@@ -182,10 +183,12 @@ type Props = {
   onOpenNote: (id: string) => void
   onError: (e: unknown) => void
   editable: boolean // false = nota fijada: se lee y se copia, no se cambia
+  geminiKey: string // vacía = Gemini sin vincular
+  onGeminiKey: (key: string) => void
 }
 
 // El contenido solo se usa al crear el editor; App lo vuelve a montar (key) al cambiar de nota.
-export default function Editor({ content, onChange, notes, onOpenNote, onError, editable }: Props) {
+export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey }: Props) {
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
   const latest = useRef({ onChange, notes, onError })
   useEffect(() => { latest.current = { onChange, notes, onError } })
@@ -362,7 +365,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   // La barra de formato y el aviso de pegado quedan fijos arriba al bajar por la nota (la portada se va con el texto).
   return <>
     {editable && <div className="barra-fija">
-      <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} />
+      <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey} />
       {pasted && <div className="pegado" role="status">
         <ClipboardPaste size={16} aria-hidden="true" /> Se pegó solo el texto, con el formato de la nota.
         <button type="button" className="principal" onMouseDown={e => e.preventDefault()} onClick={() => {
@@ -416,8 +419,10 @@ function Btn({ label, onClick, active, disabled, children }: {
     className={active ? 'activo' : undefined} onMouseDown={e => e.preventDefault()} onClick={onClick}>{children}</button>
 }
 
-function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploading: boolean; onPhoto: () => void }) {
-  const [panel, setPanel] = useState<'emojis' | 'text' | 'highlight' | null>(null)
+function Toolbar({ editor, uploading, onPhoto, geminiKey, onGeminiKey }: {
+  editor: TiptapEditor; uploading: boolean; onPhoto: () => void; geminiKey: string; onGeminiKey: (key: string) => void
+}) {
+  const [panel, setPanel] = useState<'emojis' | 'text' | 'highlight' | 'ia' | 'voz' | null>(null)
   const toggle = (p: typeof panel) => setPanel(panel === p ? null : p)
   const s = useEditorState({
     editor,
@@ -479,6 +484,11 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
 
   return <>
     <div className="barra" role="toolbar" aria-label="Formato">
+      {/* Gemini primero: en el celular la barra se corre de lado y así se ve sin buscarlo. */}
+      <Btn label="Gemini: corregir, resumir, sacar tareas o pedir algo" active={panel === 'ia'} onClick={() => toggle('ia')}>
+        <Sparkles size={18} className="chispa" />
+      </Btn>
+      <Btn label="Dictar a Gemini" active={panel === 'voz'} onClick={() => toggle('voz')}><AudioLines size={18} className="chispa" /></Btn>
       <select aria-label="Estilo de párrafo" value={s.block} onChange={e => {
         const level = Number(e.target.value) as 0 | 1 | 2 | 3
         const { from, to, $from, $to } = editor.state.selection
@@ -535,6 +545,8 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
       <Btn label="Rehacer" disabled={!s.redo} onClick={() => c().redo().run()}><Redo2 size={18} /></Btn>
       {uploading && <span className="estado">Subiendo foto…</span>}
     </div>
+    {(panel === 'ia' || panel === 'voz') && <GeminiPanel key={panel} editor={editor} mode={panel} geminiKey={geminiKey}
+      onKey={onGeminiKey} onClose={() => setPanel(null)} />}
     {panel === 'emojis' && <EmojiPicker onPick={e => { c().insertContent(e).run(); setPanel(null) }} />}
     {panel === 'text' && <Palette label="Color de letra" colors={TEXT_COLORS} current={s.color}
       onPick={v => { mark(ch => v ? ch.setColor(v) : ch.unsetColor()); setPanel(null) }} />}
@@ -543,6 +555,7 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
     {/* Barra sobre lo seleccionado, como en Evernote. En el celular va debajo: arriba está el menú de copiar del teléfono. */}
     <BubbleMenu editor={editor} className="burbuja" options={{ placement: touch ? 'bottom' : 'top', offset: 8 }}>
       <div className="burbuja-fila" role="toolbar" aria-label="Formato de lo seleccionado">
+        <Btn label="Gemini con lo seleccionado" active={panel === 'ia'} onClick={() => setPanel('ia')}><Sparkles size={16} className="chispa" /></Btn>
         <Btn label="Negrita" active={s.bold} onClick={() => mark(ch => ch.toggleBold())}><Bold size={16} /></Btn>
         <Btn label="Cursiva" active={s.italic} onClick={() => mark(ch => ch.toggleItalic())}><Italic size={16} /></Btn>
         <Btn label="Subrayado" active={s.underline} onClick={() => mark(ch => ch.toggleUnderline())}><Underline size={16} /></Btn>

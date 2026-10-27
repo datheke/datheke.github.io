@@ -69,6 +69,11 @@ jobs:
           f=$(find src-tauri/gen/android -name MainActivity.kt)
           sed -i 's/enableEdgeToEdge()/enableEdgeToEdge(androidx.activity.SystemBarStyle.light(0, 0), androidx.activity.SystemBarStyle.light(0, 0x801b1b1b.toInt()))/' "$f"
           grep -q SystemBarStyle "$f"
+      # Micrófono para "Dictar a Gemini" (la app lo pide la primera vez que se usa).
+      - run: |
+          m=src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />#' "$m"
+          grep -q RECORD_AUDIO "$m" || { echo "No se pudo agregar el permiso del micrófono"; cat "$m"; exit 1; }
       - run: npx tauri icon public/icon.svg
       - run: npx tauri android build --apk --target aarch64
         env:

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { OfflineError } from './drive.ts'
-import { ask, clean, GeminiError, MODELS } from './gemini.ts'
+import { ask, askAudio, checkKey, clean, encodeWav, GeminiError, MODELS } from './gemini.ts'
 
 function mockFetch(...responses: (Response | Error)[]) {
   const calls: { url: string; init: RequestInit }[] = []
@@ -55,4 +55,37 @@ test('respuesta bloqueada o vacía avisa', async () => {
   await assert.rejects(ask('x', 'y', 'k'), /no quiso/)
   mockFetch(json({ candidates: [{ content: { parts: [] } }] }))
   await assert.rejects(ask('x', 'y', 'k'), /no devolvió/)
+})
+
+test('el dictado va como WAV junto con la instrucción', async () => {
+  const calls = mockFetch(answer('<p>Comprar pan</p>'))
+  assert.equal(await askAudio('QUJD', 'k'), '<p>Comprar pan</p>')
+  const parts = JSON.parse(String(calls[0].init.body)).contents[0].parts
+  assert.equal(parts[1].inlineData.mimeType, 'audio/wav')
+  assert.equal(parts[1].inlineData.data, 'QUJD')
+})
+
+test('con la nota vacía el pedido va solo (Gemini crea desde cero)', async () => {
+  const calls = mockFetch(answer('<p>x</p>'))
+  await ask('Lista de compras', '', 'k')
+  assert.equal(JSON.parse(String(calls[0].init.body)).contents[0].parts[0].text, 'Lista de compras')
+})
+
+test('WAV: cabecera correcta, mono de 16 bits', () => {
+  const wav = encodeWav(new Float32Array([0, 1, -1]), 16000)
+  const v = new DataView(wav.buffer)
+  assert.equal(new TextDecoder().decode(wav.slice(0, 4)), 'RIFF')
+  assert.equal(new TextDecoder().decode(wav.slice(8, 12)), 'WAVE')
+  assert.equal(v.getUint16(22, true), 1) // un canal
+  assert.equal(v.getUint32(24, true), 16000)
+  assert.equal(v.getUint32(40, true), 6) // 3 muestras x 2 bytes
+  assert.equal(v.getInt16(46, true), 0x7fff)
+  assert.equal(v.getInt16(48, true), -0x8000)
+})
+
+test('checkKey: clave mala avisa en palabras simples', async () => {
+  mockFetch(json({ error: { message: 'API key not valid.' } }, 400))
+  await assert.rejects(checkKey('mala'), /clave/)
+  mockFetch(json({ models: [] }))
+  await checkKey('buena')
 })
