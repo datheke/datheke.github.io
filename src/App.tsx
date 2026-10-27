@@ -57,6 +57,8 @@ export default function App() {
   const [problem, setProblem] = useState<string | null>(null) // error de una acción ('auth' = sesión vencida)
   const [waiting, setWaiting] = useState(false) // escritorio: esperando que termine el login en el navegador
   const [layout, setLayout] = useState(loadLayout)
+  // Al escribir en la nota (título o texto) la portada se esconde, y vuelve al abrirla de nuevo.
+  const [writing, setWriting] = useState(false)
   useEffect(() => {
     try { localStorage.setItem('datheke-diseno', JSON.stringify(layout)) } catch { /* sin guardar: el diseño de siempre */ }
   }, [layout])
@@ -162,6 +164,7 @@ export default function App() {
   function open(id: string | null) {
     setNoteId(id)
     setPicker(false)
+    setWriting(false)
   }
 
   function renameNotebook(nb: DriveFile) {
@@ -356,7 +359,7 @@ export default function App() {
             </div>
           </div>}
           {/* Portada, título y texto bajan juntos: al bajar por la nota la portada se va y deja todo el espacio. */}
-          <div className="nota-scroll">
+          <div className={writing ? 'nota-scroll escribiendo' : 'nota-scroll'} onInput={() => setWriting(true)}>
             {cover && <Cover id={cover} />}
             <div className="cabecera">
               {parent && <button className="enlace" onClick={() => open(parent.id)}>↑ {parent.name || UNTITLED}</button>}
