@@ -12,7 +12,7 @@ import { BubbleMenu } from '@tiptap/react/menus'
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
 import StarterKit from '@tiptap/starter-kit'
 import {
-  ArrowDown, ArrowUp, Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, ClipboardPaste, GripVertical, Highlighter,
+  Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, ClipboardPaste, GripVertical, Highlighter,
   ImagePlus, Italic, Link, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Redo2, RemoveFormatting, Smile,
   Strikethrough, Table, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
 } from 'lucide-react'
@@ -162,7 +162,7 @@ const Summary = DetailsSummary.extend({
   },
 })
 
-// Alt+↑ / Alt+↓ hacen lo mismo que los botones Subir y Bajar.
+// Alt+↑ / Alt+↓ suben o bajan lo que tiene el cursor (en la PC, además de arrastrar con la agarradera).
 const MoveBlocks = Extension.create({
   name: 'moveBlocks',
   addKeyboardShortcuts() {
@@ -435,7 +435,6 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
         bullet: e.isActive('bulletList'), ordered: e.isActive('orderedList'), task: e.isActive('taskList'),
         link: e.isActive('link'), table: e.isActive('table'),
         undo: e.can().undo(), redo: e.can().redo(),
-        up: !!moveBlock(e.state, -1), down: !!moveBlock(e.state, 1),
       }
     },
   })
@@ -469,12 +468,6 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
     const item = ['taskItem', 'listItem'].find(t => editor.isActive(t))
     if (item && (delta > 0 ? c().sinkListItem(item).run() : c().liftListItem(item).run())) return
     setBlocks(a => ({ indent: Math.min(MAX_INDENT, Math.max(0, Number(a.indent) + delta)) }))
-  }
-
-  function move(dir: -1 | 1) {
-    const tr = moveBlock(editor.state, dir)
-    if (tr) editor.view.dispatch(tr)
-    editor.commands.focus()
   }
 
   function link() {
@@ -526,8 +519,6 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
       <Btn label="Lista numerada" active={s.ordered} onClick={() => c().toggleOrderedList().run()}><ListOrdered size={18} /></Btn>
       <Btn label="Disminuir sangría" onClick={() => indent(-1)}><ListIndentDecrease size={18} /></Btn>
       <Btn label="Aumentar sangría" onClick={() => indent(1)}><ListIndentIncrease size={18} /></Btn>
-      <Btn label="Subir (desplegable, renglón o párrafo) · Alt+↑" disabled={!s.up} onClick={() => move(-1)}><ArrowUp size={18} /></Btn>
-      <Btn label="Bajar (desplegable, renglón o párrafo) · Alt+↓" disabled={!s.down} onClick={() => move(1)}><ArrowDown size={18} /></Btn>
       <Btn label="Casillas" active={s.task} onClick={() => c().toggleTaskList().run()}><ListTodo size={18} /></Btn>
       <Btn label="Foto" disabled={uploading} onClick={onPhoto}><ImagePlus size={18} /></Btn>
       <Btn label="Emoji" active={panel === 'emojis'} onClick={() => toggle('emojis')}><Smile size={18} /></Btn>
