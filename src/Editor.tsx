@@ -21,11 +21,16 @@ import { wordAt } from './word.ts'
 // Fuentes incluidas en la app (main.tsx, fonts.css): se ven igual en PC, celular y web, también sin internet.
 // Sin elegir, el texto va con la letra de la nota (Lora, index.css).
 const FONTS = [
-  ['', 'Fuente'], ['Arial, sans-serif', 'Arial'], ['Calibri, sans-serif', 'Calibri'], ['Cambria, serif', 'Cambria'],
+  ['', 'Lora'], ['Arial, sans-serif', 'Arial'], ['Calibri, sans-serif', 'Calibri'], ['Cambria, serif', 'Cambria'],
   ['"Courier New", monospace', 'Courier New'], ['Garamond, serif', 'Garamond'], ['Georgia, serif', 'Georgia'],
-  ['"Times New Roman", serif', 'Times New Roman'], ['"Inter Variable", sans-serif', 'Moderna'], ['"Lora Variable", serif', 'Serif'],
+  ['"Times New Roman", serif', 'Times New Roman'], ['"Inter Variable", sans-serif', 'Moderna'],
   ['"JetBrains Mono Variable", monospace', 'Monoespaciada'], ['"Caveat Variable", cursive', 'Manuscrita'],
 ]
+// Nombre de la primera fuente: '"Times New Roman", serif' y "'Times New Roman',serif" (pegado de Word) son la misma.
+const fontName = (f: string) => f.split(',')[0].replace(/["']/g, '').trim()
+// Las opciones con lo que tiene el texto: si no está en la lista (pegado con su formato original) se agrega con su nombre.
+const withCurrent = (options: string[][], value: string, label: string) =>
+  !value || options.some(([v]) => v === value) ? options : [...options, [value, label]]
 // Paletas propias en vez del selector de color del sistema, que en la app de Android no abre.
 const TEXT_COLORS = [['', 'Automático'], ['#000000', 'Negro'], ['#595959', 'Gris'], ['#c00000', 'Rojo oscuro'], ['#ff0000', 'Rojo'],
   ['#e36c09', 'Naranja'], ['#bf9000', 'Dorado'], ['#00b050', 'Verde'], ['#0070c0', 'Azul'], ['#002060', 'Azul oscuro'], ['#7030a0', 'Morado']]
@@ -262,6 +267,8 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
     editor,
     selector: ({ editor: e }) => ({
       block: [1, 2, 3].find(level => e.isActive('heading', { level })) ?? 0,
+      // El título de un desplegable no acepta Título: ahí el cambio no hacía nada y la lista volvía sola a "Normal".
+      canBlock: ['paragraph', 'heading'].includes(e.state.selection.$from.parent.type.name),
       font: e.getAttributes('textStyle').fontFamily ?? '',
       size: e.getAttributes('textStyle').fontSize ?? '',
       color: e.getAttributes('textStyle').color ?? '',
@@ -273,6 +280,7 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
     }),
   })
   const c = () => editor.chain().focus()
+  const font = FONTS.find(([v]) => v && fontName(v).toLowerCase() === fontName(s.font).toLowerCase())?.[0] ?? s.font
   // Formatos de letra: sin selección van a la palabra del cursor (como en Word) y el cursor queda donde estaba.
   function mark(apply: (ch: ChainedCommands) => ChainedCommands) {
     const { empty, from, $from } = editor.state.selection
@@ -293,7 +301,8 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
 
   return <>
     <div className="barra" role="toolbar" aria-label="Formato">
-      <select aria-label="Estilo de párrafo" value={s.block} onChange={e => {
+      <select aria-label="Estilo de párrafo" value={s.block} disabled={!s.canBlock}
+        title={s.canBlock ? undefined : 'El título de un desplegable no lleva Título; para agrandarlo usa Tamaño'} onChange={e => {
         const level = Number(e.target.value) as 0 | 1 | 2 | 3
         if (!level) return c().setParagraph().run()
         // El título trae su tamaño: se quita el tamaño fijo del texto (pegado o elegido), que si no lo tapa.
@@ -305,11 +314,11 @@ function Toolbar({ editor, uploading, onPhoto }: { editor: TiptapEditor; uploadi
         <option value={2}>Título 2</option>
         <option value={3}>Título 3</option>
       </select>
-      <select aria-label="Fuente" value={s.font} onChange={e => { const v = e.target.value; mark(ch => v ? ch.setFontFamily(v) : ch.unsetFontFamily()) }}>
-        {FONTS.map(([value, label]) => <option key={label} value={value}>{label}</option>)}
+      <select aria-label="Fuente" value={font} onChange={e => { const v = e.target.value; mark(ch => v ? ch.setFontFamily(v) : ch.unsetFontFamily()) }}>
+        {withCurrent(FONTS, font, fontName(font)).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select>
       <select aria-label="Tamaño de letra" value={s.size} onChange={e => { const v = e.target.value; mark(ch => v ? ch.setFontSize(v) : ch.unsetFontSize()) }}>
-        {SIZES.map(([value, label]) => <option key={label} value={value}>{label}</option>)}
+        {withCurrent(SIZES, s.size, s.size.replace(/px$/, '')).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select>
       <Btn label="Negrita" active={s.bold} onClick={() => mark(ch => ch.toggleBold())}><Bold size={18} /></Btn>
       <Btn label="Cursiva" active={s.italic} onClick={() => mark(ch => ch.toggleItalic())}><Italic size={18} /></Btn>
