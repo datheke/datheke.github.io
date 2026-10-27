@@ -239,7 +239,7 @@ export default function App() {
 
   if (!session) return (
     <div className="login">
-      <h1>Datheke</h1>
+      <h1><img className="logo" src="./logo.svg" alt="Datheke" width="220" height="220" /></h1>
       <p>Tus notas se guardan en tu propio Google Drive.</p>
       <button className="principal" onClick={login} disabled={waiting}>Entrar con Google</button>
       {waiting && <p>Se abrió tu navegador: entra con Google ahí y luego vuelve a esta ventana.</p>}
