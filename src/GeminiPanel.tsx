@@ -1,16 +1,21 @@
 import { getHTMLFromFragment, type Editor as TiptapEditor } from '@tiptap/react'
-import { AudioLines, ClipboardPaste, ExternalLink, Sparkles, X } from 'lucide-react'
+import { AudioLines, ClipboardPaste, ExternalLink, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { desktop } from './auth.ts'
 import { OfflineError } from './drive.ts'
-import { ask, askAudio, checkKey, encodeWav, KEY_URL, TASKS } from './gemini.ts'
+import { ask, askAudio, checkKey, encodeWav, KEY_URL, sensitive, TASKS } from './gemini.ts'
 
 // Panel de Gemini bajo la barra de formato. "ia": tareas sobre la nota (o lo seleccionado) y pedidos libres.
-// "voz": se graba lo dictado y Gemini lo escribe ordenado. Nada llega a la nota sin que la persona lo acepte.
+// "voz": se graba lo dictado y Gemini lo escribe ordenado (o cumple lo pedido). Nada llega a la nota sin aceptarlo.
+// Qué se envía a Google: las tareas mandan la nota o lo seleccionado; un pedido sin selección y el dictado mandan
+// solo el pedido o la voz. En una nota privada nunca se manda su texto.
 export type Mode = 'ia' | 'voz'
-type Range = { from: number; to: number; whole: boolean }
-type Result = { html: string; range: Range; replace: boolean; retry: () => void }
-type Phase = { at: 'menu' } | { at: 'grabando' } | { at: 'pensando'; what: string } | ({ at: 'listo' } & Result)
+export type Privacy = 'nota' | 'libreta' | null
+type Sel = { from: number; to: number; empty: boolean }
+type Choice = { label: string; from: number; to: number } // from === to: se inserta ahí
+type Phase = { at: 'menu' } | { at: 'grabando' } | { at: 'pensando'; what: string }
+  | { at: 'aviso'; hits: string[]; go: () => void }
+  | { at: 'listo'; html: string; choices: Choice[]; retry: () => void }
 
 const MAX_SECONDS = 180 // ~6 MB de WAV a 16 kHz: entra holgado en un pedido a Gemini
 const RATE = 16000
@@ -27,6 +32,26 @@ function preview(html: string) {
   doc.querySelectorAll('p, li, h1, h2, h3, tr, br, blockquote').forEach(el => el.append('\n'))
   return (doc.body.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim()
 }
+
+// Dónde puede ir el resultado. Nunca toca lo que no se eligió: sin selección va donde está el cursor (o, si la tarea
+// fue sobre toda la nota, al final o en su lugar); con selección, en lugar de lo seleccionado o debajo.
+function placements(editor: TiptapEditor, sel: Sel, prefer: 'replace' | 'add', whole: boolean): Choice[] {
+  const doc = editor.state.doc
+  const size = doc.content.size
+  if (editor.isEmpty) return [{ label: 'Poner en la nota', from: 0, to: size }]
+  if (whole) {
+    const end = { label: 'Agregar al final', from: size, to: size }
+    return prefer === 'replace' ? [{ label: 'Reemplazar la nota', from: 0, to: size }, end] : [end]
+  }
+  if (sel.empty) return [{ label: 'Poner donde está el cursor', from: sel.from, to: sel.from }]
+  const $to = doc.resolve(Math.min(sel.to, size))
+  const after = $to.depth >= 1 ? $to.after(1) : sel.to
+  const replace = { label: 'Reemplazar lo seleccionado', from: sel.from, to: sel.to }
+  const below = { label: 'Agregar debajo', from: after, to: after }
+  return prefer === 'replace' ? [replace, below] : [below, replace]
+}
+
+const textOf = (html: string) => new DOMParser().parseFromString(html, 'text/html').body.textContent ?? ''
 
 async function openKeyPage() {
   if (desktop) (await import('@tauri-apps/plugin-opener')).openUrl(KEY_URL)
@@ -54,8 +79,9 @@ async function toWav(blob: Blob) {
   } finally { ctx.close() }
 }
 
-export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose }: {
+export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, privacy, onPrivate }: {
   editor: TiptapEditor; mode: Mode; geminiKey: string; onKey: (key: string) => void; onClose: () => void
+  privacy: Privacy; onPrivate: () => void
 }) {
   const [phase, setPhase] = useState<Phase>({ at: 'menu' })
   const [error, setError] = useState('')
@@ -70,20 +96,14 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose }:
 
   const empty = editor.isEmpty
   const selected = !editor.state.selection.empty
+  const sel = (): Sel => { const { from, to, empty } = editor.state.selection; return { from, to, empty } }
 
-  // Lo que se le manda: lo seleccionado o la nota entera. Se toma al pedir, no al abrir el panel.
-  function target(): Range & { html: string } {
-    const { from, to, empty: none } = editor.state.selection
-    if (none || editor.isEmpty) return { from: 0, to: editor.state.doc.content.size, whole: true, html: editor.isEmpty ? '' : editor.getHTML() }
-    return { from, to, whole: false, html: getHTMLFromFragment(editor.state.doc.slice(from, to).content, editor.schema) }
-  }
-
-  async function run(what: string, job: () => Promise<string>, range: Range, replace: boolean, retry: () => void) {
+  async function run(what: string, job: () => Promise<string>, choices: Choice[], retry: () => void) {
     setError('')
     setPhase({ at: 'pensando', what })
     try {
       const html = await job()
-      if (live.current) setPhase({ at: 'listo', html, range, replace: replace || range.whole && editor.isEmpty, retry })
+      if (live.current) setPhase({ at: 'listo', html, choices, retry })
     } catch (e) {
       if (!live.current) return
       setError(geminiMessage(e))
@@ -91,13 +111,39 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose }:
     }
   }
 
-  function doTask(instruction: string, replace: boolean, what: string) {
-    const t = target()
-    run(what, () => ask(instruction, t.html, geminiKey), t, replace, () => doTask(instruction, replace, what))
+  // Antes de mandar texto de la nota: si parece tener claves o cuentas, se pregunta.
+  function guard(html: string, go: () => void) {
+    const hits = sensitive(textOf(html))
+    if (hits.length) setPhase({ at: 'aviso', hits, go })
+    else go()
   }
 
+  // Tareas (resumir, corregir…): con lo seleccionado o con toda la nota. No en notas privadas.
+  function doTask(instruction: string, replace: boolean, what: string) {
+    if (privacy) return
+    const s = sel()
+    const whole = s.empty
+    const html = whole ? editor.getHTML() : getHTMLFromFragment(editor.state.doc.slice(s.from, s.to).content, editor.schema)
+    const choices = placements(editor, s, replace ? 'replace' : 'add', whole)
+    const go = () => run(what, () => ask(instruction, html, geminiKey), choices, () => doTask(instruction, replace, what))
+    guard(html, go)
+  }
+
+  // Pedido libre. Con selección (y nota no privada) va con lo seleccionado ("hazlo más formal"); si no, solo el pedido.
+  function doRequest(text: string) {
+    const s = sel()
+    const withSelection = !s.empty && !privacy
+    const html = withSelection ? getHTMLFromFragment(editor.state.doc.slice(s.from, s.to).content, editor.schema) : ''
+    const choices = placements(editor, s, withSelection ? 'replace' : 'add', false)
+    const go = () => run('Gemini está pensando…', () => ask(text, html, geminiKey), choices, () => doRequest(text))
+    if (withSelection) guard(html, go)
+    else go()
+  }
+
+  // Dictado: solo se manda la voz. Va donde estaba el cursor al empezar, o en lugar de lo seleccionado.
   async function record() {
     setError('')
+    const s = sel()
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
       const rec = new MediaRecorder(stream)
@@ -108,11 +154,9 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose }:
         stream.getTracks().forEach(t => t.stop())
         recorder.current = null
         if (cancelled.current) { if (live.current) setPhase({ at: 'menu' }); return }
-        // Va donde está el cursor: debajo de su renglón (o la nota entera si está vacía).
-        const { to } = editor.state.selection
-        const range = editor.isEmpty ? { from: 0, to: editor.state.doc.content.size, whole: true } : { from: to, to, whole: false }
         const blob = new Blob(chunks, { type: rec.mimeType })
-        run('Gemini está escribiendo lo que dijiste…', async () => askAudio(await toBase64(await toWav(blob)), geminiKey), range, false, () => setPhase({ at: 'menu' }))
+        run('Gemini está escribiendo lo que dijiste…', async () => askAudio(await toBase64(await toWav(blob)), geminiKey),
+          placements(editor, s, 'replace', false), () => setPhase({ at: 'menu' }))
       }
       recorder.current = rec
       rec.start()
@@ -131,15 +175,13 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose }:
     return () => clearInterval(tick)
   }, [phase.at])
 
-  // Reemplazar va en lugar de lo enviado; agregar va debajo del renglón donde termina (o al final de la nota).
-  function apply(replace: boolean) {
+  // Si la nota cambió mientras Gemini pensaba (otro aparato), las posiciones se ajustan al largo actual.
+  function apply(c: Choice) {
     if (phase.at !== 'listo') return
-    const { html, range } = phase
     const size = editor.state.doc.content.size
-    const to = Math.min(range.to, size)
-    const $to = editor.state.doc.resolve(to)
-    const below = range.whole ? size : $to.depth >= 1 ? $to.after(1) : to
-    editor.chain().focus().insertContentAt(replace ? { from: Math.min(range.from, to), to } : below, html).run()
+    const from = Math.min(c.from, size)
+    const to = Math.min(c.to, size)
+    editor.chain().focus().insertContentAt(from === to ? from : { from, to }, phase.html).run()
     onClose()
   }
 
@@ -187,11 +229,25 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose }:
     </div>
   )
 
+  const where = empty ? 'en la nota' : selected ? 'en lugar de lo seleccionado' : 'donde está el cursor'
+
   return (
     <div className="gemini" role="region" aria-label="Gemini">
       <div className="gemini-cabeza"><strong>{title}</strong>{close}</div>
 
       {phase.at === 'pensando' && <p className="gemini-pensando" role="status"><Sparkles size={16} aria-hidden="true" /> {phase.what}</p>}
+
+      {phase.at === 'aviso' && <div className="gemini-aviso" role="alert">
+        <p><ShieldCheck size={16} aria-hidden="true" /> <strong>Esta nota parece tener datos privados</strong> ({phase.hits.join(', ')}).
+          Si sigues, ese texto se envía a Google y en el plan gratis puede revisarlo.</p>
+        <div className="gemini-fila">
+          <button type="button" className="principal" onClick={() => { onPrivate(); setPhase({ at: 'menu' }) }}>
+            <ShieldCheck size={16} /> Marcarla privada
+          </button>
+          <button type="button" onClick={phase.go}>Enviar igual</button>
+          <button type="button" onClick={() => setPhase({ at: 'menu' })}>Cancelar</button>
+        </div>
+      </div>}
 
       {phase.at === 'grabando' && <div className="gemini-grabando" role="status">
         <span className="ondas" aria-hidden="true"><i /><i /><i /><i /><i /></span>
@@ -203,26 +259,24 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose }:
       {phase.at === 'listo' && <>
         <div className="gemini-resultado">{preview(phase.html)}</div>
         <div className="gemini-fila">
-          {phase.range.whole && empty ? <button type="button" className="principal" onClick={() => apply(true)}>Poner en la nota</button>
-            : phase.replace ? <>
-              <button type="button" className="principal" onClick={() => apply(true)}>Reemplazar</button>
-              <button type="button" onClick={() => apply(false)}>Agregar debajo</button>
-            </> : <>
-              <button type="button" className="principal" onClick={() => apply(false)}>Agregar {mode === 'voz' ? 'a la nota' : 'debajo'}</button>
-              {mode === 'ia' && <button type="button" onClick={() => apply(true)}>Reemplazar</button>}
-            </>}
+          {phase.choices.map((c, i) => <button key={c.label} type="button" className={i ? undefined : 'principal'} onClick={() => apply(c)}>{c.label}</button>)}
           <button type="button" onClick={phase.retry}>{mode === 'voz' ? 'Dictar otra vez' : 'Otra vez'}</button>
           <button type="button" onClick={() => setPhase({ at: 'menu' })}>Descartar</button>
         </div>
       </>}
 
+      {phase.at === 'menu' && privacy && <p className="gemini-privada">
+        <ShieldCheck size={16} aria-hidden="true" /> {privacy === 'libreta' ? 'Esta libreta es privada' : 'Nota privada'}: Gemini no lee su texto.
+        {mode === 'ia' ? ' Puedes pedirle cosas nuevas (solo se envía tu pedido) o dictar.' : ' Al dictar solo se envía tu voz.'}
+      </p>}
+
       {phase.at === 'menu' && mode === 'voz' && <div className="gemini-fila">
         <button type="button" className="principal grande" onClick={record}><AudioLines size={18} /> Empezar a hablar</button>
-        <span className="gemini-ayuda">Dicta algo para anotar o pídele algo ("créame la lista de…"); el resultado va {empty ? 'en la nota' : 'debajo del renglón donde estás'}.</span>
+        <span className="gemini-ayuda">Dicta algo para anotar o pídele algo ("créame la lista de…"). Va {where}. Solo se envía tu voz.</span>
       </div>}
 
       {phase.at === 'menu' && mode === 'ia' && <>
-        {!empty && <>
+        {!empty && !privacy && <>
           <p className="gemini-ayuda">Con {selected ? 'lo que seleccionaste' : 'toda la nota'}:</p>
           <div className="gemini-tareas">
             {TASKS.map(t => <button key={t.id} type="button" onClick={() => doTask(t.ask, t.replace, `${t.label}…`)}>{t.label}</button>)}
@@ -230,12 +284,14 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose }:
         </>}
         <form className="gemini-fila" onSubmit={e => {
           e.preventDefault()
-          if (request.trim()) doTask(request.trim(), false, 'Gemini está pensando…')
+          if (request.trim()) doRequest(request.trim())
         }}>
           <input value={request} onChange={e => setRequest(e.target.value)} aria-label="Pídele algo a Gemini"
-            placeholder={empty ? 'Ej.: lista de compras para una parrillada de 10' : 'Ej.: escríbelo como correo formal'} />
+            placeholder={selected && !privacy ? 'Ej.: escríbelo como correo formal' : 'Ej.: lista de compras para una parrillada de 10'} />
           <button type="submit" className="principal" disabled={!request.trim()}>Pedir</button>
         </form>
+        <p className="gemini-ayuda">{selected && !privacy ? 'El pedido va con lo seleccionado y el resultado puede reemplazarlo.'
+          : `Solo se envía tu pedido; el resultado va ${where === 'en lugar de lo seleccionado' ? 'en lugar de lo seleccionado o debajo' : where}.`}</p>
       </>}
 
       {error && <p className="error">{error}</p>}

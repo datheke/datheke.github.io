@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react'
 import { moveBlock, movableDepth, moveTo } from './blocks.ts'
-import GeminiPanel from './GeminiPanel.tsx'
+import GeminiPanel, { type Privacy } from './GeminiPanel.tsx'
 import { imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
 import { appFonts, isFromApp } from './paste.ts'
@@ -185,10 +185,12 @@ type Props = {
   editable: boolean // false = nota fijada: se lee y se copia, no se cambia
   geminiKey: string // vacía = Gemini sin vincular
   onGeminiKey: (key: string) => void
+  privacy: Privacy // nota o libreta privada: Gemini no lee su texto
+  onPrivate: () => void // "Marcarla privada" desde el aviso de Gemini
 }
 
 // El contenido solo se usa al crear el editor; App lo vuelve a montar (key) al cambiar de nota.
-export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey }: Props) {
+export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey, privacy, onPrivate }: Props) {
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
   const latest = useRef({ onChange, notes, onError })
   useEffect(() => { latest.current = { onChange, notes, onError } })
@@ -232,7 +234,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
 
   const editor = useEditor({
     extensions: [
-      StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true }), TableKit, DriveImage, Callout,
+      StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true, onReadOnlyChecked: () => true }), TableKit, DriveImage, Callout,
       Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), Summary, DetailsContent,
       TextAlign.configure({ types: BLOCKS }), ParagraphFormat, MoveBlocks,
       Placeholder.configure({ placeholder: 'Escribe / para insertar tablas, fotos, casillas, recuadros…' }),
@@ -273,6 +275,27 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
 
   // false: cambiar entre fijada y editable no es un cambio de la nota (si no, se marcaba para subir al abrirla).
   useEffect(() => { if (editor.isEditable !== editable) editor.setEditable(editable, false) }, [editor, editable])
+
+  // Nota fijada: no se escribe, pero las casillas sí se marcan y desmarcan (lista de compras en el súper).
+  // TipTap deja la casilla marcada (onReadOnlyChecked) y aquí se guarda el cambio en la nota.
+  useEffect(() => {
+    const dom = editor.view.dom
+    const onCheck = (e: Event) => {
+      const box = e.target
+      if (editor.isEditable || !(box instanceof HTMLInputElement) || box.type !== 'checkbox') return
+      const content = box.closest('li')?.querySelector(':scope > div')
+      if (!content) return
+      const $pos = editor.state.doc.resolve(editor.view.posAtDOM(content, 0))
+      for (let d = $pos.depth; d > 0; d--) {
+        const node = $pos.node(d)
+        if (node.type.name !== 'taskItem') continue
+        editor.view.dispatch(editor.state.tr.setNodeMarkup($pos.before(d), undefined, { ...node.attrs, checked: box.checked }))
+        return
+      }
+    }
+    dom.addEventListener('change', onCheck)
+    return () => dom.removeEventListener('change', onCheck)
+  }, [editor])
 
   // Agarradera ⠿ para arrastrar bloques, como en Evernote: junto al bloque bajo el mouse o, en el celular (sin mouse),
   // junto al del cursor. Se mueve lo mismo que con Subir/Bajar (movableDepth), entre sus hermanos.
@@ -365,7 +388,8 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   // La barra de formato y el aviso de pegado quedan fijos arriba al bajar por la nota (la portada se va con el texto).
   return <>
     {editable && <div className="barra-fija">
-      <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey} />
+      <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey}
+        privacy={privacy} onPrivate={onPrivate} />
       {pasted && <div className="pegado" role="status">
         <ClipboardPaste size={16} aria-hidden="true" /> Se pegó solo el texto, con el formato de la nota.
         <button type="button" className="principal" onMouseDown={e => e.preventDefault()} onClick={() => {
@@ -419,8 +443,9 @@ function Btn({ label, onClick, active, disabled, children }: {
     className={active ? 'activo' : undefined} onMouseDown={e => e.preventDefault()} onClick={onClick}>{children}</button>
 }
 
-function Toolbar({ editor, uploading, onPhoto, geminiKey, onGeminiKey }: {
+function Toolbar({ editor, uploading, onPhoto, geminiKey, onGeminiKey, privacy, onPrivate }: {
   editor: TiptapEditor; uploading: boolean; onPhoto: () => void; geminiKey: string; onGeminiKey: (key: string) => void
+  privacy: Privacy; onPrivate: () => void
 }) {
   const [panel, setPanel] = useState<'emojis' | 'text' | 'highlight' | 'ia' | 'voz' | null>(null)
   const toggle = (p: typeof panel) => setPanel(panel === p ? null : p)
@@ -546,7 +571,7 @@ function Toolbar({ editor, uploading, onPhoto, geminiKey, onGeminiKey }: {
       {uploading && <span className="estado">Subiendo foto…</span>}
     </div>
     {(panel === 'ia' || panel === 'voz') && <GeminiPanel key={panel} editor={editor} mode={panel} geminiKey={geminiKey}
-      onKey={onGeminiKey} onClose={() => setPanel(null)} />}
+      onKey={onGeminiKey} onClose={() => setPanel(null)} privacy={privacy} onPrivate={onPrivate} />}
     {panel === 'emojis' && <EmojiPicker onPick={e => { c().insertContent(e).run(); setPanel(null) }} />}
     {panel === 'text' && <Palette label="Color de letra" colors={TEXT_COLORS} current={s.color}
       onPick={v => { mark(ch => v ? ch.setColor(v) : ch.unsetColor()); setPanel(null) }} />}

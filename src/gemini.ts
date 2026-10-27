@@ -115,3 +115,17 @@ export function encodeWav(samples: Float32Array, rate: number): Uint8Array {
   samples.forEach((v, i) => { const x = Math.max(-1, Math.min(1, v)); out.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true) })
   return new Uint8Array(out.buffer)
 }
+
+// Red de seguridad: palabras que suelen ir junto a claves y cuentas. Si el texto que se va a enviar las tiene, la app
+// pregunta antes (enviar igual o marcar la nota como privada). Sin tildes ni mayúsculas para no fallar por cómo se escribió.
+const SENSITIVE: [RegExp, string][] = [
+  [/\bclaves?\b/, 'clave'], [/\bcontrasenas?\b/, 'contraseña'], [/\bpasswords?\b|\bpass\b/, 'password'],
+  [/\bpin\b/, 'PIN'], [/\busuarios?\b|\buser(name)?\b|\blogin\b/, 'usuario'], [/\bcvv\b|\bcvc\b/, 'CVV'],
+  [/\btarjetas?\b/, 'tarjeta'], [/\bcedula\b/, 'cédula'], [/\bruc\b/, 'RUC'], [/\btoken\b/, 'token'],
+  [/\b(numero de |nro\.? de |n° de )?cuenta (bancaria|de ahorros?|corriente)\b|\bnumero de cuenta\b/, 'cuenta bancaria'],
+  [/\b\d[\d -]{8,}\d\b/, 'números largos'],
+]
+export function sensitive(text: string): string[] {
+  const t = text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  return SENSITIVE.filter(([re]) => re.test(t)).map(([, label]) => label)
+}
