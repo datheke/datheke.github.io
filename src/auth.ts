@@ -53,6 +53,33 @@ const b64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).replac
 const DONE_PAGE = '<!doctype html><meta charset="utf-8"><body style="font-family:system-ui;text-align:center;padding:48px">'
   + '<h2>Listo ✅</h2><p>Ya puedes cerrar esta pestaña y volver a Datheke.</p>'
 
+// Android: mientras el usuario está en el navegador, la app queda en segundo plano y el sistema puede cortarle
+// internet. Se espera a que vuelva a primer plano antes de hablar con Google.
+function whenVisible(): Promise<void> {
+  if (typeof document === 'undefined' || document.visibilityState === 'visible') return Promise.resolve()
+  return new Promise(resolve => {
+    const check = () => {
+      if (document.visibilityState !== 'visible') return
+      document.removeEventListener('visibilitychange', check)
+      resolve()
+    }
+    document.addEventListener('visibilitychange', check)
+  })
+}
+
+const pause = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// Si falla por falta de conexión, espera a primer plano y reintenta unas veces antes de rendirse.
+export async function withRetry<T>(fn: () => Promise<T>, tries = 4, wait = 1500): Promise<T> {
+  for (let i = 1; ; i++) {
+    await whenVisible()
+    try { return await fn() } catch (e) {
+      if (!(e instanceof OfflineError) || i >= tries) throw e
+      await pause(wait * i)
+    }
+  }
+}
+
 async function tokenRequest(params: Record<string, string>): Promise<Tokens> {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -87,7 +114,7 @@ async function desktopLogin(email?: string): Promise<Tokens> {
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Se acabó el tiempo para entrar. Intenta de nuevo.')), 300_000))
     const code = (await Promise.race([answer, timeout])).get('code')
     if (!code) throw new Error('No se completó el inicio de sesión.')
-    return await tokenRequest({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri })
+    return await withRetry(() => tokenRequest({ grant_type: 'authorization_code', code, code_verifier: verifier, redirect_uri }))
   } finally {
     unlisten()
     cancel(port).catch(() => {})
@@ -99,7 +126,7 @@ let renewing: Promise<string> | null = null
 export function resume(session: Session) {
   setToken(session.token)
   const refresh = session.refresh
-  setRenew(refresh ? () => renewing ??= tokenRequest({ grant_type: 'refresh_token', refresh_token: refresh })
+  setRenew(refresh ? () => renewing ??= withRetry(() => tokenRequest({ grant_type: 'refresh_token', refresh_token: refresh }))
     .then(t => {
       localStorage.setItem(KEY, JSON.stringify({ ...session, token: t.access_token, expires: Date.now() + (t.expires_in - 60) * 1000 }))
       return t.access_token
@@ -116,7 +143,7 @@ export async function signIn(email?: string): Promise<Session> {
     session = { token: t.access_token, expires: Date.now() + (t.expires_in - 60) * 1000, refresh: t.refresh_token, email: '' }
   } else session = { ...await requestToken(email), email: '' }
   setToken(session.token)
-  session.email = await getEmail()
+  session.email = await withRetry(getEmail)
   // La copia local es de una cuenta: entrar con otra mezclaría las notas de dos personas.
   if (email && session.email !== email) {
     setToken('')
