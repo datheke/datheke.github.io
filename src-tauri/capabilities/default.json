@@ -19,6 +19,12 @@
         },
         {
           "path": "$DOCUMENT/Datheke/**"
+        },
+        {
+          "path": "$APPCACHE"
+        },
+        {
+          "path": "$APPCACHE/**"
         }
       ]
     },

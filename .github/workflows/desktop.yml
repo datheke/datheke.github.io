@@ -32,7 +32,10 @@ jobs:
           workspaces: src-tauri
       - run: npm ci
       - run: npm test
-      - run: npx tauri build --bundles nsis
+      - shell: bash
+        run: |
+          set -o pipefail
+          npx tauri build --bundles nsis 2>&1 | tee build.log || { echo "::error::$(grep -iE -A3 "error|failed|wrong|requires|compileSdk" build.log | grep -v "^\s*$" | tail -60 | sed "s/%/%25/g" | awk '{printf "%s%%0A", $0}')"; exit 1; }
         env:
           VITE_GOOGLE_DESKTOP_SECRET: ${{ secrets.GOOGLE_DESKTOP_SECRET }}
       - uses: actions/upload-artifact@v4
@@ -96,8 +99,15 @@ jobs:
           m=src-tauri/gen/android/app/src/main/AndroidManifest.xml
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />#' "$m"
           grep -q USE_EXACT_ALARM "$m" || { echo "No se pudo agregar el permiso de alarmas exactas"; exit 1; }
+      # El menú de compartir (sharekit) viene con compileSdk 35 y las librerías de Tauri piden 36: se sube a 36.
+      - run: |
+          cargo fetch --manifest-path src-tauri/Cargo.toml
+          for f in ~/.cargo/registry/src/*/tauri-plugin-sharekit-*/android/build.gradle.kts; do sed -i 's/compileSdk = [0-9]*/compileSdk = 36/' "$f"; grep -H compileSdk "$f"; done
       - run: npx tauri icon public/icon.png
-      - run: npx tauri android build --apk --target aarch64
+      - shell: bash
+        run: |
+          set -o pipefail
+          npx tauri android build --apk --target aarch64 2>&1 | tee build.log || { echo "::error::$(grep -iE -A3 "error|failed|wrong|requires|compileSdk" build.log | grep -v "^\s*$" | tail -60 | sed "s/%/%25/g" | awk '{printf "%s%%0A", $0}')"; exit 1; }
         env:
           VITE_GOOGLE_DESKTOP_SECRET: ${{ secrets.GOOGLE_DESKTOP_SECRET }}
       - name: Firmar el APK
