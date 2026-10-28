@@ -3,7 +3,8 @@ import {
   PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
-import { desktop, forgetSession, loadSession, resume, signIn } from './auth.ts'
+import { connectCalendar, desktop, forgetSession, hasCalendar, loadSession, resume, signIn } from './auth.ts'
+import { deleteCalendar, ensureCalendar, syncCalendar, type Item as CalItem } from './calendar.ts'
 import { AuthError, OfflineError, readNote, type DriveFile } from './drive.ts'
 import Editor, { Cover, EmojiPicker } from './Editor.tsx'
 import { startFolder } from './folder.ts'
@@ -159,8 +160,14 @@ export default function App() {
     if (t) store.replaceText(noteId, updateIn(t.text, id, r))
   }
   const lastBackup = settings?.appProperties?.respaldo ?? ''
-  // Quién avisa los recordatorios. Por ahora siempre Datheke; Google Calendar viene en una versión siguiente.
-  const reminderMode: ReminderMode = 'datheke'
+  // Quién avisa los recordatorios: Datheke o Google Calendar. Uno solo para toda la cuenta (en Ajustes): nunca suenan dos.
+  const reminderMode: ReminderMode = settings?.appProperties?.avisos === 'calendar' ? 'calendar' : 'datheke'
+  const calendarId = settings?.appProperties?.calendario
+  const setSettings = (props: Record<string, string | null>) => act(() => {
+    if (settings) store.patch(settings.id, { props })
+    else store.create({ kind: 'ajustes', ...Object.fromEntries(Object.entries(props).filter(([, v]) => v !== null)) as Record<string, string> }, 'Ajustes')
+  })
+  const [calendarHere, setCalendarHere] = useState(hasCalendar) // este aparato tiene el permiso de Calendar
   const setLastBackup = (when: string) => act(() => {
     if (settings) store.patch(settings.id, { props: { respaldo: when } })
     else store.create({ kind: 'ajustes', respaldo: when }, 'Ajustes')
@@ -360,8 +367,77 @@ export default function App() {
   const agendaKey = JSON.stringify(sources.map(x => [x.noteId, x.r, x.label, x.locked])) + knownNotes.join()
   useEffect(() => {
     if (!ready) return
-    notify.schedule(agenda(sources), new Set(knownNotes))
-  }, [ready, agendaKey]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (reminderMode === 'calendar') notify.clear()
+    else notify.schedule(agenda(sources), new Set(knownNotes))
+  }, [ready, agendaKey, reminderMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Google Calendar: copia los recordatorios al calendario "Datheke" y trae lo que se cambió o borró allá.
+  // Al cambiar algo (a los 3 s), al volver a la app y cada 5 minutos. Solo en aparatos con el permiso de Calendar.
+  const calRef = useRef<() => Promise<void>>(async () => {})
+  calRef.current = async () => {
+    if (reminderMode !== 'calendar' || !calendarHere || !ready) return
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const cal = await ensureCalendar(calendarId, tz)
+    if (cal !== calendarId) setSettings({ calendario: cal })
+    const items: CalItem[] = reminders.map(x => ({ noteId: x.note.id, r: x.r, label: x.label, noteTitle: x.note.name || UNTITLED, locked: isLocked(x.note) }))
+    const pulls = await syncCalendar(cal, items, { known: new Set(knownNotes), live: new Set(allNotes.map(n => n.id)), synced: s.synced })
+    // Lo que se cambió en Calendar va a la nota (todas las de una nota juntas).
+    const byNote = new Map<string, typeof pulls>()
+    for (const p of pulls) byNote.set(p.noteId, [...byNote.get(p.noteId) ?? [], p])
+    for (const [noteId, ps] of byNote) {
+      const t = store.getState().texts[noteId]
+      if (t) store.replaceText(noteId, ps.reduce((html, p) => updateIn(html, p.rid, p.r), t.text))
+    }
+  }
+  const calBusy = useRef(false)
+  const calWarned = useRef(false)
+  const runCalendar = async () => {
+    if (calBusy.current) return
+    calBusy.current = true
+    try { await calRef.current() } catch (e) {
+      const st = (e as { status?: number }).status
+      if (st === 403 && !calWarned.current) {
+        calWarned.current = true
+        setToast('Google Calendar no respondió: falta activar la API de Google Calendar en el proyecto de Datheke (lo hace una vez el dueño de la app).')
+      } else console.error('Google Calendar', e)
+    } finally { calBusy.current = false }
+  }
+  useEffect(() => {
+    if (!ready || reminderMode !== 'calendar' || !calendarHere) return
+    const t = setTimeout(runCalendar, 3000)
+    return () => clearTimeout(t)
+  }, [ready, agendaKey, reminderMode, calendarHere, calendarId]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (reminderMode !== 'calendar' || !calendarHere) return
+    const every = setInterval(runCalendar, 5 * 60_000)
+    const back = () => { if (document.visibilityState === 'visible') runCalendar() }
+    document.addEventListener('visibilitychange', back)
+    return () => { clearInterval(every); document.removeEventListener('visibilitychange', back) }
+  }, [reminderMode, calendarHere]) // eslint-disable-line react-hooks/exhaustive-deps
+  // De vuelta a avisos de Datheke: se borra el calendario "Datheke" (desde un aparato con el permiso).
+  useEffect(() => {
+    if (!ready || reminderMode !== 'datheke' || !calendarId || !calendarHere) return
+    deleteCalendar(calendarId).then(() => setSettings({ calendario: null })).catch(e => console.error('Borrar el calendario', e))
+  }, [ready, reminderMode, calendarId, calendarHere]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Elegir quién avisa (ventana de ayuda → botón). Calendar pide el permiso de Google en este aparato (desde un clic).
+  async function pickMode(m: ReminderMode) {
+    setReminderHelp(null)
+    if (m === 'datheke') {
+      setSettings({ avisos: null })
+      setToast(calendarId && !calendarHere
+        ? 'Listo: avisa Datheke. El calendario «Datheke» se borrará al abrir Datheke en un aparato conectado a Calendar.'
+        : 'Listo: los recordatorios los avisa Datheke.')
+      return
+    }
+    try {
+      const ok = await connectCalendar(session!.email)
+      setCalendarHere(ok)
+      if (!ok) return setToast('No se marcó el permiso de Google Calendar. Inténtalo de nuevo y marca la casilla del calendario.')
+      if (reminderMode !== 'calendar') setSettings({ avisos: 'calendar' })
+      setToast('Listo: tus recordatorios van a Google Calendar (calendario «Datheke») y Calendar es quien avisa.')
+    } catch (e) { fail(e) }
+  }
 
   // Botones de la notificación (Android) y tocarla: abrir la nota en esa línea o marcar hecho.
   const notifyRef = useRef({ open: (_n: string, _r: string) => {}, done: (_n: string, _r: string) => {} })
@@ -555,7 +631,7 @@ export default function App() {
   const GROUPS: [Group, string][] = [['pendiente', 'Pendientes'], ['hoy', 'Hoy'], ['proximo', 'Próximos'], ['hecho', 'Hechos']]
   function remindersList() {
     const hint = <>
-      <button className="enlace como-suenan" onClick={() => setReminderHelp('datheke')}>¿Cómo suenan los recordatorios en cada aparato?</button>
+      <button className="enlace como-suenan" onClick={() => setReminderHelp(reminderMode)}>¿Cómo suenan los recordatorios en cada aparato?</button>
       {lockedHidden && <p className="vacio pequeño">🔐 Los recordatorios de tus notas con clave aparecen al abrirlas (igual suenan).</p>}
     </>
     if (!reminders.length) return <>{hint}<p className="vacio">Sin recordatorios. En una nota, ponte en una línea y toca la 🔔 de la barra.</p></>
@@ -591,7 +667,8 @@ export default function App() {
   return (
     <div className={appClass} style={{ '--columnas': columns } as CSSProperties}>
       <nav className="libretas" aria-label="Libretas">
-        <Account email={session.email} onLogout={logout} update={update} />
+        <Account email={session.email} onLogout={logout} update={update} mode={reminderMode} calendarHere={calendarHere}
+          onPickMode={m => setReminderHelp(m)} onConnect={() => setReminderHelp('calendar')} />
         <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
         <button className={notebookId === null && !trashView && !remindView ? 'item activo' : 'item'} onClick={() => { setNotebookId(null); setTrashView(false); setRemindView(false) }}>
           <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
@@ -823,7 +900,7 @@ export default function App() {
           onDone={() => { if (cur) apply(markDone(cur)); setRemDlg(null) }}
           onHistory={hist => { if (cur) apply({ ...cur, hist }) }} />
       })()}
-      {reminderHelp && <ReminderHelp mode={reminderHelp} current={reminderMode} onClose={() => setReminderHelp(null)} onUse={() => setReminderHelp(null)} />}
+      {reminderHelp && <ReminderHelp mode={reminderHelp} current={reminderMode} calendarHere={calendarHere} onClose={() => setReminderHelp(null)} onUse={pickMode} />}
 
       {keyDialog && <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Clave de notas">
         <div className="ventana">

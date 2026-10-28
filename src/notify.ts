@@ -131,3 +131,15 @@ export async function autostart() {
     if (!await a.isEnabled()) await a.enable()
   } catch (e) { console.error('Arranque con Windows', e) }
 }
+
+// Avisos con Google Calendar: Datheke no suena (lo hace Calendar), se borra lo programado en este aparato.
+export async function clear() {
+  const had = (localStorage.getItem(AGENDA) ?? '[]') !== '[]'
+  write(AGENDA, [])
+  if (!android || !had) return
+  try {
+    const n = await plugin()
+    const pending = await n.pending()
+    if (pending.length) await n.cancel(pending.map(p => p.id))
+  } catch (e) { console.error('No se pudieron quitar los avisos', e) }
+}
