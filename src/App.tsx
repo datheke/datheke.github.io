@@ -155,7 +155,7 @@ export default function App() {
     const t = s.texts[n.id]
     if (!t || (isLocked(n) && !unlocked)) return []
     return remindersOf(t.text).map(x => ({ ...x, note: n }))
-  }))
+  }).filter(x => !x.r.solo || x.r.solo.toLowerCase() === (session?.email ?? '').toLowerCase())) // "solo para" otra persona: no me suena
   const pendingReminders = reminders.filter(x => groupOf(x.r) !== 'hecho').length
   const overdue = reminders.some(x => groupOf(x.r) === 'pendiente')
   const lockedHidden = allNotes.some(n => isLocked(n)) && !unlocked
@@ -311,16 +311,29 @@ export default function App() {
 
   // Proteger: la primera vez se crea la clave; si la caja está cerrada, se abre primero.
   function protect(n: DriveFile) {
-    if (n.appProperties?.compartida && n.appProperties?.fin !== 'true') return setToast('Las notas compartidas todavía no pueden tener clave (llega en una próxima versión).')
-    const go = () => store.patch(n.id, { props: { protegida: 'true' } })
+    // En una compartida la clave es para todos: cada persona la abre con su propia clave de Datheke o su huella.
+    const fileId = n.appProperties?.compartida && n.appProperties?.fin !== 'true' && !n.appProperties?.estado ? n.appProperties.compartida : ''
+    const go = () => {
+      store.patch(n.id, { props: { protegida: 'true' } })
+      if (fileId) shared.setProps(fileId, { clave: 'true' }).then(() => {
+        const st = shared.readState()[fileId]
+        if (st) shared.saveState(fileId, { ...st, k: true })
+        setToast('Listo: ahora pide clave en todos los aparatos, también a las personas con quienes la compartes (cada una con su propia clave o huella).')
+      }, fail)
+    }
     if (!verifier) setKeyDialog({ mode: 'crear', then: go })
     else if (!vault.unlocked()) setKeyDialog({ mode: 'abrir', then: go })
     else go()
   }
 
   function unprotect(n: DriveFile) {
-    if (confirm(`¿Quitar la clave a "${n.name || UNTITLED}"? Se podrá ver sin clave en este y tus otros aparatos.`))
-      store.patch(n.id, { props: { protegida: null } })
+    const fileId = n.appProperties?.compartida && n.appProperties?.fin !== 'true' && !n.appProperties?.estado ? n.appProperties.compartida : ''
+    if (!confirm(`¿Quitar la clave a "${n.name || UNTITLED}"? Se podrá ver sin clave en este y tus otros aparatos${fileId ? ', y también para las personas con quienes la compartes' : ''}.`)) return
+    store.patch(n.id, { props: { protegida: null } })
+    if (fileId) shared.setProps(fileId, { clave: null }).then(() => {
+      const st = shared.readState()[fileId]
+      if (st) shared.saveState(fileId, { ...st, k: false })
+    }, fail)
   }
 
   // Tras "olvidé la clave", sin clave nueva: todas las notas quedan sin clave (en todos los aparatos) y la copia de
@@ -328,7 +341,11 @@ export default function App() {
   function removeAllKeys() {
     const withKeyNotes = files.filter(isLocked)
     if (!confirm(`¿Quitar la clave a ${withKeyNotes.length} nota(s)? Se verán sin clave en todos tus aparatos.`)) return
-    for (const n of withKeyNotes) store.patch(n.id, { props: { protegida: null } })
+    for (const n of withKeyNotes) {
+      store.patch(n.id, { props: { protegida: null } })
+      const fileId = n.appProperties?.compartida && n.appProperties?.fin !== 'true' ? n.appProperties.compartida : ''
+      if (fileId) shared.setProps(fileId, { clave: null }).catch(() => {})
+    }
     if (settings) store.patch(settings.id, { props: { boveda: null } })
     store.closeVault()
     setKeyDialog(null)
@@ -555,10 +572,11 @@ export default function App() {
     let fileId = sh?.id
     if (!fileId) {
       const html = await inlinePhotos(doc.text)
-      const remote = await shared.create(title, html)
+      const full = await fullOf(note, html)
+      const remote = await shared.create(title, full)
       fileId = remote.id
       if (html !== doc.text) store.replaceText(note.id, html)
-      shared.saveState(fileId, { base: remote.modifiedTime, sent: shared.hash(html + title) })
+      shared.saveState(fileId, { base: remote.modifiedTime, sent: shared.hash(full + title), k: false })
     }
     await shared.invite(fileId, emails, title)
     store.patch(note.id, { props: { compartida: fileId, rol: 'dueño', ...conProps(note, [...(sh?.con ?? []), ...emails]) } })
@@ -621,12 +639,12 @@ export default function App() {
     const sh = shareOf(n)
     if (!sh?.owner || !sh.estado) return
     try {
-      if (sh.estado === 'quitada') await shared.write(sh.id, docText(n.id), n.name || UNTITLED, { estado: null })
+      if (sh.estado === 'quitada') await shared.write(sh.id, await fullOf(n), n.name || UNTITLED, { estado: null })
       const have = new Set((await shared.people(sh.id)).map(p => p.emailAddress?.toLowerCase()))
       const missing = sh.con.filter(e => !have.has(e))
       if (missing.length) await shared.invite(sh.id, missing, n.name || UNTITLED)
       const remote = await shared.get(sh.id)
-      shared.saveState(sh.id, { base: remote.modifiedTime, sent: shared.hash(docText(n.id) + (n.name || UNTITLED)) })
+      shared.saveState(sh.id, { base: remote.modifiedTime, sent: shared.hash(await fullOf(n) + (n.name || UNTITLED)), k: false })
       store.patch(n.id, { props: { estado: null } })
       setToast(`«${n.name || UNTITLED}» se volvió a compartir con ${sh.con.join(', ')}.`)
     } catch (e) { fail(e) }
@@ -640,7 +658,8 @@ export default function App() {
       if (!fileId) return
       const meta = await shared.get(fileId)
       if (meta.appProperties?.datheke !== 'nota') throw new Error('Ese archivo no es una nota compartida de Datheke.')
-      const html = await shared.read(fileId)
+      const remoteFull = await shared.read(fileId)
+      const { body: html, extra } = shared.splitExtra(remoteFull)
       const title = meta.name || UNTITLED
       const owner = meta.owners?.[0]
       const existing = allNotes.find(n => n.appProperties?.compartida === fileId)
@@ -654,7 +673,11 @@ export default function App() {
         const nbId = notebookId ?? notebooks.find(nb => !isTemplates(nb))?.id ?? store.create({ kind: 'notebook' }, 'Mis notas')
         id = store.create({ kind: 'note', notebook: nbId, compartida: fileId, rol: 'invitado', dueno: owner?.displayName || owner?.emailAddress || '' }, title, html, 'text/html')
       }
-      shared.saveState(fileId, { base: meta.modifiedTime, sent: shared.hash(html + title) })
+      const added = store.getState().files[id]
+      if (added) await applyExtra(added, extra)
+      const remoteKey = meta.appProperties?.clave === 'true'
+      if (remoteKey) store.patch(id, { props: { protegida: 'true' } })
+      shared.saveState(fileId, { base: meta.modifiedTime, sent: shared.hash(remoteFull + title), k: remoteKey })
       setTrashView(false); setRemindView(false)
       open(id)
       setToast(`«${title}» está en tus notas: lo que cambies le llega a ${owner?.displayName || 'quien la compartió'}.`)
@@ -664,19 +687,42 @@ export default function App() {
     }
   }
 
+  // Ícono y portada de una nota compartida (van al final del archivo, ver shared.ts).
+  const coverUrls = useRef(new Map<string, string>())
+  async function coverUrl(id: string) {
+    let u = coverUrls.current.get(id)
+    if (!u) { u = await imageDataUrl(await imageBlob(id)); coverUrls.current.set(id, u) }
+    return u
+  }
+  const fullOf = async (n: DriveFile, body = docText(n.id)) => {
+    const cover = n.appProperties?.cover
+    return shared.joinExtra(body, { icono: n.appProperties?.icon, portada: cover ? await coverUrl(cover).catch(() => undefined) : undefined })
+  }
+  async function applyExtra(n: DriveFile, extra: shared.Extra) {
+    const props: Record<string, string | null> = {}
+    if ((extra.icono ?? '') !== (n.appProperties?.icon ?? '')) props.icon = extra.icono || null
+    const cover = n.appProperties?.cover
+    const mine = cover ? await coverUrl(cover).catch(() => '') : ''
+    if (extra.portada && extra.portada !== mine) {
+      const id = await store.addImage(await (await fetch(extra.portada)).blob())
+      coverUrls.current.set(id, extra.portada)
+      props.cover = id
+    } else if (!extra.portada && cover) props.cover = null
+    if (Object.keys(props).length) store.patch(n.id, { props })
+  }
+
   // Sincronizar las notas compartidas: bajar lo que cambió la otra persona y subir lo de aquí.
   const shBusy = useRef(false)
   async function syncShared(only?: string) {
     if (shBusy.current || !session) return
     shBusy.current = true
     const state = shared.readState()
+    const me = session.email.toLowerCase()
     try {
       for (const n of allNotes) {
         const sh = shareOf(n)
         if (!sh || sh.fin || sh.estado || (only && n.id !== only)) continue
-        if (!store.getState().texts[n.id]) continue // su texto aún no está en este aparato (o tiene clave cerrada): no se toca
         const title = store.getState().texts[n.id]?.title ?? n.name ?? ''
-        const local = docText(n.id)
         const st = state[sh.id]
         let meta: shared.Remote
         try { meta = await shared.get(sh.id) } catch (e) {
@@ -687,8 +733,7 @@ export default function App() {
           }
           continue
         }
-        const me = session.email.toLowerCase()
-        if (!sh.owner && (meta.appProperties?.estado === 'quitada' || Object.values(meta.appProperties ?? {}).some(v => v.toLowerCase() === me))) {
+        if (!sh.owner && (meta.appProperties?.estado === 'quitada' || Object.entries(meta.appProperties ?? {}).some(([k, v]) => /^q\d+$/.test(k) && v.toLowerCase() === me))) {
           await shared.leave(sh.id, session.email).catch(() => {})
           store.remove(n.id)
           shared.saveState(sh.id, null)
@@ -696,30 +741,46 @@ export default function App() {
           setToast(`${sh.dueno || 'Quien la compartió'} dejó de compartir «${title || UNTITLED}».`)
           continue
         }
-        const dirty = !!st && shared.hash(local + title) !== st.sent
-        let base = st?.base
+        // Clave para todos: la puso o la quitó alguien (cada uno la abre con su propia clave de Datheke o su huella).
+        const remoteKey = meta.appProperties?.clave === 'true'
+        if (remoteKey && !isLocked(n)) {
+          store.patch(n.id, { props: { protegida: 'true' } })
+          if (st) shared.saveState(sh.id, { ...st, k: true })
+          setToast(`«${title || UNTITLED}» ahora pide clave en todos los aparatos. ${verifier ? 'Se abre con tu clave de Datheke o tu huella.' : 'Crea tu clave de Datheke para abrirla.'}`)
+          continue
+        }
+        const hasText = !!store.getState().texts[n.id]
+        if (!remoteKey && isLocked(n) && st?.k) {
+          if (!hasText) continue // se quita al abrir la caja (hace falta el texto)
+          store.patch(n.id, { props: { protegida: null } })
+          setToast(`«${title || UNTITLED}» ya no pide clave: se la quitaron para todos.`)
+        }
+        if (!hasText) continue // su texto aún no está en este aparato (o tiene clave cerrada): no se toca
+        const local = docText(n.id)
+        const localFull = await fullOf(n, local)
+        const dirty = !!st && shared.hash(localFull + title) !== st.sent
+        let next = st
         if (meta.modifiedTime !== st?.base) {
-          const remote = await shared.read(sh.id)
-          if (dirty && remote !== local) {
+          const remoteFull = await shared.read(sh.id)
+          const { body, extra } = shared.splitExtra(remoteFull)
+          if (dirty && body !== local) {
             // Los dos cambiaron a la vez: lo de la otra persona queda en una nota aparte, nada se pierde.
             const who = meta.lastModifyingUser?.displayName || 'la otra persona'
-            store.create({ kind: 'note', notebook: n.appProperties?.notebook ?? '' }, `${meta.name || UNTITLED} (versión de ${who})`, remote, 'text/html')
+            store.create({ kind: 'note', notebook: n.appProperties?.notebook ?? '' }, `${meta.name || UNTITLED} (versión de ${who})`, body, 'text/html')
             setToast(`«${title}» cambió aquí y en el aparato de ${who} a la vez: su versión quedó en una nota aparte.`)
-            const saved = await shared.write(sh.id, local, title || UNTITLED)
-            state[sh.id] = { base: saved.modifiedTime, sent: shared.hash(local + title) }
+            const saved = await shared.write(sh.id, localFull, title || UNTITLED)
+            next = { base: saved.modifiedTime, sent: shared.hash(localFull + title) }
           } else {
             if (meta.name && meta.name !== title) store.edit(n.id, { title: meta.name })
-            if (remote !== local) store.replaceText(n.id, remote)
-            state[sh.id] = { base: meta.modifiedTime, sent: shared.hash(remote + (meta.name ?? title)) }
+            if (body !== local) store.replaceText(n.id, body)
+            await applyExtra(n, extra)
+            next = { base: meta.modifiedTime, sent: shared.hash(remoteFull + (meta.name || title)) }
           }
-          base = state[sh.id].base
         } else if (dirty) {
-          const saved = await shared.write(sh.id, local, title || UNTITLED)
-          state[sh.id] = { base: saved.modifiedTime, sent: shared.hash(local + title) }
-          meta = saved
-          base = saved.modifiedTime
+          meta = await shared.write(sh.id, localFull, title || UNTITLED)
+          next = { base: meta.modifiedTime, sent: shared.hash(localFull + title) }
         }
-        if (base) shared.saveState(sh.id, state[sh.id])
+        if (next) shared.saveState(sh.id, { ...next, k: remoteKey })
         // "Modificado por": cuando el último cambio es de otra persona.
         const u = meta.lastModifyingUser
         const por = u && !u.me && u.emailAddress?.toLowerCase() !== me ? (u.displayName || u.emailAddress || '') : ''
@@ -740,7 +801,7 @@ export default function App() {
   }, [ready, hasShared])
   // Lo que escribes en una nota compartida se sube a los 2 segundos.
   const openShared = note?.appProperties?.compartida ? note.id : undefined
-  const openText = openShared ? s.texts[openShared]?.text + (s.texts[openShared]?.title ?? '') : ''
+  const openText = openShared ? s.texts[openShared]?.text + (s.texts[openShared]?.title ?? '') + (note?.appProperties?.icon ?? '') + (note?.appProperties?.cover ?? '') : ''
   useEffect(() => {
     if (!openShared || !ready) return
     const t = setTimeout(() => syncSharedRef.current(openShared), 2000)
@@ -1164,10 +1225,13 @@ export default function App() {
             : locked && <p className="aviso-fijada">🔒 Nota fijada: puedes leerla, copiar y marcar casillas. Toca <strong>Editar</strong> para cambiarla.</p>}
           {sealedNote ? <div className="nota-scroll">
             <h1 className="titulo-cerrado">{note.name || UNTITLED}</h1>
-            <Unlock verifier={verifier} onForgot={forgotKey} onOpen={offer => {
+            {verifier ? <Unlock verifier={verifier} onForgot={forgotKey} onOpen={offer => {
               store.openVault()
               if (offer) setKeyDialog({ mode: 'huella' })
-            }} />
+            }} /> : <div className="caja-cerrada-nueva">
+              <p>Esta nota compartida pide clave. Crea tu clave de Datheke para abrirla: sirve para todas tus notas con clave, y luego puedes usar tu huella.</p>
+              <button className="principal" onClick={() => setKeyDialog({ mode: 'crear', then: () => {} })}>Crear mi clave</button>
+            </div>}
           </div> : <>
           {conflict && <div className="conflicto" role="alert">
             <p><strong>⚠️ Esta nota también se cambió en otro dispositivo.</strong> ¿Qué versión quieres conservar?</p>
@@ -1208,7 +1272,7 @@ export default function App() {
                 </button>
               })()}
 
-              <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} inlineImages={!!shareOf(note)} content={doc.text} onChange={text => store.edit(note.id, { text })}
+              <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} inlineImages={!!shareOf(note)} me={session.email} content={doc.text} onChange={text => store.edit(note.id, { text })}
                 notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked}
                 geminiKey={geminiKey} onGeminiKey={setGeminiKey}
                 privacy={privacy} onPrivate={() => setPrivate(note, true)}
@@ -1251,10 +1315,12 @@ export default function App() {
         </div>
       })()}
       {remDlg && (() => {
-        const cur = remDlg.id ? reminders.find(x => x.note.id === remDlg.noteId && x.r.id === remDlg.id)?.r : undefined
+        const curText = s.texts[remDlg.noteId]?.text
+        const cur = remDlg.id && curText ? remindersOf(curText).find(x => x.r.id === remDlg.id)?.r : undefined
         const n = s.files[remDlg.noteId]
         const apply = (r: Reminder | null) => { if (remDlg.id) changeReminder(remDlg.noteId, remDlg.id, r) }
         return <ReminderDialog reminder={cur} label={remDlg.label} locked={isLocked(n)} offline={s.offline} onClose={() => setRemDlg(null)}
+          shared={!!shareOf(n) && !shareOf(n)!.fin} me={session.email}
           onSave={r => { if (remDlg.insert) remDlg.insert(r); else apply(r); setRemDlg(null); notify.askPermission() }}
           onRemove={() => { apply(null); setRemDlg(null) }}
           onDone={() => { if (cur) apply(markDone(cur)); setRemDlg(null) }}
