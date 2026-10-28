@@ -1,6 +1,7 @@
 import { BellRing, CalendarDays, CheckCircle2, AlertTriangle, X } from 'lucide-react'
 import { useState } from 'react'
 import { desktop } from './auth.ts'
+import { openToneSettings } from './notify.ts'
 
 // Recordatorios: quién hace sonar el aviso. Uno solo para toda la cuenta (así nunca suenan dos).
 //  - "datheke": la propia app (Android aunque esté cerrada; Windows en segundo plano; la web solo abierta).
@@ -83,6 +84,15 @@ export function ReminderHelp({ mode, current, calendarHere, onUse, onClose }: {
               </li>
             ))}
           </ul>
+          <div className="recordar-tono">
+            <strong>Tono del aviso</strong>
+            {here === 'android'
+              ? <><span>Lo elige tu celular, solo para Datheke (no cambia tus otros tonos).</span>
+                <button onClick={() => { if (!openToneSettings()) alert('Ajustes → Apps → Datheke → Notificaciones → Recordatorios → Sonido') }}>Cambiar tono del aviso</button></>
+              : here === 'windows'
+                ? <span>Lo pone Windows: Configuración → Sistema → Notificaciones → Datheke.</span>
+                : <span>En la web suena con el aviso de tu navegador. En la app de Android puedes elegir el tono (Ajustes → Apps → Datheke → Notificaciones → Recordatorios → Sonido).</span>}
+          </div>
           <p className="recordar-nota">Otra opción: <strong>Google Calendar</strong> (en tu cuenta → Recordatorios), para que suene también en iPhone y Mac con todo cerrado.</p>
         </> : <>
           <h2><CalendarDays size={20} aria-hidden="true" /> Recordatorios con Google Calendar</h2>
@@ -99,6 +109,7 @@ export function ReminderHelp({ mode, current, calendarHere, onUse, onClose }: {
           </div>
           <ol className="recordar-pasos">{CALENDAR[tab].steps.map(s => <li key={s}>{s}</li>)}</ol>
           <p className="recordar-resultado"><CheckCircle2 size={16} aria-hidden="true" /> {CALENDAR[tab].result}</p>
+          <p className="recordar-nota">El tono es el de Google Calendar: se cambia en los ajustes de la app Calendar (Notificaciones).</p>
           {!calendarHere && <p className="recordar-nota">Al conectar, Google te pide permiso para el calendario. Si dice «Google no verificó esta app», toca <strong>Avanzado → Ir a Datheke</strong> (es normal en apps personales).</p>}
         </>}
         <div className="caja-fila recordar-botones">
