@@ -353,3 +353,35 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .recordar-botones { justify-content: flex-end; }
 .recordar-aparato { color: var(--suave); font-size: 11px; text-align: right; }
 .recordar-lista li span.etiqueta { color: #fff; font-size: 11px; }
+
+/* Recordatorios: ventana, aviso bajo el título, tarjetas y lista (ReminderDialog.tsx, App.tsx). */
+.recordatorio-ventana { position: relative; align-items: stretch; gap: 12px; padding: 18px 18px 14px; text-align: left; width: min(440px, 100%); }
+.recordatorio-ventana h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 18px; }
+.recordatorio-ventana .cerrar { position: absolute; top: 10px; right: 10px; }
+.recordatorio-ventana p { margin: 0; font-size: 13px; }
+.atajos { display: flex; flex-wrap: wrap; gap: 6px; }
+.atajos button { border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+.atajos button.activo { background: var(--acento); border-color: var(--acento); color: #fff; }
+.recordatorio-campos { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.recordatorio-campos label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--suave); }
+.recordatorio-campos label:last-child { grid-column: 1 / -1; }
+.recordatorio-campos input, .recordatorio-campos select { padding: 9px 10px; border: 1px solid var(--borde); border-radius: 8px; font: inherit; font-size: 15px; color: var(--texto); background: var(--fondo); }
+.recordatorio-resumen { display: flex; align-items: center; gap: 6px; color: #1f5135; }
+.recordatorio-aviso { display: flex; gap: 8px; align-items: flex-start; padding: 8px 10px; border-radius: 8px; background: #fffbeb; color: #78350f; }
+.recordatorio-aviso svg { flex-shrink: 0; margin-top: 1px; }
+.recordatorio-ventana .peligro { display: inline-flex; align-items: center; gap: 6px; margin-right: auto; }
+.recordatorio-chip { display: inline-flex; align-items: center; gap: 2px; margin: 0 var(--margen) 8px; border-radius: 999px; background: #eaf6ef; color: #1f5135; font-size: 13px; }
+.contenido-marco ~ .recordatorio-chip, .nota-scroll .recordatorio-chip { margin-left: max(var(--margen), calc((100% - var(--hoja)) / 2 + var(--margen))); }
+.recordatorio-chip button { border: none; background: none; color: inherit; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; font-size: 13px; }
+.recordatorio-chip .recordatorio-hecho { padding: 5px 9px; border-left: 1px solid #00000014; border-radius: 0 999px 999px 0; }
+.recordatorio-chip.vencido { background: #fee2e2; color: #991b1b; }
+.recordatorio-chip.hecho { background: var(--lista); color: var(--suave); text-decoration: line-through; }
+.tarjeta-recordatorio { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #1f5135; }
+.tarjeta-recordatorio.vencido { color: #b91c1c; font-weight: 600; }
+.tarjeta-recordatorio.hecho { color: var(--suave); text-decoration: line-through; }
+.item small.vencidos { color: #fff; background: #dc2626; border-radius: 999px; padding: 0 6px; }
+.grupo-recordatorios h3 { margin: 12px 16px 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--suave); }
+.grupo-recordatorios.vencido h3 { color: #b91c1c; }
+.marcar-hecho { align-self: center; margin-right: 8px; color: var(--acento); }
+.grupo-recordatorios .nota-fila { display: flex; align-items: center; margin-left: 8px; }
+.grupo-recordatorios .nota-fila .nota { flex: 1; min-width: 0; }
