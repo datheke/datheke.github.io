@@ -23,6 +23,8 @@ tauri-plugin-notification = "2"
 # Huella para abrir las notas con clave (solo en el celular).
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
 tauri-plugin-biometric = "2"
+# Enviar copia: el menú de compartir del celular (WhatsApp, correo…). En Windows la copia queda en Documentos/Datheke/Enviadas.
+tauri-plugin-sharekit = "=0.4.0-rc.7"
 
 # Windows: arrancar con la PC (en segundo plano, para los recordatorios) y una sola ventana de Datheke a la vez.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
