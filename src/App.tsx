@@ -27,8 +27,8 @@ import * as notify from './notify.ts'
 import { chipText, groupOf, markDone, remindersIn, repeatText, sortReminders, updateIn, type Group, type Reminder } from './remind.ts'
 import * as vault from './vault.ts'
 import { buildZip, changedSince, EVERY_MS, NeedsPermission, upload as uploadBackup } from './backup.ts'
-import { canOfferPrint } from './print.ts'
-import { Create as CreateKey, PrintOffer, Unlock } from './Vault.tsx'
+import { canOfferPrint, forgetPrint } from './print.ts'
+import { ChangeKey, Create as CreateKey, PrintOffer, Unlock } from './Vault.tsx'
 
 const UNTITLED = store.UNTITLED
 // Basurero: días que le quedan a una nota borrada, y la fecha que se le pone al borrarla.
@@ -103,8 +103,9 @@ export default function App() {
   // Al escribir en la nota (título o texto) la portada se esconde, y vuelve al abrirla de nuevo.
   const [writing, setWriting] = useState(false)
   // Ventana de la caja fuerte: crear la clave, abrirla antes de proteger una nota, o la clave nueva tras "olvidé la clave".
-  const [keyDialog, setKeyDialog] = useState<{ mode: 'crear' | 'abrir' | 'nueva' | 'huella'; then?: () => void } | null>(null)
-  const unlocked = useSyncExternalStore(vault.subscribe, vault.unlocked)
+  // comun: clave común de una nota compartida (noteId). salt: de qué clave es la huella que se ofrece.
+  const [keyDialog, setKeyDialog] = useState<{ mode: 'crear' | 'abrir' | 'nueva' | 'huella' | 'comun' | 'cambiar' | 'cambiar-comun'; then?: () => void; noteId?: string; salt?: string } | null>(null)
+  const vaultVersion = useSyncExternalStore(vault.subscribe, vault.version) // cambia al abrir o cerrar una llave
   // Respaldo semanal (backup.ts): estado del último intento en este aparato.
   const [backup, setBackup] = useState<{ busy?: boolean; msg?: string; needsLogin?: boolean }>({})
   const backingUp = useRef(false)
@@ -150,15 +151,17 @@ export default function App() {
     else store.create({ kind: 'ajustes', boveda: v }, 'Ajustes')
   })
   const isLocked = (n?: DriveFile) => n?.appProperties?.protegida === 'true' // nota con clave
+  const commonKey = (n?: DriveFile) => n?.appProperties?.clave_comun || '' // verificador de la clave común (compartida)
+  const isClosed = (n?: DriveFile) => isLocked(n) && !vault.hasKey(vault.saltOf(commonKey(n))) // con clave y su llave cerrada
   // Recordatorios de todas las notas que están en este aparato (las con clave, solo con la caja abierta), por lo que falta.
   const reminders = sortReminders(allNotes.flatMap(n => {
     const t = s.texts[n.id]
-    if (!t || (isLocked(n) && !unlocked)) return []
+    if (!t || isClosed(n)) return []
     return remindersOf(t.text).map(x => ({ ...x, note: n }))
   }).filter(x => !x.r.solo || x.r.solo.toLowerCase() === (session?.email ?? '').toLowerCase())) // "solo para" otra persona: no me suena
   const pendingReminders = reminders.filter(x => groupOf(x.r) !== 'hecho').length
   const overdue = reminders.some(x => groupOf(x.r) === 'pendiente')
-  const lockedHidden = allNotes.some(n => isLocked(n)) && !unlocked
+  const lockedHidden = allNotes.some(n => isClosed(n))
   const nextOf = (n: DriveFile) => reminders.find(x => x.note.id === n.id && groupOf(x.r) !== 'hecho') // el más urgente de la nota
   // Cambia (o quita) un recordatorio dentro del texto de su nota; el editor se vuelve a dibujar si está abierta.
   const changeReminder = (noteId: string, id: string, r: Reminder | null) => {
@@ -200,7 +203,7 @@ export default function App() {
   const isPrivate = (f?: DriveFile) => f?.appProperties?.privada === 'true'
   const noteNotebook = notebooks.find(nb => nb.id === note?.appProperties?.notebook)
   const withKey = isLocked(note)
-  const sealedNote = withKey && !unlocked // con clave y la caja cerrada: se pide la clave en lugar de la nota
+  const sealedNote = withKey && isClosed(note) // con clave y la caja cerrada: se pide la clave en lugar de la nota
   // Una nota con clave también es privada: Gemini nunca la lee.
   const privacy = isPrivate(noteNotebook) ? 'libreta' as const : isPrivate(note) || withKey ? 'nota' as const : null
   const setPrivate = (f: DriveFile, on: boolean) => store.patch(f.id, { props: { privada: on ? 'true' : null } })
@@ -250,7 +253,7 @@ export default function App() {
   // Nota que aún no se bajó a este dispositivo.
   useEffect(() => {
     if (noteId && hasNote && !hasDoc) store.ensureText(noteId).catch(e => setProblem(messageOf(e)))
-  }, [noteId, hasNote, hasDoc, unlocked])
+  }, [noteId, hasNote, hasDoc, vaultVersion])
 
   // Lo que lleva más de 30 días en el basurero se elimina (en cualquier aparato que esté abierto, ya sincronizado).
   useEffect(() => {
@@ -296,7 +299,7 @@ export default function App() {
   // La caja fuerte se cierra sola tras 5 minutos sin tocar la app (también si quedó en segundo plano).
   useEffect(() => {
     const touch = () => vault.touch()
-    const check = () => { if (vault.unlocked() && vault.idleFor() > vault.AUTO_LOCK_MS) store.closeVault() }
+    const check = () => { if (vault.any() && vault.idleFor() > vault.AUTO_LOCK_MS) store.closeVault() }
     const every = setInterval(check, 15000)
     window.addEventListener('pointerdown', touch)
     window.addEventListener('keydown', touch)
@@ -309,43 +312,67 @@ export default function App() {
     }
   }, [])
 
+  // Compartida y activa (no dejada de compartir): su clave es común para todos (ver protect).
+  const activeShare = (n?: DriveFile) => n?.appProperties?.compartida && n.appProperties.fin !== 'true' && !n.appProperties.estado ? n.appProperties.compartida : ''
+
   // Proteger: la primera vez se crea la clave; si la caja está cerrada, se abre primero.
+  // En una compartida es una clave común: la misma para todos los que la tienen (se dice en persona).
   function protect(n: DriveFile) {
-    // En una compartida la clave es para todos: cada persona la abre con su propia clave de Datheke o su huella.
-    const fileId = n.appProperties?.compartida && n.appProperties?.fin !== 'true' && !n.appProperties?.estado ? n.appProperties.compartida : ''
-    const go = () => {
-      store.patch(n.id, { props: { protegida: 'true' } })
-      if (fileId) shared.setProps(fileId, { clave: 'true' }).then(() => {
-        const st = shared.readState()[fileId]
-        if (st) shared.saveState(fileId, { ...st, k: true })
-        setToast('Listo: ahora pide clave en todos los aparatos, también a las personas con quienes la compartes (cada una con su propia clave o huella).')
-      }, fail)
-    }
+    if (activeShare(n)) return setKeyDialog({ mode: 'comun', noteId: n.id })
+    const go = () => store.patch(n.id, { props: { protegida: 'true' } })
     if (!verifier) setKeyDialog({ mode: 'crear', then: go })
     else if (!vault.unlocked()) setKeyDialog({ mode: 'abrir', then: go })
     else go()
   }
+  async function setCommonKey(n: DriveFile, v: string) {
+    const fileId = activeShare(n)
+    store.patch(n.id, { props: { protegida: 'true', clave_comun: v } })
+    await store.resealAll()
+    if (fileId) await shared.setProps(fileId, { clave: v })
+  }
 
   function unprotect(n: DriveFile) {
-    const fileId = n.appProperties?.compartida && n.appProperties?.fin !== 'true' && !n.appProperties?.estado ? n.appProperties.compartida : ''
+    const fileId = activeShare(n)
     if (!confirm(`¿Quitar la clave a "${n.name || UNTITLED}"? Se podrá ver sin clave en este y tus otros aparatos${fileId ? ', y también para las personas con quienes la compartes' : ''}.`)) return
-    store.patch(n.id, { props: { protegida: null } })
-    if (fileId) shared.setProps(fileId, { clave: null }).then(() => {
-      const st = shared.readState()[fileId]
-      if (st) shared.saveState(fileId, { ...st, k: false })
-    }, fail)
+    store.patch(n.id, { props: { protegida: null, clave_comun: null } })
+    if (fileId) shared.setProps(fileId, { clave: null }).catch(fail)
+  }
+
+  // Cambiar clave (la tuya o la común de una compartida): todo lo abierto se cifra con la nueva y la huella se vuelve a ofrecer.
+  async function changedKey(v: string, oldSalt: string, noteId?: string) {
+    if (noteId) {
+      const n = s.files[noteId]
+      if (n) await setCommonKey(n, v)
+    } else {
+      setVerifier(v)
+      await store.resealAll()
+    }
+    forgetPrint(noteId ? oldSalt : undefined)
+    vault.forget(oldSalt)
+    const salt = noteId ? vault.saltOf(v) : undefined
+    setToast(noteId ? 'Listo: clave común cambiada. Dile la nueva a las otras personas.' : 'Listo: tu clave de notas cambió en todos tus aparatos.')
+    if (await canOfferPrint(salt)) setKeyDialog({ mode: 'huella', salt })
+    else setKeyDialog(null)
+  }
+
+  // Nadie recuerda la clave común: se vuelve a entrar con Google y se le quita la clave a la nota (para todos).
+  async function forgotCommonKey(n: DriveFile) {
+    if (!confirm('Para quitarle la clave a esta nota (para todos los que la tienen) tienes que volver a entrar con tu cuenta de Google. ¿Seguir?')) return
+    try {
+      setSession(await signIn(session?.email))
+      store.patch(n.id, { props: { protegida: null, clave_comun: null } })
+      const fileId = activeShare(n)
+      if (fileId) await shared.setProps(fileId, { clave: null })
+      setToast('Listo: la nota ya no tiene clave. Puedes ponerle una nueva desde ⋯.')
+    } catch (e) { fail(e) }
   }
 
   // Tras "olvidé la clave", sin clave nueva: todas las notas quedan sin clave (en todos los aparatos) y la copia de
   // cada aparato se vuelve a bajar de Drive sin cifrar. Para volver a protegerlas se crea una clave nueva.
   function removeAllKeys() {
-    const withKeyNotes = files.filter(isLocked)
+    const withKeyNotes = files.filter(n => isLocked(n) && !commonKey(n)) // las de clave común no dependen de tu clave
     if (!confirm(`¿Quitar la clave a ${withKeyNotes.length} nota(s)? Se verán sin clave en todos tus aparatos.`)) return
-    for (const n of withKeyNotes) {
-      store.patch(n.id, { props: { protegida: null } })
-      const fileId = n.appProperties?.compartida && n.appProperties?.fin !== 'true' ? n.appProperties.compartida : ''
-      if (fileId) shared.setProps(fileId, { clave: null }).catch(() => {})
-    }
+    for (const n of withKeyNotes) store.patch(n.id, { props: { protegida: null } })
     if (settings) store.patch(settings.id, { props: { boveda: null } })
     store.closeVault()
     setKeyDialog(null)
@@ -387,7 +414,7 @@ export default function App() {
 
   // Avisos de los recordatorios (notify.ts): se programan de nuevo cada vez que cambian.
   const sources: Source[] = reminders.map(x => ({ r: x.r, label: x.label, noteId: x.note.id, noteTitle: x.note.name || UNTITLED, locked: isLocked(x.note) }))
-  const knownNotes = allNotes.filter(n => s.texts[n.id] && !(isLocked(n) && !unlocked)).map(n => n.id)
+  const knownNotes = allNotes.filter(n => s.texts[n.id] && !isClosed(n)).map(n => n.id)
   const agendaKey = JSON.stringify(sources.map(x => [x.noteId, x.r, x.label, x.locked])) + knownNotes.join()
   useEffect(() => {
     if (!ready) return
@@ -576,7 +603,7 @@ export default function App() {
       const remote = await shared.create(title, full)
       fileId = remote.id
       if (html !== doc.text) store.replaceText(note.id, html)
-      shared.saveState(fileId, { base: remote.modifiedTime, sent: shared.hash(full + title), k: false })
+      shared.saveState(fileId, { base: remote.modifiedTime, sent: shared.hash(full + title) })
     }
     await shared.invite(fileId, emails, title)
     store.patch(note.id, { props: { compartida: fileId, rol: 'dueño', ...conProps(note, [...(sh?.con ?? []), ...emails]) } })
@@ -644,7 +671,7 @@ export default function App() {
       const missing = sh.con.filter(e => !have.has(e))
       if (missing.length) await shared.invite(sh.id, missing, n.name || UNTITLED)
       const remote = await shared.get(sh.id)
-      shared.saveState(sh.id, { base: remote.modifiedTime, sent: shared.hash(await fullOf(n) + (n.name || UNTITLED)), k: false })
+      shared.saveState(sh.id, { base: remote.modifiedTime, sent: shared.hash(await fullOf(n) + (n.name || UNTITLED)) })
       store.patch(n.id, { props: { estado: null } })
       setToast(`«${n.name || UNTITLED}» se volvió a compartir con ${sh.con.join(', ')}.`)
     } catch (e) { fail(e) }
@@ -675,9 +702,9 @@ export default function App() {
       }
       const added = store.getState().files[id]
       if (added) await applyExtra(added, extra)
-      const remoteKey = meta.appProperties?.clave === 'true'
-      if (remoteKey) store.patch(id, { props: { protegida: 'true' } })
-      shared.saveState(fileId, { base: meta.modifiedTime, sent: shared.hash(remoteFull + title), k: remoteKey })
+      const remoteKey = meta.appProperties?.clave?.startsWith('1.') ? meta.appProperties.clave : ''
+      if (remoteKey) store.patch(id, { props: { protegida: 'true', clave_comun: remoteKey } })
+      shared.saveState(fileId, { base: meta.modifiedTime, sent: shared.hash(remoteFull + title) })
       setTrashView(false); setRemindView(false)
       open(id)
       setToast(`«${title}» está en tus notas: lo que cambies le llega a ${owner?.displayName || 'quien la compartió'}.`)
@@ -741,20 +768,16 @@ export default function App() {
           setToast(`${sh.dueno || 'Quien la compartió'} dejó de compartir «${title || UNTITLED}».`)
           continue
         }
-        // Clave para todos: la puso o la quitó alguien (cada uno la abre con su propia clave de Datheke o su huella).
-        const remoteKey = meta.appProperties?.clave === 'true'
-        if (remoteKey && !isLocked(n)) {
-          store.patch(n.id, { props: { protegida: 'true' } })
-          if (st) shared.saveState(sh.id, { ...st, k: true })
-          setToast(`«${title || UNTITLED}» ahora pide clave en todos los aparatos. ${verifier ? 'Se abre con tu clave de Datheke o tu huella.' : 'Crea tu clave de Datheke para abrirla.'}`)
+        // Clave común: la puso, la cambió o la quitó alguien (todos la abren con la misma clave).
+        const remoteKey = meta.appProperties?.clave?.startsWith('1.') ? meta.appProperties.clave : ''
+        if (remoteKey !== commonKey(n)) {
+          store.patch(n.id, { props: remoteKey ? { protegida: 'true', clave_comun: remoteKey } : { protegida: null, clave_comun: null } })
+          setToast(remoteKey
+            ? `«${title || UNTITLED}» ${commonKey(n) ? 'cambió de clave común' : 'ahora tiene una clave común'}: pídesela a quien la puso.`
+            : `«${title || UNTITLED}» ya no tiene clave: se la quitaron para todos.`)
           continue
         }
         const hasText = !!store.getState().texts[n.id]
-        if (!remoteKey && isLocked(n) && st?.k) {
-          if (!hasText) continue // se quita al abrir la caja (hace falta el texto)
-          store.patch(n.id, { props: { protegida: null } })
-          setToast(`«${title || UNTITLED}» ya no pide clave: se la quitaron para todos.`)
-        }
         if (!hasText) continue // su texto aún no está en este aparato (o tiene clave cerrada): no se toca
         const local = docText(n.id)
         const localFull = await fullOf(n, local)
@@ -780,7 +803,7 @@ export default function App() {
           meta = await shared.write(sh.id, localFull, title || UNTITLED)
           next = { base: meta.modifiedTime, sent: shared.hash(localFull + title) }
         }
-        if (next) shared.saveState(sh.id, { ...next, k: remoteKey })
+        if (next) shared.saveState(sh.id, next)
         // "Modificado por": cuando el último cambio es de otra persona.
         const u = meta.lastModifyingUser
         const por = u && !u.me && u.emailAddress?.toLowerCase() !== me ? (u.displayName || u.emailAddress || '') : ''
@@ -1199,12 +1222,14 @@ export default function App() {
               {locked ? <><Pencil size={16} /> Editar</> : <><Lock size={16} /> Fijar</>}
             </button>
             <button className="btn-icono" onClick={() => newNote('', '', note.id)} title="Nueva subnota" aria-label="Nueva subnota"><FilePlus size={18} /></button>
-            {withKey && unlocked && <button className="btn-icono" onClick={() => store.closeVault()} title="Cerrar las notas con clave"
+            {withKey && !isClosed(note) && <button className="btn-icono" onClick={() => store.closeVault()} title="Cerrar las notas con clave"
               aria-label="Cerrar las notas con clave"><LockKeyhole size={18} /></button>}
             <MoreMenu items={[
-              withKey
-                ? { label: 'Quitar clave', icon: <KeyRound size={16} />, onClick: () => unprotect(note) }
-                : { label: 'Proteger con clave', icon: <LockKeyhole size={16} />, onClick: () => protect(note) },
+              ...(withKey ? [
+                { label: 'Quitar clave', icon: <KeyRound size={16} />, onClick: () => unprotect(note) },
+                { label: commonKey(note) ? 'Cambiar la clave común' : 'Cambiar clave', icon: <KeyRound size={16} />,
+                  onClick: () => setKeyDialog(commonKey(note) ? { mode: 'cambiar-comun', noteId: note.id } : { mode: 'cambiar' }) },
+              ] : [{ label: activeShare(note) ? 'Poner clave común' : 'Proteger con clave', icon: <LockKeyhole size={16} />, onClick: () => protect(note) }]),
               privacy === 'libreta'
                 ? { label: 'Privada por su libreta', icon: <ShieldCheck size={16} />, onClick: () => alert(`Esta nota es privada porque está en la libreta "${noteNotebook?.name}". Para quitarlo, toca el escudo de la libreta.`) }
                 : privacy === 'nota'
@@ -1225,13 +1250,13 @@ export default function App() {
             : locked && <p className="aviso-fijada">🔒 Nota fijada: puedes leerla, copiar y marcar casillas. Toca <strong>Editar</strong> para cambiarla.</p>}
           {sealedNote ? <div className="nota-scroll">
             <h1 className="titulo-cerrado">{note.name || UNTITLED}</h1>
-            {verifier ? <Unlock verifier={verifier} onForgot={forgotKey} onOpen={offer => {
+            {commonKey(note) ? <Unlock key={commonKey(note)} common verifier={commonKey(note)} onForgot={() => forgotCommonKey(note)} onOpen={offer => {
+              store.openVault()
+              if (offer) setKeyDialog({ mode: 'huella', salt: vault.saltOf(commonKey(note)) })
+            }} /> : <Unlock verifier={verifier} onForgot={forgotKey} onOpen={offer => {
               store.openVault()
               if (offer) setKeyDialog({ mode: 'huella' })
-            }} /> : <div className="caja-cerrada-nueva">
-              <p>Esta nota compartida pide clave. Crea tu clave de Datheke para abrirla: sirve para todas tus notas con clave, y luego puedes usar tu huella.</p>
-              <button className="principal" onClick={() => setKeyDialog({ mode: 'crear', then: () => {} })}>Crear mi clave</button>
-            </div>}
+            }} />}
           </div> : <>
           {conflict && <div className="conflicto" role="alert">
             <p><strong>⚠️ Esta nota también se cambió en otro dispositivo.</strong> ¿Qué versión quieres conservar?</p>
@@ -1331,7 +1356,22 @@ export default function App() {
       {keyDialog && <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Clave de notas">
         <div className="ventana">
           {keyDialog.mode === 'huella'
-            ? <PrintOffer onDone={() => { setKeyDialog(null); keyDialog.then?.() }} />
+            ? <PrintOffer salt={keyDialog.salt} onDone={() => { setKeyDialog(null); keyDialog.then?.() }} />
+            : keyDialog.mode === 'comun'
+            ? <CreateKey common onCancel={() => setKeyDialog(null)} onCreated={async v => {
+              const n = keyDialog.noteId ? s.files[keyDialog.noteId] : undefined
+              try {
+                if (n) await setCommonKey(n, v)
+                setToast('Listo: la nota pide esta clave en todos los aparatos. Díselas a las personas con quienes la compartes.')
+                const salt = vault.saltOf(v)
+                if (await canOfferPrint(salt)) setKeyDialog({ mode: 'huella', salt })
+                else setKeyDialog(null)
+              } catch (e) { fail(e); setKeyDialog(null) }
+            }} />
+            : keyDialog.mode === 'cambiar' || keyDialog.mode === 'cambiar-comun'
+            ? <ChangeKey common={keyDialog.mode === 'cambiar-comun'} onCancel={() => setKeyDialog(null)} prepare={() => store.openVault()}
+              verifier={keyDialog.mode === 'cambiar-comun' ? commonKey(keyDialog.noteId ? s.files[keyDialog.noteId] : undefined) : verifier}
+              onChanged={(v, old) => changedKey(v, old, keyDialog.mode === 'cambiar-comun' ? keyDialog.noteId : undefined)} />
             : keyDialog.mode === 'abrir'
             ? <Unlock compact verifier={verifier} onForgot={() => { setKeyDialog(null); forgotKey() }} onOpen={async offer => {
               await store.openVault()

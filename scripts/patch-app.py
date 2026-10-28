@@ -38,6 +38,32 @@ METHODS = r'''
     }
     i.action = "datheke.recibida"
   }
+
+  // "Cambiar tono del aviso" (notify.ts): la página llama a DathekeAndroid.ajustesAviso().
+  override fun onWebViewCreate(webView: android.webkit.WebView) {
+    super.onWebViewCreate(webView)
+    webView.addJavascriptInterface(DathekeAndroid(this), "DathekeAndroid")
+  }
+}
+
+// Abre los ajustes del canal "Recordatorios" de Datheke: ahí se elige el tono, la vibración, etc.
+class DathekeAndroid(private val a: android.app.Activity) {
+  @android.webkit.JavascriptInterface
+  fun ajustesAviso() {
+    a.runOnUiThread {
+      try {
+        val i = if (android.os.Build.VERSION.SDK_INT >= 26)
+          android.content.Intent(android.provider.Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+            .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, a.packageName)
+            .putExtra(android.provider.Settings.EXTRA_CHANNEL_ID, "recordatorios")
+        else
+          android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + a.packageName))
+        a.startActivity(i)
+      } catch (e: Exception) {
+        android.util.Log.e("Datheke", "No se pudieron abrir los ajustes del aviso", e)
+      }
+    }
+  }
 }
 '''
 end = s.rstrip().rfind('}')

@@ -42,3 +42,20 @@ test('si la clave se cambió (otro aparato), lo cifrado con la vieja no se abre:
 test('clave muy corta se rechaza', async () => {
   await assert.rejects(vault.create('123'), /al menos 6/)
 })
+
+test('clave común de una compartida: convive con tu clave y se abre por separado', async () => {
+  const mine = await vault.create('mi-clave-1')
+  const comun = await vault.create('clave-de-los-dos', false)
+  const sm = vault.saltOf(mine)!, sc = vault.saltOf(comun)!
+  const a = await vault.seal({ title: 'mía', text: '1' })
+  const b = await vault.seal({ title: 'compartida', text: '2' }, sc)
+  assert.equal(vault.unlocked(), true)
+  vault.lock()
+  assert.equal(await vault.unlock('clave-de-los-dos', comun, false), true)
+  assert.equal(vault.unlocked(), false) // tu clave sigue cerrada
+  assert.equal(vault.hasKey(sc), true)
+  assert.deepEqual(await vault.open(b), { title: 'compartida', text: '2' })
+  assert.equal(await vault.open(a), null)
+  assert.equal(vault.hasKey(sm), false)
+  vault.lock()
+})
