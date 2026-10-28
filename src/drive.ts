@@ -19,6 +19,7 @@ export class OfflineError extends Error {}
 
 let token = ''
 export const setToken = (t: string) => { token = t }
+export const getToken = () => token
 // En la app de escritorio la sesión se renueva sola: si Google dice "vencida", se pide un token nuevo y se reintenta.
 let renew: (() => Promise<string>) | undefined
 export const setRenew = (fn?: () => Promise<string>) => { renew = fn }
