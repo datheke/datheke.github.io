@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Datheke",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "identifier": "io.github.datheke",
   "build": {
     "frontendDist": "../dist",
@@ -35,6 +35,17 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
-    }
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "datheke"
+        ],
+        "name": "Nota de Datheke",
+        "description": "Nota de Datheke",
+        "role": "Editor",
+        "mimeType": "application/x-datheke"
+      }
+    ]
   }
 }

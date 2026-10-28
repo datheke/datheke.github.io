@@ -15,6 +15,11 @@ const DESKTOP_SECRET: string = import.meta.env.VITE_GOOGLE_DESKTOP_SECRET ?? ''
 const SCOPE = 'https://www.googleapis.com/auth/drive.appdata'
 const SCOPES = `${SCOPE} https://www.googleapis.com/auth/drive.file`
 const KEY = 'datheke-sesion'
+// Google Calendar (opcional): solo el calendario "Datheke" que crea la app. Se pide al conectar Calendar en cada aparato.
+export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.app.created'
+const CAL_KEY = 'datheke-calendar'
+export const hasCalendar = () => { try { return localStorage.getItem(CAL_KEY) === '1' } catch { return false } }
+const scopes = () => hasCalendar() ? `${SCOPES} ${CALENDAR_SCOPE}` : SCOPES
 export const desktop = isTauri()
 
 export type Session = { email: string; token: string; expires: number; refresh?: string }
@@ -33,18 +38,18 @@ export function loadSession(): Session | null {
   try { return JSON.parse(localStorage.getItem(KEY) ?? 'null') } catch { return null }
 }
 
-export const forgetSession = () => localStorage.removeItem(KEY)
+export const forgetSession = () => { localStorage.removeItem(KEY); localStorage.removeItem('datheke-calendar') }
 
-function requestToken(email?: string): Promise<{ token: string; expires: number }> {
+function requestToken(email?: string): Promise<{ token: string; expires: number; scope: string }> {
   return new Promise((resolve, reject) => {
     if (typeof google === 'undefined') return reject(new Error('Google aún no carga, intenta de nuevo.'))
     google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
-      scope: SCOPES,
+      scope: scopes(),
       callback: r => {
         if (r.error) reject(new Error(r.error))
         else if (!r.scope.split(' ').includes(SCOPE)) reject(new Error('Falta marcar el permiso de Google Drive.'))
-        else resolve({ token: r.access_token, expires: Date.now() + (r.expires_in - 60) * 1000 })
+        else resolve({ token: r.access_token, expires: Date.now() + (r.expires_in - 60) * 1000, scope: r.scope })
       },
       error_callback: e => reject(new Error(e.type === 'popup_closed' ? 'Se cerró la ventana de Google.' : e.type)),
     }).requestAccessToken({ prompt: email ? '' : 'select_account', login_hint: email })
@@ -110,7 +115,7 @@ async function desktopLogin(email?: string): Promise<Tokens> {
   })
   try {
     await openUrl(`https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
-      client_id: DESKTOP_ID, redirect_uri, response_type: 'code', scope: SCOPES, state,
+      client_id: DESKTOP_ID, redirect_uri, response_type: 'code', scope: scopes(), state,
       code_challenge: challenge, code_challenge_method: 'S256', access_type: 'offline', prompt: 'consent',
       ...(email ? { login_hint: email } : {}),
     })}`)
@@ -140,11 +145,19 @@ export function resume(session: Session) {
 // Debe llamarse desde un clic. Web: Google abre una ventana (si ya conoce el correo, se cierra sola). Escritorio: abre el navegador.
 export async function signIn(email?: string): Promise<Session> {
   let session: Session
+  let granted: string
   if (desktop) {
     const t = await desktopLogin(email)
     if (!t.scope.split(' ').includes(SCOPE)) throw new Error('Falta marcar el permiso de Google Drive.')
+    granted = t.scope
     session = { token: t.access_token, expires: Date.now() + (t.expires_in - 60) * 1000, refresh: t.refresh_token, email: '' }
-  } else session = { ...await requestToken(email), email: '' }
+  } else {
+    const t = await requestToken(email)
+    granted = t.scope
+    session = { token: t.token, expires: t.expires, email: '' }
+  }
+  // Sin el permiso de Calendar (no se marcó): este aparato queda sin Calendar.
+  if (hasCalendar() && !granted.split(' ').includes(CALENDAR_SCOPE)) try { localStorage.removeItem(CAL_KEY) } catch { /* */ }
   setToken(session.token)
   session.email = await withRetry(getEmail)
   // La copia local es de una cuenta: entrar con otra mezclaría las notas de dos personas.
@@ -156,3 +169,13 @@ export async function signIn(email?: string): Promise<Session> {
   resume(session)
   return session
 }
+
+// Conectar Google Calendar en este aparato: se vuelve a entrar con Google pidiendo también ese permiso.
+// Debe llamarse desde un clic. Devuelve false si no se marcó el permiso.
+export async function connectCalendar(email: string): Promise<boolean> {
+  try { localStorage.setItem(CAL_KEY, '1') } catch { /* */ }
+  try { await signIn(email) } catch (e) { try { localStorage.removeItem(CAL_KEY) } catch { /* */ } throw e }
+  return hasCalendar()
+}
+
+export const disconnectCalendar = () => { try { localStorage.removeItem(CAL_KEY) } catch { /* */ } }

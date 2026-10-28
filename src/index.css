@@ -327,6 +327,8 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 @media (min-width: 701px) { .aviso-version { left: auto; right: 16px; } }
 
 /* Recordatorios (Reminders.tsx): quién avisa, en la tarjeta de la cuenta, y la ventana que lo explica. */
+.cuenta-recordar { padding: 12px 0; border-top: 1px solid var(--borde); }
+.cuenta-recordar .cuenta-nota { margin: 8px 0 0; }
 .recordar-modo p { margin: 0 0 6px; display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .segmento { display: flex; padding: 3px; gap: 3px; border-radius: 10px; background: var(--lista); border: 1px solid var(--borde); }
 .segmento button { flex: 1; border: none; border-radius: 8px; padding: 6px 8px; font-size: 13px; color: var(--suave); }
