@@ -23,7 +23,8 @@ export const setToken = (t: string) => { token = t }
 let renew: (() => Promise<string>) | undefined
 export const setRenew = (fn?: () => Promise<string>) => { renew = fn }
 
-async function call(url: string, init: RequestInit = {}, retry = true): Promise<Response> {
+// También la usa calendar.ts (misma sesión de Google).
+export async function call(url: string, init: RequestInit = {}, retry = true): Promise<Response> {
   const res = await fetch(url, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } })
     .catch(() => { throw new OfflineError('Sin conexión.') })
   if (res.status === 401 && renew && retry) {
@@ -31,7 +32,7 @@ async function call(url: string, init: RequestInit = {}, retry = true): Promise<
     return call(url, init, false)
   }
   if (res.status === 401) throw new AuthError('La sesión de Google venció.')
-  if (!res.ok) throw Object.assign(new Error(`Google Drive respondió ${res.status}: ${await res.text()}`), { status: res.status })
+  if (!res.ok) throw Object.assign(new Error(`Google respondió ${res.status}: ${await res.text()}`), { status: res.status })
   return res
 }
 
