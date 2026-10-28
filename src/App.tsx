@@ -9,7 +9,7 @@ import Editor, { Cover, EmojiPicker } from './Editor.tsx'
 import { startFolder } from './folder.ts'
 import { shortDate } from './format.ts'
 import { imageBlob, pickImage, uploadCover } from './images.ts'
-import { cleanReminders, fileName, pack, photoIds, pickFile, send, unpack, type Packed } from './share.ts'
+import { cleanReminders, fileName, pack, photoIds, pickFile, send, takeReceived, unpack, type Packed } from './share.ts'
 import * as store from './sync.ts'
 import { TEMPLATES } from './templates.ts'
 import { firstUnordered, lastUnordered, reorder } from './order.ts'
@@ -440,6 +440,28 @@ export default function App() {
       setReceived({ p, notebook: notebookId ?? notebooks.find(nb => !isTemplates(nb))?.id ?? '' })
     } catch (e) { fail(e) }
   }
+
+  // Abrir con Datheke: al abrir la app o volver a ella, si llegó un archivo .datheke desde otra app (WhatsApp, doble clic…).
+  const takeRef = useRef((_b: Uint8Array) => {})
+  takeRef.current = bytes => {
+    try { setReceived({ p: unpack(bytes), notebook: notebookId ?? notebooks.find(nb => !isTemplates(nb))?.id ?? '' }) } catch (e) { fail(e) }
+  }
+  useEffect(() => {
+    if (!ready || !desktop) return
+    let busy = false, stop = false
+    const check = async () => {
+      if (busy) return
+      busy = true
+      try { const r = await takeReceived(); if (r && !stop) takeRef.current(r.bytes) } finally { busy = false }
+    }
+    check()
+    const vis = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', vis)
+    window.addEventListener('focus', check)
+    let unlisten: (() => void) | undefined
+    import('@tauri-apps/api/event').then(e => e.listen('recibida', check)).then(u => { if (stop) u(); else unlisten = u }).catch(() => {})
+    return () => { stop = true; document.removeEventListener('visibilitychange', vis); window.removeEventListener('focus', check); unlisten?.() }
+  }, [ready]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Queda como una nota propia: sus fotos se suben a tu Drive y sus recordatorios empiezan a sonar en tus aparatos.
   async function addReceived() {
