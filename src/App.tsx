@@ -1,5 +1,5 @@
 import {
-  Bell, Check, ChevronLeft, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
+  Bell, Check, ChevronLeft, FileDown, Send, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
   PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
@@ -8,7 +8,8 @@ import { AuthError, OfflineError, readNote, type DriveFile } from './drive.ts'
 import Editor, { Cover, EmojiPicker } from './Editor.tsx'
 import { startFolder } from './folder.ts'
 import { shortDate } from './format.ts'
-import { pickImage, uploadImage } from './images.ts'
+import { imageBlob, pickImage, uploadImage } from './images.ts'
+import { cleanReminders, fileName, pack, photoIds, pickFile, send, unpack, type Packed } from './share.ts'
 import * as store from './sync.ts'
 import { TEMPLATES } from './templates.ts'
 import { firstUnordered, lastUnordered, reorder } from './order.ts'
@@ -83,6 +84,8 @@ export default function App() {
   const [trashView, setTrashView] = useState(false) // la lista muestra el basurero
   const [remindView, setRemindView] = useState(false) // la lista muestra los recordatorios
   // Ventana de un recordatorio: uno que ya está en una línea (id) o uno nuevo (insert lo pone en la línea del cursor).
+  const [received, setReceived] = useState<{ p: Packed; notebook: string } | null>(null) // nota .datheke recibida, por agregar
+  const [toast, setToast] = useState<string | null>(null) // aviso corto abajo (se va solo)
   const [remDlg, setRemDlg] = useState<{ noteId: string; id?: string; label: string; insert?: (r: Reminder) => void } | null>(null)
   const [focusRem, setFocusRem] = useState<string>() // al abrir una nota desde la lista: ir a esa línea
   const [noteId, setNoteId] = useState<string | null>(null)
@@ -409,6 +412,60 @@ export default function App() {
     } catch (e) { fail(e) }
   }
 
+  // Enviar copia (share.ts): la nota en un archivo .datheke por WhatsApp, correo, etc.
+  async function sendCopy() {
+    if (!note || !doc) return
+    if (sealedNote) return setKeyDialog({ mode: 'abrir', then: () => { sendCopy() } })
+    if (withKey && !confirm('Esta nota tiene clave. La copia va SIN clave: quien la reciba podrá leerla. ¿Enviarla igual?')) return
+    try {
+      setToast('Preparando la copia…')
+      const html = cleanReminders(doc.text)
+      const cover = note.appProperties?.cover
+      const photos: Record<string, Uint8Array> = {}
+      for (const id of [...photoIds(html), ...(cover ? [cover] : [])])
+        photos[id] = new Uint8Array(await (await imageBlob(id)).arrayBuffer())
+      const r = await send(pack({ title: doc.title || UNTITLED, html, icon: note.appProperties?.icon, cover, photos }), fileName(doc.title || UNTITLED))
+      setToast(r === 'compartido' ? null : r === 'descargado' ? 'La copia se descargó: adjúntala en WhatsApp o en un correo.' : `La copia quedó en ${r}`)
+    } catch (e) { setToast(null); fail(e) }
+  }
+
+  // Abrir una nota recibida: se elige el archivo y se pregunta en qué libreta va.
+  async function openReceived() {
+    const file = await pickFile()
+    if (!file) return
+    try {
+      const p = unpack(new Uint8Array(await file.arrayBuffer()))
+      setReceived({ p, notebook: notebookId ?? notebooks.find(nb => !isTemplates(nb))?.id ?? '' })
+    } catch (e) { fail(e) }
+  }
+
+  // Queda como una nota propia: sus fotos se suben a tu Drive y sus recordatorios empiezan a sonar en tus aparatos.
+  async function addReceived() {
+    if (!received) return
+    const { p } = received
+    try {
+      const nbId = received.notebook || store.create({ kind: 'notebook' }, 'Mis notas')
+      const ids: Record<string, string> = {}
+      for (const [old, bytes] of Object.entries(p.photos)) ids[old] = await store.addImage(new Blob([bytes as BlobPart], { type: 'image/jpeg' }))
+      const html = p.html.replace(/src="drive:([\w-]+)"/g, (m, id: string) => ids[id] ? `src="drive:${ids[id]}"` : m)
+      const props: Record<string, string> = { kind: 'note', notebook: nbId }
+      if (p.icon) props.icon = p.icon
+      if (p.cover && ids[p.cover]) props.cover = ids[p.cover]
+      const id = store.create(props, p.title, html, 'text/html')
+      setReceived(null)
+      setTrashView(false); setRemindView(false); setNotebookId(nbId)
+      open(id)
+      setToast(`"${p.title || UNTITLED}" se agregó a tus notas.`)
+    } catch (e) { fail(e) }
+  }
+
+  // El aviso corto se va solo.
+  useEffect(() => {
+    if (!toast || toast.endsWith('…')) return
+    const t = setTimeout(() => setToast(null), 6000)
+    return () => clearTimeout(t)
+  }, [toast])
+
   function saveAsTemplate() {
     if (!doc) return
     act(() => {
@@ -568,6 +625,7 @@ export default function App() {
           </div>
           <div className="lista-acciones">
             <button className="principal solo-celular" onClick={() => newNote()}><Plus size={18} /> Nota</button>
+            <button className="btn-icono" onClick={openReceived} title="Abrir una nota recibida (.datheke)" aria-label="Abrir una nota recibida"><FileDown size={18} /></button>
             <select value="" aria-label="Nueva nota desde plantilla" onChange={e => fromTemplate(e.target.value)}>
               <option value="">Desde plantilla…</option>
               {TEMPLATES.map(t => <option key={t.title} value={t.title}>{t.title}</option>)}
@@ -643,6 +701,7 @@ export default function App() {
                 : privacy === 'nota'
                   ? { label: 'Quitar privada (permitir Gemini)', icon: <ShieldOff size={16} />, onClick: () => setPrivate(note, false) }
                   : { label: 'Privada: sin Gemini', icon: <Shield size={16} />, onClick: () => setPrivate(note, true) },
+              { label: 'Enviar copia (WhatsApp, correo…)', icon: <Send size={16} />, onClick: sendCopy },
               { label: 'Guardar como plantilla', icon: <LayoutTemplate size={16} />, onClick: saveAsTemplate },
               { label: 'Borrar nota', icon: <Trash2 size={16} />, onClick: deleteNote, danger: true },
             ]} />
@@ -704,6 +763,29 @@ export default function App() {
       </main>
 
       {update && <UpdateToast update={update} />}
+      {toast && <div className="toast" role="status">{toast}</div>}
+      {received && (() => {
+        const rems = (received.p.html.match(/data-type="recordatorio"/g) ?? []).length
+        const photos = Object.keys(received.p.photos).length
+        return <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Nota recibida">
+          <div className="ventana recibida">
+            <FileDown size={32} className="caja-icono" aria-hidden="true" />
+            <h2>{received.p.icon && `${received.p.icon} `}{received.p.title || UNTITLED}</h2>
+            <p className="caja-nota">Nota recibida{rems ? ` · ${rems} recordatorio${rems > 1 ? 's' : ''}` : ''}{photos ? ` · ${photos} foto${photos > 1 ? 's' : ''}` : ''}.
+              Quedará como una nota tuya: lo que cambies no le llega a quien te la envió{rems ? ', y sus recordatorios sonarán en tus aparatos' : ''}.</p>
+            <label className="recibida-libreta">Libreta
+              <select value={received.notebook} onChange={e => setReceived({ ...received, notebook: e.target.value })}>
+                {notebooks.map(nb => <option key={nb.id} value={nb.id}>{nb.name}</option>)}
+                {!notebooks.length && <option value="">Mis notas (nueva)</option>}
+              </select>
+            </label>
+            <div className="caja-fila">
+              <button className="principal" onClick={addReceived}>Agregar a mis notas</button>
+              <button onClick={() => setReceived(null)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      })()}
       {remDlg && (() => {
         const cur = remDlg.id ? reminders.find(x => x.note.id === remDlg.noteId && x.r.id === remDlg.id)?.r : undefined
         const n = s.files[remDlg.noteId]

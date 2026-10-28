@@ -9,6 +9,7 @@
     "core:default",
     "opener:default",
     "notification:default",
+    "sharekit:default",
     "oauth:allow-start",
     "oauth:allow-cancel",
     {
@@ -19,6 +20,12 @@
         },
         {
           "path": "$DOCUMENT/Datheke/**"
+        },
+        {
+          "path": "$APPCACHE"
+        },
+        {
+          "path": "$APPCACHE/**"
         }
       ]
     },
