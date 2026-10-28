@@ -32,7 +32,10 @@ jobs:
           workspaces: src-tauri
       - run: npm ci
       - run: npm test
-      - run: npx tauri build --bundles nsis
+      - shell: bash
+        run: |
+          set -o pipefail
+          npx tauri build --bundles nsis 2>&1 | tee build.log || { grep -iE "error|warning: unused|failed" build.log | grep -v "^\s*$" | tail -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1; }
         env:
           VITE_GOOGLE_DESKTOP_SECRET: ${{ secrets.GOOGLE_DESKTOP_SECRET }}
       - uses: actions/upload-artifact@v4
@@ -97,7 +100,10 @@ jobs:
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />#' "$m"
           grep -q USE_EXACT_ALARM "$m" || { echo "No se pudo agregar el permiso de alarmas exactas"; exit 1; }
       - run: npx tauri icon public/icon.png
-      - run: npx tauri android build --apk --target aarch64
+      - shell: bash
+        run: |
+          set -o pipefail
+          npx tauri android build --apk --target aarch64 2>&1 | tee build.log || { grep -iE "error|warning: unused|failed" build.log | grep -v "^\s*$" | tail -40 | while IFS= read -r l; do echo "::error::$l"; done; exit 1; }
         env:
           VITE_GOOGLE_DESKTOP_SECRET: ${{ secrets.GOOGLE_DESKTOP_SECRET }}
       - name: Firmar el APK
