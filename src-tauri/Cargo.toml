@@ -19,6 +19,8 @@ tauri-plugin-oauth = "2.1.0"
 tauri-plugin-fs = "2.7.1"
 # Avisos de los recordatorios (Android: programados en el teléfono; Windows: mientras Datheke está en segundo plano).
 tauri-plugin-notification = "2"
+# Enviar copia: el menú de compartir del aparato (WhatsApp, correo…) en Android y Windows.
+tauri-plugin-sharekit = "=0.4.0-rc.7"
 
 # Huella para abrir las notas con clave (solo en el celular).
 [target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]

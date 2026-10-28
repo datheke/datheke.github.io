@@ -1,5 +1,6 @@
 // opener: abre el login de Google en el navegador. oauth: servidor local que recibe la respuesta de Google.
 // fs: escribe la copia visible en Documentos/Datheke (solo ahí, ver capabilities). notification: avisos de recordatorios.
+// sharekit: "Enviar copia" abre el menú de compartir del aparato.
 // En la PC, Datheke queda en segundo plano al cerrar la ventana (iconito junto al reloj) para que los recordatorios
 // suenen, arranca con Windows (oculto) y solo hay una ventana a la vez: abrirlo de nuevo muestra la que ya está.
 #[cfg(desktop)]
@@ -24,7 +25,8 @@ pub fn run() {
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_oauth::init())
     .plugin(tauri_plugin_fs::init())
-    .plugin(tauri_plugin_notification::init());
+    .plugin(tauri_plugin_notification::init())
+    .plugin(tauri_plugin_sharekit::init());
   // biometric: huella para abrir las notas con clave (solo en el celular).
   #[cfg(mobile)]
   let builder = builder.plugin(tauri_plugin_biometric::init());
