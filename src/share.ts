@@ -52,23 +52,21 @@ export async function send(bytes: Uint8Array, name: string): Promise<'compartido
   if (desktop) {
     const fs = await import('@tauri-apps/plugin-fs')
     const { join, appCacheDir, documentDir } = await import('@tauri-apps/api/path')
-    // El menú de compartir lee el archivo desde la carpeta temporal de la app.
-    const dir = await appCacheDir()
-    await fs.mkdir(dir, { recursive: true }).catch(() => {})
-    const path = await join(dir, name)
-    await fs.writeFile(path, bytes)
-    try {
+    if (android) {
+      // El menú de compartir del celular lee el archivo desde la carpeta temporal de la app.
+      const dir = await appCacheDir()
+      await fs.mkdir(dir, { recursive: true }).catch(() => {})
+      const path = await join(dir, name)
+      await fs.writeFile(path, bytes)
       const { shareFile } = await import('@choochmeque/tauri-plugin-sharekit-api')
-      await shareFile(path, { mimeType: android ? 'application/octet-stream' : 'application/zip', title: name })
+      await shareFile(path, { mimeType: 'application/octet-stream', title: name })
       return 'compartido'
-    } catch (e) {
-      if (android) throw e
-      // Windows sin menú de compartir: queda en Documentos/Datheke/Enviadas para adjuntarlo a mano.
-      const rel = `Datheke/Enviadas/${name}`
-      await fs.mkdir('Datheke/Enviadas', { baseDir: fs.BaseDirectory.Document, recursive: true })
-      await fs.writeFile(rel, bytes, { baseDir: fs.BaseDirectory.Document })
-      return await join(await documentDir(), rel)
     }
+    // Windows: queda en Documentos/Datheke/Enviadas para adjuntarlo en WhatsApp o un correo.
+    const rel = `Datheke/Enviadas/${name}`
+    await fs.mkdir('Datheke/Enviadas', { baseDir: fs.BaseDirectory.Document, recursive: true })
+    await fs.writeFile(rel, bytes, { baseDir: fs.BaseDirectory.Document })
+    return await join(await documentDir(), rel)
   }
   const file = new File([bytes as BlobPart], name, { type: 'application/octet-stream' })
   // Celular y Mac/iPhone en el navegador: el menú de compartir del sistema, si lo tiene.
