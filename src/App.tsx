@@ -1,5 +1,5 @@
 import {
-  ChevronLeft, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
+  Bell, Check, ChevronLeft, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
   PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
@@ -17,6 +17,8 @@ import { MoreMenu, Resizer } from './ui.tsx'
 import { Account, UpdateToast } from './Account.tsx'
 import { checkUpdate, type Update } from './update.ts'
 import { ReminderHelp, type ReminderMode } from './Reminders.tsx'
+import { ReminderChip, ReminderDialog } from './ReminderDialog.tsx'
+import { groupOf, nextTime, whenLabel, type Group, type Repeat } from './remind.ts'
 import * as vault from './vault.ts'
 import { buildZip, changedSince, EVERY_MS, NeedsPermission, upload as uploadBackup } from './backup.ts'
 import { canOfferPrint } from './print.ts'
@@ -65,6 +67,8 @@ export default function App() {
   const [ready, setReady] = useState(false) // copia local cargada
   const [notebookId, setNotebookId] = useState<string | null>(null) // null = todas
   const [trashView, setTrashView] = useState(false) // la lista muestra el basurero
+  const [remindView, setRemindView] = useState(false) // la lista muestra los recordatorios
+  const [reminderFor, setReminderFor] = useState<DriveFile | null>(null) // ventana de recordatorio de esta nota
   const [noteId, setNoteId] = useState<string | null>(null)
   const [picker, setPicker] = useState(false) // selector de ícono de la nota
   const [problem, setProblem] = useState<string | null>(null) // error de una acción ('auth' = sesión vencida)
@@ -101,6 +105,12 @@ export default function App() {
   const siblings = (parent?: string) => visible.filter(n => shownParent(n) === parent).sort(firstUnordered(byDate))
   const tree = (parent?: string, depth = 0): [DriveFile, number][] =>
     siblings(parent).flatMap(n => [[n, depth] as [DriveFile, number], ...tree(n.id, depth + 1)])
+  // Recordatorios: las notas que tienen uno, por fecha (remind.ts).
+  const reminders = allNotes.filter(n => n.appProperties?.recordatorio)
+    .sort((a, b) => (a.appProperties!.recordatorio).localeCompare(b.appProperties!.recordatorio))
+  const isDone = (n: DriveFile) => n.appProperties?.hecho === 'true'
+  const pendingReminders = reminders.filter(n => !isDone(n)).length
+  const overdue = reminders.some(n => groupOf(n.appProperties!.recordatorio, isDone(n)) === 'vencido')
   const list = trashView ? trash.map(n => [n, 0] as [DriveFile, number]) : tree()
   const saveOrder = (items: DriveFile[], from: number, to: number) =>
     reorder(items, from, to).forEach(({ id, orden }) => store.patch(id, { props: { orden } }))
@@ -372,6 +382,16 @@ export default function App() {
     } catch (e) { fail(e) }
   }
 
+  // Recordatorio: guardar, quitar y marcar hecho (uno que se repite pasa a la siguiente vez).
+  const saveReminder = (n: DriveFile, at: string, repeat: Repeat) =>
+    store.patch(n.id, { props: { recordatorio: at, repite: repeat || null, hecho: null } })
+  const removeReminder = (n: DriveFile) => store.patch(n.id, { props: { recordatorio: null, repite: null, hecho: null } })
+  function doneReminder(n: DriveFile) {
+    const r = n.appProperties?.repite as Repeat | undefined
+    if (r) store.patch(n.id, { props: { recordatorio: nextTime(n.appProperties!.recordatorio, r) } })
+    else store.patch(n.id, { props: { hecho: 'true' } })
+  }
+
   // Borrar manda al basurero (con sus subnotas); se puede restaurar durante 30 días.
   function deleteNote() {
     if (!note) return
@@ -407,6 +427,29 @@ export default function App() {
     setNoteId(null)
   }
 
+  // La lista de recordatorios: vencidos, hoy, próximos y hechos. Las notas con clave no muestran su título si la caja está cerrada.
+  const GROUPS: [Group, string][] = [['vencido', 'Vencidos'], ['hoy', 'Hoy'], ['proximo', 'Próximos'], ['hecho', 'Hechos']]
+  function remindersList() {
+    if (!reminders.length) return <p className="vacio">Sin recordatorios. En una nota: menú ⋯ → Recordatorio.</p>
+    return <>{GROUPS.map(([g, label]) => {
+      const items = reminders.filter(n => groupOf(n.appProperties!.recordatorio, isDone(n)) === g)
+      if (!items.length) return null
+      return <section key={g} className={`grupo-recordatorios ${g}`}>
+        <h3>{label} <small>{items.length}</small></h3>
+        {items.map(n => (
+          <div key={n.id} className="nota-fila">
+            <button className={n.id === noteId ? 'nota activa' : 'nota'} onClick={() => open(n.id)}>
+              <strong>{isLocked(n) && !unlocked ? '🔐 Nota con clave' : <>{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}</>}</strong>
+              <span className={`tarjeta-recordatorio ${g}`}><Bell size={12} aria-hidden="true" /> {whenLabel(n.appProperties!.recordatorio)}
+                {n.appProperties?.repite && ` · ${({ dia: 'cada día', semana: 'cada semana', mes: 'cada mes' } as Record<string, string>)[n.appProperties.repite]}`}</span>
+            </button>
+            {g !== 'hecho' && <button className="btn-icono marcar-hecho" onClick={() => doneReminder(n)} title="Marcar como hecho" aria-label="Marcar como hecho"><Check size={16} /></button>}
+          </div>
+        ))}
+      </section>
+    })}</>
+  }
+
   if (!session) return (
     <div className="login">
       <h1><img className="logo" src="./logo.png" alt="Datheke" width="220" height="220" /></h1>
@@ -422,8 +465,11 @@ export default function App() {
       <nav className="libretas" aria-label="Libretas">
         <Account email={session.email} onLogout={logout} update={update} reminderMode={reminderMode} onReminderHelp={setReminderHelp} />
         <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
-        <button className={notebookId === null && !trashView ? 'item activo' : 'item'} onClick={() => { setNotebookId(null); setTrashView(false) }}>
+        <button className={notebookId === null && !trashView && !remindView ? 'item activo' : 'item'} onClick={() => { setNotebookId(null); setTrashView(false); setRemindView(false) }}>
           <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
+        </button>
+        <button className={remindView ? 'item activo' : 'item'} onClick={() => { setRemindView(true); setTrashView(false); setNotebookId(null) }}>
+          <Bell size={16} /><span>Recordatorios</span><small className={overdue ? 'vencidos' : undefined}>{pendingReminders || ''}</small>
         </button>
         <div className="seccion">
           <span>Libretas</span>
@@ -434,7 +480,7 @@ export default function App() {
         </div>
         {notebooks.map(nb => (
           <div key={nb.id} className={notebookId === nb.id ? 'item activo' : 'item'} data-grupo="libretas">
-            <button className="item-nombre" onClick={() => { setNotebookId(nb.id); setTrashView(false) }}>
+            <button className="item-nombre" onClick={() => { setNotebookId(nb.id); setTrashView(false); setRemindView(false) }}>
               <Notebook size={16} /><span>{nb.name}</span><small>{countOf(nb.id)}</small>
             </button>
             {isPrivate(nb) && notebookId !== nb.id && <ShieldCheck size={14} className="privada-icono" aria-label="Libreta privada" />}
@@ -454,7 +500,7 @@ export default function App() {
               onPointerDown={e => startSort(e, (from, to) => saveOrder(notebooks, from, to))}><GripVertical size={14} /></button>
           </div>
         ))}
-        <button className={trashView ? 'item activo basurero' : 'item basurero'} onClick={() => { setTrashView(true); setNotebookId(null) }}>
+        <button className={trashView ? 'item activo basurero' : 'item basurero'} onClick={() => { setTrashView(true); setRemindView(false); setNotebookId(null) }}>
           <Trash2 size={16} /><span>Basurero</span><small>{trash.length || ''}</small>
         </button>
         <div className="respaldo">
@@ -470,8 +516,8 @@ export default function App() {
       <section className="lista" aria-label="Notas">
         <header>
           <div className="lista-titulo">
-            <h2>{trashView ? 'Basurero' : notebookName ?? 'Todas las notas'}</h2>
-            <small>{list.length}</small>
+            <h2>{remindView ? 'Recordatorios' : trashView ? 'Basurero' : notebookName ?? 'Todas las notas'}</h2>
+            <small>{remindView ? reminders.length : list.length}</small>
             <button className="btn-icono" onClick={() => store.sync()} title="Sincronizar" aria-label="Sincronizar"><RefreshCw size={16} /></button>
             {trashView && trash.length > 0 && <button className="vaciar" onClick={emptyTrash}>Vaciar</button>}
           </div>
@@ -486,7 +532,7 @@ export default function App() {
           </div>
         </header>
         <div className="tarjetas">
-          {!ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
+          {remindView ? remindersList() : !ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
             : list.length === 0 ? <p className="vacio">{trashView ? 'El basurero está vacío' : 'Sin notas'}</p>
             : list.map(([n, depth]) => (
               // Se ordena entre sus hermanas: las del mismo nivel y la misma nota madre (data-grupo).
@@ -497,6 +543,8 @@ export default function App() {
                   </strong>
                   {s.texts[n.id] && !(isLocked(n) && !unlocked) && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
                   {isLocked(n) && !unlocked && <span className="resumen">🔐 Nota con clave</span>}
+                  {!trashView && n.appProperties?.recordatorio && !isDone(n) && <span className={`tarjeta-recordatorio ${groupOf(n.appProperties.recordatorio, false)}`}>
+                    <Bell size={12} aria-hidden="true" /> {whenLabel(n.appProperties.recordatorio)}</span>}
                   {trashView && <span className="resumen basurero-dias">Se elimina en {daysLeft(n)} días</span>}
                   <small>{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
                 </button>
@@ -550,6 +598,7 @@ export default function App() {
                 : privacy === 'nota'
                   ? { label: 'Quitar privada (permitir Gemini)', icon: <ShieldOff size={16} />, onClick: () => setPrivate(note, false) }
                   : { label: 'Privada: sin Gemini', icon: <Shield size={16} />, onClick: () => setPrivate(note, true) },
+              { label: note.appProperties?.recordatorio ? 'Cambiar recordatorio' : 'Recordatorio', icon: <Bell size={16} />, onClick: () => setReminderFor(note) },
               { label: 'Guardar como plantilla', icon: <LayoutTemplate size={16} />, onClick: saveAsTemplate },
               { label: 'Borrar nota', icon: <Trash2 size={16} />, onClick: deleteNote, danger: true },
             ]} />
@@ -596,6 +645,8 @@ export default function App() {
             {picker && !locked && <EmojiPicker onPick={icon => { store.patch(note.id, { props: { icon } }); setPicker(false) }} />}
             {doc ? <>
               <input className="titulo" value={doc.title} placeholder="Título" readOnly={locked} onChange={e => store.edit(note.id, { title: e.target.value })} />
+              {note.appProperties?.recordatorio && !trashed && <ReminderChip at={note.appProperties.recordatorio} repeat={note.appProperties.repite}
+                done={isDone(note)} onEdit={() => setReminderFor(note)} onDone={() => doneReminder(note)} />}
               <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} content={doc.text} onChange={text => store.edit(note.id, { text })}
                 notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked}
                 geminiKey={geminiKey} onGeminiKey={setGeminiKey}
@@ -607,6 +658,10 @@ export default function App() {
       </main>
 
       {update && <UpdateToast update={update} />}
+      {reminderFor && <ReminderDialog at={reminderFor.appProperties?.recordatorio} repeat={reminderFor.appProperties?.repite as Repeat}
+        locked={isLocked(reminderFor)} offline={s.offline} onClose={() => setReminderFor(null)}
+        onSave={(at, r) => { saveReminder(reminderFor, at, r); setReminderFor(null) }}
+        onRemove={() => { removeReminder(reminderFor); setReminderFor(null) }} />}
       {reminderHelp && <ReminderHelp mode={reminderHelp} current={reminderMode} onClose={() => setReminderHelp(null)}
         onUse={m => { setReminderMode(m); setReminderHelp(null) }} />}
 
