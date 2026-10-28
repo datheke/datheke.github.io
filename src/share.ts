@@ -80,7 +80,10 @@ export async function send(bytes: Uint8Array, name: string): Promise<'compartido
   const a = document.createElement('a')
   a.href = URL.createObjectURL(file)
   a.download = name
+  a.style.display = 'none'
+  document.body.append(a)
   a.click()
+  a.remove()
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000)
   return 'descargado'
 }
