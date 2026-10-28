@@ -1,5 +1,5 @@
 import {
-  Bell, Check, CheckSquare, ChevronLeft, CircleCheck, Circle, X as XIcon, FolderInput, RotateCcw, FileDown, Send, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
+  Bell, Users, Check, CheckSquare, ChevronLeft, CircleCheck, Circle, X as XIcon, FolderInput, RotateCcw, FileDown, Send, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
   PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
@@ -9,7 +9,9 @@ import { AuthError, OfflineError, readNote, type DriveFile } from './drive.ts'
 import Editor, { Cover, EmojiPicker } from './Editor.tsx'
 import { startFolder } from './folder.ts'
 import { shortDate } from './format.ts'
-import { imageBlob, pickImage, uploadCover } from './images.ts'
+import { imageBlob, imageDataUrl, pickImage, uploadCover } from './images.ts'
+import * as shared from './shared.ts'
+import { CopyDialog, ReceiveDialog, ShareDialog } from './Share.tsx'
 import { cleanReminders, fileName, pack, photoIds, pickFile, send, takeReceived, unpack, type Packed } from './share.ts'
 import * as store from './sync.ts'
 import { TEMPLATES } from './templates.ts'
@@ -87,6 +89,9 @@ export default function App() {
   const [remindView, setRemindView] = useState(false) // la lista muestra los recordatorios
   // Ventana de un recordatorio: uno que ya está en una línea (id) o uno nuevo (insert lo pone en la línea del cursor).
   const [received, setReceived] = useState<{ p: Packed; notebook: string } | null>(null) // nota .datheke recibida, por agregar
+  const [shareOpen, setShareOpen] = useState(false) // ventana "Compartir"
+  const [recvMenu, setRecvMenu] = useState(false) // "Nota recibida": archivo o compartida conmigo
+  const [copyAsk, setCopyAsk] = useState<{ who: string; resolve: (v: 'copia' | 'quitar' | null) => void } | null>(null)
   const [toast, setToast] = useState<string | null>(null) // aviso corto abajo (se va solo)
   const [remDlg, setRemDlg] = useState<{ noteId: string; id?: string; label: string; insert?: (r: Reminder) => void } | null>(null)
   const [focusRem, setFocusRem] = useState<string>() // al abrir una nota desde la lista: ir a esa línea
@@ -306,6 +311,7 @@ export default function App() {
 
   // Proteger: la primera vez se crea la clave; si la caja está cerrada, se abre primero.
   function protect(n: DriveFile) {
+    if (n.appProperties?.compartida && n.appProperties?.fin !== 'true') return setToast('Las notas compartidas todavía no pueden tener clave (llega en una próxima versión).')
     const go = () => store.patch(n.id, { props: { protegida: 'true' } })
     if (!verifier) setKeyDialog({ mode: 'crear', then: go })
     else if (!vault.unlocked()) setKeyDialog({ mode: 'abrir', then: go })
@@ -518,6 +524,229 @@ export default function App() {
     } catch (e) { fail(e) }
   }
 
+  // ---- Notas compartidas (shared.ts) ----
+  const shareOf = (n?: DriveFile) => {
+    const p = n?.appProperties ?? {}
+    return p.compartida ? { id: p.compartida, owner: p.rol === 'dueño', fin: p.fin === 'true', estado: p.estado, dueno: p.dueno, por: p.por, en: p.en,
+      con: Object.keys(p).filter(k => /^con\d+$/.test(k)).sort().map(k => p[k]) } : undefined
+  }
+  const conProps = (n: DriveFile, emails: string[]) => {
+    const props: Record<string, string | null> = {}
+    for (const k of Object.keys(n.appProperties ?? {})) if (/^con\d+$/.test(k)) props[k] = null
+    ;[...new Set(emails.map(e => e.toLowerCase()))].forEach((e, i) => { props[`con${i}`] = e })
+    return props
+  }
+  const askCopy = (who: string) => new Promise<'copia' | 'quitar' | null>(resolve => setCopyAsk({ who, resolve: v => { setCopyAsk(null); resolve(v) } }))
+  const docText = (id: string) => store.getState().texts[id]?.text ?? ''
+  // Las fotos de Datheke de la nota pasan a ir dentro del texto (la otra persona no puede ver tu carpeta oculta).
+  async function inlinePhotos(html: string) {
+    let out = html
+    for (const id of photoIds(html)) out = out.split(`src="drive:${id}"`).join(`src="${await imageDataUrl(await imageBlob(id))}"`)
+    return out
+  }
+
+  // Compartir la nota abierta con uno o más correos (la primera vez la nota pasa a "Mi unidad").
+  async function startShare(emails: string[]) {
+    if (!note || !doc) return
+    if (isLocked(note)) throw new Error('Primero quita la clave a esta nota: las notas con clave no se comparten.')
+    const sh = shareOf(note)
+    if (sh && !sh.owner) throw new Error('Solo quien la compartió puede invitar a más personas.')
+    const title = doc.title || UNTITLED
+    let fileId = sh?.id
+    if (!fileId) {
+      const html = await inlinePhotos(doc.text)
+      const remote = await shared.create(title, html)
+      fileId = remote.id
+      if (html !== doc.text) store.replaceText(note.id, html)
+      shared.saveState(fileId, { base: remote.modifiedTime, sent: shared.hash(html + title) })
+    }
+    await shared.invite(fileId, emails, title)
+    store.patch(note.id, { props: { compartida: fileId, rol: 'dueño', ...conProps(note, [...(sh?.con ?? []), ...emails]) } })
+    setToast(`Listo: compartida con ${emails.join(', ')}. Le llegó un correo de Google con cómo abrirla.`)
+  }
+
+  // Quitar a una persona (desde la ventana Compartir): con copia se le quita el permiso; sin copia, su Datheke la borra.
+  async function removePerson(p: shared.Person): Promise<boolean> {
+    const sh = shareOf(note)
+    if (!note || !sh) return false
+    const choice = await askCopy(p.emailAddress ?? 'esta persona')
+    if (!choice) return false
+    try {
+      if (choice === 'copia') await shared.uninvite(sh.id, p.id)
+      else await shared.setProps(sh.id, { [`q${Math.abs(shared.hash(p.emailAddress ?? ''))}`]: p.emailAddress ?? '' })
+      store.patch(note.id, { props: conProps(note, sh.con.filter(e => e !== p.emailAddress?.toLowerCase())) })
+      setToast(choice === 'copia' ? `${p.emailAddress} se quedó con una copia.` : `Se le quitará a ${p.emailAddress} al sincronizar su Datheke.`)
+      return true
+    } catch (e) { fail(e); return false }
+  }
+
+  // Antes de mandar notas al basurero: las con clave no se borran; las compartidas preguntan qué pasa con la otra persona.
+  // Devuelve null si se canceló, o si ya se preguntó (para no preguntar dos veces).
+  async function beforeDelete(ns: DriveFile[]): Promise<'ok' | 'preguntado' | null> {
+    const keyed = ns.filter(n => isLocked(n))
+    if (keyed.length) {
+      setToast(`Primero quita la clave a ${keyed.map(n => `«${n.name || UNTITLED}»`).join(', ')}: las notas con clave no se pueden borrar.`)
+      return null
+    }
+    const mine = ns.filter(n => { const sh = shareOf(n); return sh?.owner && !sh.estado })
+    const theirs = ns.filter(n => { const sh = shareOf(n); return sh && !sh.owner && !sh.fin })
+    if (!mine.length && !theirs.length) return 'ok'
+    let choice: 'copia' | 'quitar' | null = null
+    if (mine.length) {
+      const who = [...new Set(mine.flatMap(n => shareOf(n)!.con))].join(', ') || 'otras personas'
+      choice = await askCopy(who)
+      if (!choice) return null
+    }
+    if (theirs.length && !confirm(`Saldrás de ${theirs.length === 1 ? `«${theirs[0].name || UNTITLED}»` : `${theirs.length} notas compartidas`}: la nota de quien la compartió sigue igual. ¿Salir y borrarla de tus notas?`)) return null
+    try {
+      setToast('Dejando de compartir…')
+      for (const n of mine) {
+        const sh = shareOf(n)!
+        if (choice === 'copia') {
+          for (const p of await shared.people(sh.id)) if (p.role !== 'owner') await shared.uninvite(sh.id, p.id)
+        } else await shared.write(sh.id, '', n.name || UNTITLED, { estado: 'quitada' })
+        store.patch(n.id, { props: { estado: choice === 'copia' ? 'pausada' : 'quitada' } })
+      }
+      for (const n of theirs) {
+        await shared.leave(shareOf(n)!.id, session!.email)
+        store.patch(n.id, { props: { fin: 'true' } })
+      }
+      setToast(null)
+      return 'preguntado'
+    } catch (e) { setToast(null); fail(e); return null }
+  }
+
+  // Al restaurar del basurero una nota que era compartida (dueño): se vuelve a compartir con las mismas personas.
+  async function reshare(n: DriveFile) {
+    const sh = shareOf(n)
+    if (!sh?.owner || !sh.estado) return
+    try {
+      if (sh.estado === 'quitada') await shared.write(sh.id, docText(n.id), n.name || UNTITLED, { estado: null })
+      const have = new Set((await shared.people(sh.id)).map(p => p.emailAddress?.toLowerCase()))
+      const missing = sh.con.filter(e => !have.has(e))
+      if (missing.length) await shared.invite(sh.id, missing, n.name || UNTITLED)
+      const remote = await shared.get(sh.id)
+      shared.saveState(sh.id, { base: remote.modifiedTime, sent: shared.hash(docText(n.id) + (n.name || UNTITLED)) })
+      store.patch(n.id, { props: { estado: null } })
+      setToast(`«${n.name || UNTITLED}» se volvió a compartir con ${sh.con.join(', ')}.`)
+    } catch (e) { fail(e) }
+  }
+
+  // Nota compartida conmigo: se elige en la ventana de Google y queda en mis notas (o vuelve, si ya estaba).
+  async function addShared() {
+    setRecvMenu(false)
+    try {
+      const fileId = await shared.pick()
+      if (!fileId) return
+      const meta = await shared.get(fileId)
+      if (meta.appProperties?.datheke !== 'nota') throw new Error('Ese archivo no es una nota compartida de Datheke.')
+      const html = await shared.read(fileId)
+      const title = meta.name || UNTITLED
+      const owner = meta.owners?.[0]
+      const existing = allNotes.find(n => n.appProperties?.compartida === fileId)
+      let id: string
+      if (existing) {
+        id = existing.id
+        store.patch(id, { props: { fin: null } })
+        store.edit(id, { title })
+        store.replaceText(id, html)
+      } else {
+        const nbId = notebookId ?? notebooks.find(nb => !isTemplates(nb))?.id ?? store.create({ kind: 'notebook' }, 'Mis notas')
+        id = store.create({ kind: 'note', notebook: nbId, compartida: fileId, rol: 'invitado', dueno: owner?.displayName || owner?.emailAddress || '' }, title, html, 'text/html')
+      }
+      shared.saveState(fileId, { base: meta.modifiedTime, sent: shared.hash(html + title) })
+      setTrashView(false); setRemindView(false)
+      open(id)
+      setToast(`«${title}» está en tus notas: lo que cambies le llega a ${owner?.displayName || 'quien la compartió'}.`)
+    } catch (e) {
+      const st = shared.status(e)
+      fail(st === 403 || st === 404 ? new Error('Google no dejó abrir esa nota. Pide que te la compartan de nuevo, o agrégala desde datheke.github.io.') : e)
+    }
+  }
+
+  // Sincronizar las notas compartidas: bajar lo que cambió la otra persona y subir lo de aquí.
+  const shBusy = useRef(false)
+  async function syncShared(only?: string) {
+    if (shBusy.current || !session) return
+    shBusy.current = true
+    const state = shared.readState()
+    try {
+      for (const n of allNotes) {
+        const sh = shareOf(n)
+        if (!sh || sh.fin || sh.estado || (only && n.id !== only)) continue
+        if (!store.getState().texts[n.id]) continue // su texto aún no está en este aparato (o tiene clave cerrada): no se toca
+        const title = store.getState().texts[n.id]?.title ?? n.name ?? ''
+        const local = docText(n.id)
+        const st = state[sh.id]
+        let meta: shared.Remote
+        try { meta = await shared.get(sh.id) } catch (e) {
+          const code = shared.status(e)
+          if (!sh.owner && (code === 404 || code === 403)) { // te la dejaron de compartir: queda tu copia
+            store.patch(n.id, { props: { fin: 'true' } })
+            setToast(`${sh.dueno || 'Quien la compartió'} dejó de compartir «${title || UNTITLED}». Te quedó una copia como nota tuya.`)
+          }
+          continue
+        }
+        const me = session.email.toLowerCase()
+        if (!sh.owner && (meta.appProperties?.estado === 'quitada' || Object.values(meta.appProperties ?? {}).some(v => v.toLowerCase() === me))) {
+          await shared.leave(sh.id, session.email).catch(() => {})
+          store.remove(n.id)
+          shared.saveState(sh.id, null)
+          if (noteId === n.id) setNoteId(null)
+          setToast(`${sh.dueno || 'Quien la compartió'} dejó de compartir «${title || UNTITLED}».`)
+          continue
+        }
+        const dirty = !!st && shared.hash(local + title) !== st.sent
+        let base = st?.base
+        if (meta.modifiedTime !== st?.base) {
+          const remote = await shared.read(sh.id)
+          if (dirty && remote !== local) {
+            // Los dos cambiaron a la vez: lo de la otra persona queda en una nota aparte, nada se pierde.
+            const who = meta.lastModifyingUser?.displayName || 'la otra persona'
+            store.create({ kind: 'note', notebook: n.appProperties?.notebook ?? '' }, `${meta.name || UNTITLED} (versión de ${who})`, remote, 'text/html')
+            setToast(`«${title}» cambió aquí y en el aparato de ${who} a la vez: su versión quedó en una nota aparte.`)
+            const saved = await shared.write(sh.id, local, title || UNTITLED)
+            state[sh.id] = { base: saved.modifiedTime, sent: shared.hash(local + title) }
+          } else {
+            if (meta.name && meta.name !== title) store.edit(n.id, { title: meta.name })
+            if (remote !== local) store.replaceText(n.id, remote)
+            state[sh.id] = { base: meta.modifiedTime, sent: shared.hash(remote + (meta.name ?? title)) }
+          }
+          base = state[sh.id].base
+        } else if (dirty) {
+          const saved = await shared.write(sh.id, local, title || UNTITLED)
+          state[sh.id] = { base: saved.modifiedTime, sent: shared.hash(local + title) }
+          meta = saved
+          base = saved.modifiedTime
+        }
+        if (base) shared.saveState(sh.id, state[sh.id])
+        // "Modificado por": cuando el último cambio es de otra persona.
+        const u = meta.lastModifyingUser
+        const por = u && !u.me && u.emailAddress?.toLowerCase() !== me ? (u.displayName || u.emailAddress || '') : ''
+        if ((n.appProperties?.por ?? '') !== por) store.patch(n.id, { props: { por: por || null, en: por ? meta.modifiedTime : null } })
+      }
+    } catch (e) { console.error('Notas compartidas', e) } finally { shBusy.current = false }
+  }
+  const syncSharedRef = useRef(syncShared)
+  syncSharedRef.current = syncShared
+  const hasShared = allNotes.some(n => n.appProperties?.compartida && n.appProperties?.fin !== 'true')
+  useEffect(() => {
+    if (!ready || !hasShared) return
+    syncSharedRef.current()
+    const every = setInterval(() => { if (document.visibilityState === 'visible') syncSharedRef.current() }, 20_000)
+    const back = () => { if (document.visibilityState === 'visible') syncSharedRef.current() }
+    document.addEventListener('visibilitychange', back)
+    return () => { clearInterval(every); document.removeEventListener('visibilitychange', back) }
+  }, [ready, hasShared])
+  // Lo que escribes en una nota compartida se sube a los 2 segundos.
+  const openShared = note?.appProperties?.compartida ? note.id : undefined
+  const openText = openShared ? s.texts[openShared]?.text + (s.texts[openShared]?.title ?? '') : ''
+  useEffect(() => {
+    if (!openShared || !ready) return
+    const t = setTimeout(() => syncSharedRef.current(openShared), 2000)
+    return () => clearTimeout(t)
+  }, [openShared, openText, ready])
+
   // Abrir con Datheke: al abrir la app o volver a ella, si llegó un archivo .datheke desde otra app (WhatsApp, doble clic…).
   const takeRef = useRef((_b: Uint8Array) => {})
   takeRef.current = bytes => {
@@ -594,10 +823,12 @@ export default function App() {
 
 
   // Borrar manda al basurero (con sus subnotas); se puede restaurar durante 30 días.
-  function deleteNote() {
+  async function deleteNote() {
     if (!note) return
     const subs = descendants(note.id)
-    if (!confirm(`¿Mandar "${note.name || UNTITLED}"${subs.length ? ` y sus ${subs.length} subnotas` : ''} al basurero? Puedes restaurarla durante 30 días.`)) return
+    const pre = await beforeDelete([note, ...subs])
+    if (!pre) return
+    if (pre === 'ok' && !confirm(`¿Mandar "${note.name || UNTITLED}"${subs.length ? ` y sus ${subs.length} subnotas` : ''} al basurero? Puedes restaurarla durante 30 días.`)) return
     const when = nowIso()
     for (const n of [note, ...subs]) store.patch(n.id, { props: { borrada: when } })
     setNoteId(null)
@@ -611,7 +842,10 @@ export default function App() {
     // Si su libreta ya no existe, vuelve a la primera.
     const home = notebooks.some(nb => nb.id === n.appProperties?.notebook) ? undefined
       : notebooks.find(nb => !isTemplates(nb))?.id
-    for (const t of [n, ...trashedWith(n)]) store.patch(t.id, { props: { borrada: null, ...(home ? { notebook: home } : {}) } })
+    for (const t of [n, ...trashedWith(n)]) {
+      store.patch(t.id, { props: { borrada: null, ...(home ? { notebook: home } : {}) } })
+      reshare(t)
+    }
   }
   function restore(n: DriveFile) {
     restoreOne(n)
@@ -619,15 +853,22 @@ export default function App() {
     setNotebookId(null)
   }
 
+  // Eliminar para siempre: si era una nota que compartí, se borra también de "Mi unidad".
+  function forget(t: DriveFile) {
+    const sh = shareOf(t)
+    if (sh?.owner) shared.remove(sh.id).catch(e => console.error('Borrar la compartida', e))
+    if (sh) shared.saveState(sh.id, null)
+    store.remove(t.id)
+  }
   function deleteForever(n: DriveFile) {
     if (!confirm(`¿Eliminar "${n.name || UNTITLED}" para siempre? Esto no se puede deshacer.`)) return
-    for (const t of [n, ...trashedWith(n)]) store.remove(t.id)
+    for (const t of [n, ...trashedWith(n)]) forget(t)
     setNoteId(null)
   }
 
   function emptyTrash() {
     if (!confirm(`¿Vaciar el basurero? Se eliminan ${trash.length} notas para siempre.`)) return
-    for (const t of trash) store.remove(t.id)
+    for (const t of trash) forget(t)
     setNoteId(null)
   }
 
@@ -670,10 +911,12 @@ export default function App() {
   const withSubs = (ns: DriveFile[]) => [...new Map(ns.flatMap(n => [n, ...descendants(n.id)]).map(n => [n.id, n])).values()]
   const plural = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`
 
-  function deleteSelected() {
+  async function deleteSelected() {
     const all = withSubs(chosen)
     const subs = all.length - chosen.length
-    if (!all.length || !confirm(`¿Mandar ${plural(chosen.length, 'nota', 'notas')}${subs ? ` (y ${plural(subs, 'subnota', 'subnotas')})` : ''} al basurero? Puedes restaurarlas durante 30 días.`)) return
+    const pre = all.length ? await beforeDelete(all) : null
+    if (!pre) return
+    if (pre === 'ok' && !confirm(`¿Mandar ${plural(chosen.length, 'nota', 'notas')}${subs ? ` (y ${plural(subs, 'subnota', 'subnotas')})` : ''} al basurero? Puedes restaurarlas durante 30 días.`)) return
     const when = nowIso()
     for (const n of all) store.patch(n.id, { props: { borrada: when } })
     if (noteId && all.some(n => n.id === noteId)) setNoteId(null)
@@ -697,7 +940,7 @@ export default function App() {
   function deleteSelectedForever() {
     const all = [...new Map(chosen.flatMap(n => [n, ...trashedWith(n)]).map(n => [n.id, n])).values()]
     if (!all.length || !confirm(`¿Eliminar ${plural(all.length, 'nota', 'notas')} para siempre? Esto no se puede deshacer.`)) return
-    for (const t of all) store.remove(t.id)
+    for (const t of all) forget(t)
     if (noteId && all.some(n => n.id === noteId)) setNoteId(null)
     setSelected(null)
   }
@@ -825,7 +1068,7 @@ export default function App() {
           </div>
           <div className="lista-acciones">
             <button className="principal solo-celular" onClick={() => newNote()}><Plus size={18} /> Nota</button>
-            <button className="recibir" onClick={openReceived} title="Abrir una nota que te enviaron (archivo .datheke)"><FileDown size={18} /> Nota recibida</button>
+            <button className="recibir" onClick={() => setRecvMenu(true)} title="Abrir una nota que te enviaron o compartieron"><FileDown size={18} /> Nota recibida</button>
             <select value="" aria-label="Nueva nota desde plantilla" onChange={e => fromTemplate(e.target.value)}>
               <option value="">Desde plantilla…</option>
               {TEMPLATES.map(t => <option key={t.title} value={t.title}>{t.title}</option>)}
@@ -854,7 +1097,7 @@ export default function App() {
                   {!trashView && nextOf(n) && <span className={`tarjeta-recordatorio ${groupOf(nextOf(n)!.r)}`}>
                     <Bell size={12} aria-hidden="true" /> {isLocked(n) ? 'Recordatorio' : nextOf(n)!.label}: {chipText(nextOf(n)!.r)}</span>}
                   {trashView && <span className="resumen basurero-dias">Se elimina en {daysLeft(n)} días</span>}
-                  <small>{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
+                  <small>{shareOf(n) && !shareOf(n)!.fin && !shareOf(n)!.estado && <Users size={12} aria-label="Compartida" />}{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
                 </button>
                 {!selected && <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
                   onPointerDown={e => startSort(e, (from, to) => saveOrder(siblings(shownParent(n)), from, to))}><GripVertical size={16} /></button>}
@@ -906,6 +1149,7 @@ export default function App() {
                 : privacy === 'nota'
                   ? { label: 'Quitar privada (permitir Gemini)', icon: <ShieldOff size={16} />, onClick: () => setPrivate(note, false) }
                   : { label: 'Privada: sin Gemini', icon: <Shield size={16} />, onClick: () => setPrivate(note, true) },
+              { label: shareOf(note) && !shareOf(note)!.owner ? 'Compartida contigo…' : shareOf(note) ? 'Compartida: personas…' : 'Compartir con…', icon: <Users size={16} />, onClick: () => setShareOpen(true) },
               { label: 'Enviar copia (WhatsApp, correo…)', icon: <Send size={16} />, onClick: sendCopy },
               { label: 'Guardar como plantilla', icon: <LayoutTemplate size={16} />, onClick: saveAsTemplate },
               { label: 'Borrar nota', icon: <Trash2 size={16} />, onClick: deleteNote, danger: true },
@@ -953,8 +1197,18 @@ export default function App() {
             {picker && !locked && <EmojiPicker onPick={icon => { store.patch(note.id, { props: { icon } }); setPicker(false) }} />}
             {doc ? <>
               <input className="titulo" value={doc.title} placeholder="Título" readOnly={locked} onChange={e => store.edit(note.id, { title: e.target.value })} />
+              {(() => {
+                const sh = shareOf(note)
+                if (!sh) return null
+                if (sh.fin) return <p className="compartida-barra fin">Ya no está compartida: es tu copia.</p>
+                if (sh.estado) return null
+                return <button className="compartida-barra" onClick={() => setShareOpen(true)}>
+                  <Users size={14} aria-hidden="true" /> {sh.owner ? `Compartida con ${sh.con.join(', ') || '…'}` : `Compartida por ${sh.dueno || 'otra persona'}`}
+                  {sh.por && <span> · Modificado por {sh.por}{sh.en ? `, ${shortDate(sh.en)}` : ''}</span>}
+                </button>
+              })()}
 
-              <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} content={doc.text} onChange={text => store.edit(note.id, { text })}
+              <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} inlineImages={!!shareOf(note)} content={doc.text} onChange={text => store.edit(note.id, { text })}
                 notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked}
                 geminiKey={geminiKey} onGeminiKey={setGeminiKey}
                 privacy={privacy} onPrivate={() => setPrivate(note, true)}
@@ -969,6 +1223,11 @@ export default function App() {
 
       {update && <UpdateToast update={update} />}
       {toast && <div className="toast" role="status">{toast}</div>}
+      {shareOpen && note && <ShareDialog title={doc?.title || UNTITLED} fileId={shareOf(note)?.id} owner={!shareOf(note) || shareOf(note)!.owner}
+        ownerName={shareOf(note)?.dueno} myEmail={session.email} onShare={startShare} onRemove={removePerson}
+        onLeave={() => { setShareOpen(false); deleteNote() }} onClose={() => setShareOpen(false)} />}
+      {copyAsk && <CopyDialog who={copyAsk.who} onPick={copyAsk.resolve} />}
+      {recvMenu && <ReceiveDialog onClose={() => setRecvMenu(false)} onShared={addShared} onFile={() => { setRecvMenu(false); openReceived() }} />}
       {received && (() => {
         const rems = (received.p.html.match(/data-type="recordatorio"/g) ?? []).length
         const photos = Object.keys(received.p.photos).length

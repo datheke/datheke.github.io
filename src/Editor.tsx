@@ -19,7 +19,7 @@ import {
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react'
 import { moveBlock, movableDepth, moveTo } from './blocks.ts'
 import GeminiPanel, { type Privacy } from './GeminiPanel.tsx'
-import { imageUrl, pickImage, uploadImage } from './images.ts'
+import { imageDataUrl, imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
 import { appFonts, isFromApp } from './paste.ts'
 import { wordAt } from './word.ts'
@@ -233,11 +233,12 @@ type Props = {
   onReminder: (id: string) => void // tocaron la etiqueta 🔔 de una línea
   onNewReminder: (label: string, insert: (r: Reminder) => void) => void // 🔔 de la barra o "/recordatorio"
   focusReminder?: string // al abrir desde la lista: ir a esa línea
+  inlineImages?: boolean // nota compartida: las fotos van dentro de la nota (la otra persona no ve tus fotos de Datheke)
 }
 
 // El contenido solo se usa al crear el editor; App lo vuelve a montar (key) al cambiar de nota.
 export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey, privacy, onPrivate,
-  onReminder, onNewReminder, focusReminder }: Props) {
+  onReminder, onNewReminder, focusReminder, inlineImages }: Props) {
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
   const latest = useRef({ onChange, notes, onError, onReminder, onNewReminder })
   useEffect(() => { latest.current = { onChange, notes, onError, onReminder, onNewReminder } })
@@ -252,7 +253,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     for (const file of files) {
       setUploading(n => n + 1)
       try {
-        const src = `drive:${await uploadImage(file)}`
+        const src = inlineImages ? await imageDataUrl(file) : `drive:${await uploadImage(file)}`
         if (!editor.isDestroyed) editor.chain().focus().setImage({ src }).run()
       } catch (e) { latest.current.onError(e) } finally { setUploading(n => n - 1) }
     }

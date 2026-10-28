@@ -445,3 +445,26 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .recibida h2 { margin: 0; font-size: 20px; }
 .recibida-libreta { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; font-size: 12px; color: var(--suave); }
 .recibida-libreta select { padding: 9px 10px; border: 1px solid var(--borde); border-radius: 8px; font: inherit; font-size: 15px; color: var(--texto); background: var(--fondo); }
+
+/* Notas compartidas (Share.tsx) */
+.compartir { gap: 10px; padding: 22px 18px 16px; text-align: center; position: relative; }
+.compartir h2 { margin: 0; font-size: 19px; overflow-wrap: anywhere; }
+.compartir .cerrar { position: absolute; right: 8px; top: 8px; }
+.compartir-correo { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; font-size: 12px; color: var(--suave); }
+.compartir-correo input { padding: 10px; border: 1px solid var(--borde); border-radius: 8px; font: inherit; font-size: 16px; color: var(--texto); background: var(--fondo); }
+.compartir-lista { width: 100%; text-align: left; border-top: 1px solid var(--borde); padding-top: 10px; }
+.compartir-lista h3 { margin: 0 0 6px; font-size: 13px; color: var(--suave); font-weight: 600; }
+.compartir-lista ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.compartir-lista li { display: flex; align-items: center; gap: 8px; font-size: 14px; padding: 4px 0; }
+.compartir-lista li span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.compartir-lista li small { color: var(--suave); }
+.compartir-lista .vacio-lista { color: var(--suave); font-size: 13px; }
+.compartir-opciones { text-align: left; font-size: 14px; margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
+.compartir .peligro, .peligro-texto { color: #b91c1c; }
+.peligro-texto { border: none; background: none; font-size: 14px; text-decoration: underline; margin-top: 4px; }
+.caja-error { color: #b91c1c; font-size: 13px; margin: 0; }
+.recibir-opcion { display: flex; flex-direction: column; gap: 4px; width: 100%; text-align: left; border: 1px solid var(--borde); border-radius: 10px; padding: 12px 14px; background: var(--fondo); }
+.recibir-opcion span { font-size: 13px; color: var(--suave); }
+.recibir-opcion:hover { border-color: var(--acento); }
+.compartida-barra { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 8px; padding: 4px 10px; border: none; border-radius: 999px; background: #e8f0fe; color: #1e3a8a; font-size: 13px; text-align: left; }
+.compartida-barra.fin { background: #f3f4f6; color: var(--suave); }
