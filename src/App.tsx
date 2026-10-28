@@ -247,6 +247,17 @@ export default function App() {
       store.patch(n.id, { props: { protegida: null } })
   }
 
+  // Tras "olvidé la clave", sin clave nueva: todas las notas quedan sin clave (en todos los aparatos) y la copia de
+  // cada aparato se vuelve a bajar de Drive sin cifrar. Para volver a protegerlas se crea una clave nueva.
+  function removeAllKeys() {
+    const withKeyNotes = files.filter(isLocked)
+    if (!confirm(`¿Quitar la clave a ${withKeyNotes.length} nota(s)? Se verán sin clave en todos tus aparatos.`)) return
+    for (const n of withKeyNotes) store.patch(n.id, { props: { protegida: null } })
+    if (settings) store.patch(settings.id, { props: { boveda: null } })
+    store.closeVault()
+    setKeyDialog(null)
+  }
+
   // Olvidé la clave: se vuelve a entrar con Google (prueba que es el dueño) y se pone una clave nueva. Las notas se
   // vuelven a bajar de Drive, donde están sin cifrar; en los otros aparatos se abren con la clave nueva.
   async function forgotKey() {
@@ -577,7 +588,8 @@ export default function App() {
               setKeyDialog(null)
               keyDialog.then?.()
             }} />
-            : <CreateKey again={keyDialog.mode === 'nueva'} onCancel={() => setKeyDialog(null)} onCreated={async v => {
+            : <CreateKey again={keyDialog.mode === 'nueva'} onCancel={() => setKeyDialog(null)}
+              onNoKey={keyDialog.mode === 'nueva' ? removeAllKeys : undefined} onCreated={async v => {
               setVerifier(v)
               await store.openVault()
               setKeyDialog(null)
