@@ -25,11 +25,10 @@ pub fn run() {
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_oauth::init())
     .plugin(tauri_plugin_fs::init())
-    .plugin(tauri_plugin_notification::init())
-    .plugin(tauri_plugin_sharekit::init());
-  // biometric: huella para abrir las notas con clave (solo en el celular).
+    .plugin(tauri_plugin_notification::init());
+  // biometric: huella para abrir las notas con clave; sharekit: menú de compartir (solo en el celular).
   #[cfg(mobile)]
-  let builder = builder.plugin(tauri_plugin_biometric::init());
+  let builder = builder.plugin(tauri_plugin_biometric::init()).plugin(tauri_plugin_sharekit::init());
   #[cfg(desktop)]
   let builder = builder
     .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--oculto"])))
