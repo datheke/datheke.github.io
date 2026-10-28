@@ -419,3 +419,4 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .tarjeta-recordatorio.pendiente { color: #b91c1c; font-weight: 600; }
 .grupo-recordatorios > summary h3::before { content: '▸ '; }
 .grupo-recordatorios[open] > summary h3::before { content: '▾ '; }
+.como-suenan { display: block; margin: 10px 16px 0; font-size: 12px; color: var(--suave); }
