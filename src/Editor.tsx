@@ -12,7 +12,7 @@ import { BubbleMenu } from '@tiptap/react/menus'
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
 import StarterKit from '@tiptap/starter-kit'
 import {
-  AudioLines, Baseline, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, ClipboardPaste, GripVertical, Highlighter,
+  AudioLines, Baseline, Bell, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, ClipboardPaste, GripVertical, Highlighter,
   ImagePlus, Italic, Link, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Redo2, RemoveFormatting, Smile,
   Sparkles, Strikethrough, Table, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
 } from 'lucide-react'
@@ -23,6 +23,7 @@ import { imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
 import { appFonts, isFromApp } from './paste.ts'
 import { wordAt } from './word.ts'
+import { chipText, groupOf, type Reminder } from './remind.ts'
 
 // Las opciones con lo que tiene el texto: si no está en la lista (tamaño pegado con su formato original) se agrega.
 const withCurrent = (options: string[][], value: string, label: string) =>
@@ -127,6 +128,47 @@ const Callout = Node.create({
   renderHTML: ({ HTMLAttributes }) => ['div', mergeAttributes(HTMLAttributes, { 'data-type': 'callout' }), 0],
 })
 
+// Recordatorio de una línea: etiqueta 🔔 al final de la línea (remind.ts). Se toca para abrir su ventana.
+const attr = (name: string) => ({ default: null, parseHTML: (el: HTMLElement) => el.getAttribute(`data-${name}`), renderHTML: (a: Record<string, unknown>) => a[name] ? { [`data-${name}`]: a[name] } : {} })
+const toReminder = (a: Record<string, string | null>): Reminder => ({
+  id: a.id ?? '', at: a.at ?? '', rep: a.rep ?? '', insist: a.insistir === 'true', done: a.hecho === 'true', hist: (a.historial ?? '').split(',').filter(Boolean),
+})
+const ReminderTag = Node.create<{ onOpen: (id: string) => void }>({
+  name: 'recordatorio',
+  group: 'inline',
+  inline: true,
+  atom: true,
+  selectable: false,
+  addOptions: () => ({ onOpen: () => {} }),
+  addAttributes: () => ({ id: attr('id'), at: attr('at'), rep: attr('rep'), insistir: attr('insistir'), hecho: attr('hecho'), historial: attr('historial') }),
+  parseHTML: () => [{ tag: 'span[data-type="recordatorio"]' }],
+  // En el HTML guardado (respaldo, copia de la PC) queda como texto: "🔔 15 nov · 09:00".
+  renderHTML: ({ node, HTMLAttributes }) => ['span', mergeAttributes(HTMLAttributes, { 'data-type': 'recordatorio', class: 'rec' }), `🔔 ${chipText(toReminder(node.attrs))}`],
+  addNodeView() {
+    return ({ node }) => {
+      const dom = document.createElement('span')
+      dom.setAttribute('data-type', 'recordatorio')
+      dom.contentEditable = 'false'
+      const paint = (n: typeof node) => {
+        const r = toReminder(n.attrs)
+        const g = groupOf(r)
+        dom.className = `rec ${g}`
+        dom.dataset.id = r.id
+        dom.textContent = `${g === 'pendiente' ? '⏰' : g === 'hecho' ? '✓' : '🔔'} ${chipText(r)}`
+        dom.title = 'Recordatorio: toca para verlo o cambiarlo'
+      }
+      paint(node)
+      dom.addEventListener('mousedown', e => e.preventDefault())
+      dom.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); this.options.onOpen(String(node.attrs.id)) })
+      return {
+        dom,
+        update: n => { if (n.type.name !== 'recordatorio') return false; node = n; paint(n); return true },
+        ignoreMutation: () => true,
+      }
+    }
+  },
+})
+
 // Interlineado y sangría por párrafo, como en Word. Van en el HTML de la nota: se ven igual en todos los aparatos.
 // El interlineado pegado con su formato original (Word manda "107%") se respeta tal cual.
 const ParagraphFormat = Extension.create({
@@ -151,6 +193,7 @@ const ParagraphFormat = Extension.create({
 // El título de un desplegable nace como Título 2 y se puede cambiar como cualquier título, también a Normal (0).
 // Sin data-level (desplegables de antes) también es Título 2: antes ya se veían en negrita.
 const Summary = DetailsSummary.extend({
+  content: 'inline*', // también la etiqueta 🔔 de un recordatorio (y formato), no solo texto
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -187,13 +230,17 @@ type Props = {
   onGeminiKey: (key: string) => void
   privacy: Privacy // nota o libreta privada: Gemini no lee su texto
   onPrivate: () => void // "Marcarla privada" desde el aviso de Gemini
+  onReminder: (id: string) => void // tocaron la etiqueta 🔔 de una línea
+  onNewReminder: (label: string, insert: (r: Reminder) => void) => void // 🔔 de la barra o "/recordatorio"
+  focusReminder?: string // al abrir desde la lista: ir a esa línea
 }
 
 // El contenido solo se usa al crear el editor; App lo vuelve a montar (key) al cambiar de nota.
-export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey, privacy, onPrivate }: Props) {
+export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey, privacy, onPrivate,
+  onReminder, onNewReminder, focusReminder }: Props) {
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
-  const latest = useRef({ onChange, notes, onError })
-  useEffect(() => { latest.current = { onChange, notes, onError } })
+  const latest = useRef({ onChange, notes, onError, onReminder, onNewReminder })
+  useEffect(() => { latest.current = { onChange, notes, onError, onReminder, onNewReminder } })
   // Fuentes que la app no tiene (pegadas antes de existir appFonts) se ven con la letra de la nota, igual en todos lados.
   const [initial] = useState(() => appFonts(content))
   const [uploading, setUploading] = useState(0)
@@ -215,6 +262,20 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     if (file) addImages(editor, [file])
   }
 
+  // Recordatorio nuevo al final de la línea del cursor (desplegable, punto de lista o párrafo).
+  function newReminder(editor: TiptapEditor) {
+    const $from = editor.state.selection.$from
+    const label = $from.parent.textContent.trim() || 'Recordatorio'
+    latest.current.onNewReminder(label, r => {
+      const at = editor.state.doc.resolve(Math.min($from.end(), editor.state.doc.content.size))
+      const pos = at.end()
+      const space = at.parent.textContent.endsWith(' ') || !at.parent.textContent ? [] : [editor.schema.text(' ')]
+      editor.view.dispatch(editor.state.tr.insert(pos, [...space, editor.schema.nodes.recordatorio.create({
+        id: r.id, at: r.at, rep: r.rep || null, insistir: r.insist ? 'true' : null, hecho: null, historial: r.hist.join(',') || null,
+      })]))
+    })
+  }
+
   const commands: Command[] = [
     { label: 'Título 1', run: (e, r) => e.chain().focus().deleteRange(r).setHeading({ level: 1 }).run() },
     { label: 'Título 2', run: (e, r) => e.chain().focus().deleteRange(r).setHeading({ level: 2 }).run() },
@@ -229,6 +290,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     { label: 'Desplegable', run: (e, r) => e.chain().focus().deleteRange(r).setDetails().run() },
     { label: 'Cita', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
     { label: 'Separador', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
+    { label: 'Recordatorio 🔔', run: (e, r) => { e.chain().focus().deleteRange(r).run(); newReminder(e) } },
     { label: 'Enlace a otra nota (@)', run: (e, r) => e.chain().focus().deleteRange(r).insertContent('@').run() },
   ]
 
@@ -237,6 +299,8 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true, onReadOnlyChecked: () => true }), TableKit, DriveImage, Callout,
       Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), Summary, DetailsContent,
       TextAlign.configure({ types: BLOCKS }), ParagraphFormat, MoveBlocks,
+      // eslint-disable-next-line react-hooks/refs
+      ReminderTag.configure({ onOpen: id => latest.current.onReminder(id) }),
       Placeholder.configure({ placeholder: 'Escribe / para insertar tablas, fotos, casillas, recuadros…' }),
       // Los comandos y el buscador de "@" leen refs solo al usarse (al escribir), no al dibujar.
       // eslint-disable-next-line react-hooks/refs
@@ -294,8 +358,31 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       }
     }
     dom.addEventListener('change', onCheck)
-    return () => dom.removeEventListener('change', onCheck)
+    // Nota fijada: tocar cualquier parte del título de un desplegable lo abre o cierra (no es un cambio de la nota).
+    const onToggle = (e: MouseEvent) => {
+      if (editor.isEditable) return
+      const t = e.target as HTMLElement
+      if (t.closest('[data-type="recordatorio"]') || !t.closest('summary')) return
+      t.closest('.details')?.querySelector<HTMLButtonElement>(':scope > button')?.click()
+    }
+    dom.addEventListener('click', onToggle)
+    return () => { dom.removeEventListener('change', onCheck); dom.removeEventListener('click', onToggle) }
   }, [editor])
+
+  // Desde la lista de recordatorios: llevar a esa línea (abriendo el desplegable que la tenga adentro) y resaltarla.
+  useEffect(() => {
+    if (!focusReminder) return
+    const t = setTimeout(() => {
+      const el = editor.view.dom.querySelector<HTMLElement>(`[data-type="recordatorio"][data-id="${CSS.escape(focusReminder)}"]`)
+      if (!el) return
+      const box = el.closest('.details')
+      if (box && !box.classList.contains('is-open') && !el.closest('summary')) box.querySelector<HTMLButtonElement>(':scope > button')?.click()
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      el.classList.add('rec-resaltado')
+      setTimeout(() => el.classList.remove('rec-resaltado'), 2000)
+    }, 150)
+    return () => clearTimeout(t)
+  }, [editor, focusReminder])
 
   // Agarradera ⠿ para arrastrar bloques, como en Evernote: junto al bloque bajo el mouse o, en el celular (sin mouse),
   // junto al del cursor. Se mueve lo mismo que con Subir/Bajar (movableDepth), entre sus hermanos.
@@ -388,7 +475,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   // La barra de formato y el aviso de pegado quedan fijos arriba al bajar por la nota (la portada se va con el texto).
   return <>
     {editable && <div className="barra-fija">
-      <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey}
+      <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} onReminder={() => newReminder(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey}
         privacy={privacy} onPrivate={onPrivate} />
       {pasted && <div className="pegado" role="status">
         <ClipboardPaste size={16} aria-hidden="true" /> Se pegó solo el texto, con el formato de la nota.
@@ -443,8 +530,8 @@ function Btn({ label, onClick, active, disabled, children }: {
     className={active ? 'activo' : undefined} onMouseDown={e => e.preventDefault()} onClick={onClick}>{children}</button>
 }
 
-function Toolbar({ editor, uploading, onPhoto, geminiKey, onGeminiKey, privacy, onPrivate }: {
-  editor: TiptapEditor; uploading: boolean; onPhoto: () => void; geminiKey: string; onGeminiKey: (key: string) => void
+function Toolbar({ editor, uploading, onPhoto, onReminder, geminiKey, onGeminiKey, privacy, onPrivate }: {
+  editor: TiptapEditor; uploading: boolean; onPhoto: () => void; onReminder: () => void; geminiKey: string; onGeminiKey: (key: string) => void
   privacy: Privacy; onPrivate: () => void
 }) {
   const [panel, setPanel] = useState<'emojis' | 'text' | 'highlight' | 'ia' | 'voz' | null>(null)
@@ -514,6 +601,7 @@ function Toolbar({ editor, uploading, onPhoto, geminiKey, onGeminiKey, privacy, 
         <Sparkles size={18} className="chispa" />
       </Btn>
       <Btn label="Dictar a Gemini" active={panel === 'voz'} onClick={() => toggle('voz')}><AudioLines size={18} className="chispa" /></Btn>
+      <Btn label="Recordatorio en esta línea" onClick={onReminder}><Bell size={18} /></Btn>
       <select aria-label="Estilo de párrafo" value={s.block} onChange={e => {
         const level = Number(e.target.value) as 0 | 1 | 2 | 3
         const { from, to, $from, $to } = editor.state.selection

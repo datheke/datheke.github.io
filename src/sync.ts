@@ -296,6 +296,12 @@ export function edit(id: string, change: Partial<Snapshot>) {
   schedule(1500)
 }
 
+// Cambio hecho desde afuera del editor (marcar un recordatorio desde la lista): se guarda y el editor se vuelve a dibujar.
+export function replaceText(id: string, text: string) {
+  edit(id, { text })
+  update({ revs: { ...state.revs, [id]: (state.revs[id] ?? 0) + 1 } })
+}
+
 export function patch(id: string, change: { name?: string; props?: Props }) {
   const f = state.files[id]
   update({
