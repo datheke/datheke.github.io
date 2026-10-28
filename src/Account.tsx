@@ -2,6 +2,7 @@ import { ArrowUpCircle, Check, Copy, ExternalLink, Globe, LogOut, X } from 'luci
 import { useEffect, useRef, useState } from 'react'
 import { desktop } from './auth.ts'
 import { getUpdate, type Update } from './update.ts'
+import { ReminderModeRow, type ReminderMode } from './Reminders.tsx'
 
 declare const __VERSION__: string // vite.config.ts
 
@@ -18,7 +19,10 @@ async function openWeb() {
 }
 
 // update: hay una versión más nueva (update.ts). Se nota con un puntito en el avatar y una línea en la tarjeta.
-export function Account({ email, onLogout, update }: { email: string; onLogout: () => void; update?: Update | null }) {
+export function Account({ email, onLogout, update, reminderMode, onReminderHelp }: {
+  email: string; onLogout: () => void; update?: Update | null
+  reminderMode: ReminderMode; onReminderHelp: (m: ReminderMode) => void // abre la ventana que explica ese modo
+}) {
   // Dónde se dibuja la tarjeta: flota sobre todo (la barra lateral la cortaría), debajo del botón y dentro de la pantalla.
   const [open, setOpen] = useState<{ left: number; top: number } | null>(null)
   const [copied, setCopied] = useState(false)
@@ -68,6 +72,10 @@ export function Account({ email, onLogout, update }: { email: string; onLogout: 
           <span>Versión <strong>{update.version}</strong> disponible</span>
           <button className="principal" onClick={() => getUpdate(update)}>{update.url ? 'Descargar' : 'Actualizar'}</button>
         </div>}
+        <div>
+          <ReminderModeRow mode={reminderMode} onPick={m => { close(); onReminderHelp(m) }} />
+          <button className="enlace recordar-como" onClick={() => { close(); onReminderHelp(reminderMode) }}>¿Cómo funciona?</button>
+        </div>
         <div className="cuenta-web">
           <p><Globe size={15} aria-hidden="true" /> <strong>{desktop ? 'Entra también desde la web' : 'Esta es la versión web'}</strong></p>
           <p className="cuenta-nota">Desde cualquier navegador (PC, Mac, iPhone), con tu misma cuenta de Google:</p>

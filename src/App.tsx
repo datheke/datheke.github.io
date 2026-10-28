@@ -16,6 +16,7 @@ import { startSort } from './sortable.ts'
 import { MoreMenu, Resizer } from './ui.tsx'
 import { Account, UpdateToast } from './Account.tsx'
 import { checkUpdate, type Update } from './update.ts'
+import { ReminderHelp, type ReminderMode } from './Reminders.tsx'
 import * as vault from './vault.ts'
 import { buildZip, changedSince, EVERY_MS, NeedsPermission, upload as uploadBackup } from './backup.ts'
 import { canOfferPrint } from './print.ts'
@@ -78,6 +79,7 @@ export default function App() {
   const [backup, setBackup] = useState<{ busy?: boolean; msg?: string; needsLogin?: boolean }>({})
   const backingUp = useRef(false)
   const [update, setUpdate] = useState<Update | null>(null) // versión más nueva disponible (update.ts)
+  const [reminderHelp, setReminderHelp] = useState<ReminderMode | null>(null) // ventana que explica un modo de aviso
   useEffect(() => {
     try { localStorage.setItem('datheke-diseno', JSON.stringify(layout)) } catch { /* sin guardar: el diseño de siempre */ }
   }, [layout])
@@ -119,6 +121,12 @@ export default function App() {
   })
   const isLocked = (n?: DriveFile) => n?.appProperties?.protegida === 'true' // nota con clave
   const lastBackup = settings?.appProperties?.respaldo ?? ''
+  // Quién avisa los recordatorios, igual en todos los aparatos de la cuenta (Reminders.tsx).
+  const reminderMode: ReminderMode = settings?.appProperties?.avisos === 'calendar' ? 'calendar' : 'datheke'
+  const setReminderMode = (m: ReminderMode) => act(() => {
+    if (settings) store.patch(settings.id, { props: { avisos: m === 'calendar' ? 'calendar' : null } })
+    else if (m === 'calendar') store.create({ kind: 'ajustes', avisos: 'calendar' }, 'Ajustes')
+  })
   const setLastBackup = (when: string) => act(() => {
     if (settings) store.patch(settings.id, { props: { respaldo: when } })
     else store.create({ kind: 'ajustes', respaldo: when }, 'Ajustes')
@@ -412,7 +420,7 @@ export default function App() {
   return (
     <div className={appClass} style={{ '--columnas': columns } as CSSProperties}>
       <nav className="libretas" aria-label="Libretas">
-        <Account email={session.email} onLogout={logout} update={update} />
+        <Account email={session.email} onLogout={logout} update={update} reminderMode={reminderMode} onReminderHelp={setReminderHelp} />
         <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
         <button className={notebookId === null && !trashView ? 'item activo' : 'item'} onClick={() => { setNotebookId(null); setTrashView(false) }}>
           <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
@@ -599,6 +607,8 @@ export default function App() {
       </main>
 
       {update && <UpdateToast update={update} />}
+      {reminderHelp && <ReminderHelp mode={reminderHelp} current={reminderMode} onClose={() => setReminderHelp(null)}
+        onUse={m => { setReminderMode(m); setReminderHelp(null) }} />}
 
       {keyDialog && <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Clave de notas">
         <div className="ventana">
