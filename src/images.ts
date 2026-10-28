@@ -23,6 +23,11 @@ async function compress(file: File, max = 1600, quality = 0.8): Promise<Blob> {
 export async function uploadImage(file: File): Promise<string> {
   return addImage(await compress(file))
 }
+// Nota compartida: la foto va dentro del texto (JPEG de máx. 1200 px), así la ve también la otra persona.
+export async function imageDataUrl(file: File | Blob): Promise<string> {
+  const blob = file instanceof File ? await compress(file, 1200, 0.75) : file
+  return new Promise((ok, ko) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => ko(r.error); r.readAsDataURL(blob) })
+}
 export async function uploadCover(file: File): Promise<string> {
   return addImage(await compress(file, 1200, 0.75))
 }
