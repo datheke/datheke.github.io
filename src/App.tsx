@@ -1,5 +1,5 @@
 import {
-  Bell, Check, ChevronLeft, FileDown, Send, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
+  Bell, Check, CheckSquare, ChevronLeft, CircleCheck, Circle, X as XIcon, FolderInput, RotateCcw, FileDown, Send, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
   PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
@@ -83,6 +83,7 @@ export default function App() {
   const [ready, setReady] = useState(false) // copia local cargada
   const [notebookId, setNotebookId] = useState<string | null>(null) // null = todas
   const [trashView, setTrashView] = useState(false) // la lista muestra el basurero
+  const [selected, setSelected] = useState<Set<string> | null>(null) // seleccionar varias notas (null: no se está seleccionando)
   const [remindView, setRemindView] = useState(false) // la lista muestra los recordatorios
   // Ventana de un recordatorio: uno que ya está en una línea (id) o uno nuevo (insert lo pone en la línea del cursor).
   const [received, setReceived] = useState<{ p: Packed; notebook: string } | null>(null) // nota .datheke recibida, por agregar
@@ -606,11 +607,14 @@ export default function App() {
   const trashedWith = (n: DriveFile): DriveFile[] => trash.filter(t => parentOf(t) === n.id && t.appProperties?.borrada === n.appProperties?.borrada)
     .flatMap(t => [t, ...trashedWith(t)])
 
-  function restore(n: DriveFile) {
+  function restoreOne(n: DriveFile) {
     // Si su libreta ya no existe, vuelve a la primera.
     const home = notebooks.some(nb => nb.id === n.appProperties?.notebook) ? undefined
       : notebooks.find(nb => !isTemplates(nb))?.id
     for (const t of [n, ...trashedWith(n)]) store.patch(t.id, { props: { borrada: null, ...(home ? { notebook: home } : {}) } })
+  }
+  function restore(n: DriveFile) {
+    restoreOne(n)
     setTrashView(false)
     setNotebookId(null)
   }
@@ -625,6 +629,77 @@ export default function App() {
     if (!confirm(`¿Vaciar el basurero? Se eliminan ${trash.length} notas para siempre.`)) return
     for (const t of trash) store.remove(t.id)
     setNoteId(null)
+  }
+
+  // Seleccionar varias notas: mantener presionada una (celular), Ctrl+clic o el botón "Seleccionar" (PC).
+  // Luego borrar (al basurero), mover a otra libreta o, en el basurero, restaurar o eliminar para siempre.
+  useEffect(() => { setSelected(null) }, [notebookId, trashView, remindView])
+  useEffect(() => {
+    if (!selected) return
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelected(null) }
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [selected])
+  const toggle = (id: string) => setSelected(sel => {
+    const next = new Set(sel ?? [])
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+  const press = useRef<{ timer?: ReturnType<typeof setTimeout>; fired?: boolean; x?: number; y?: number }>({})
+  const pressStart = (e: React.PointerEvent, id: string) => {
+    if (e.pointerType === 'mouse') return
+    press.current = { x: e.clientX, y: e.clientY, fired: false, timer: setTimeout(() => {
+      press.current.fired = true
+      navigator.vibrate?.(30)
+      setSelected(sel => new Set([...(sel ?? []), id]))
+    }, 500) }
+  }
+  const pressMove = (e: React.PointerEvent) => {
+    const p = press.current
+    if (p.timer && (Math.abs(e.clientX - (p.x ?? 0)) > 10 || Math.abs(e.clientY - (p.y ?? 0)) > 10)) { clearTimeout(p.timer); p.timer = undefined }
+  }
+  const pressEnd = () => { clearTimeout(press.current.timer); press.current.timer = undefined }
+  const clickNote = (e: React.MouseEvent, id: string) => {
+    if (press.current.fired) { press.current.fired = false; return } // fue un toque largo: ya quedó seleccionada
+    if (selected) return toggle(id)
+    if (e.ctrlKey || e.metaKey) return setSelected(new Set([id]))
+    open(id)
+  }
+  const chosen = list.map(([n]) => n).filter(n => selected?.has(n.id))
+  const withSubs = (ns: DriveFile[]) => [...new Map(ns.flatMap(n => [n, ...descendants(n.id)]).map(n => [n.id, n])).values()]
+  const plural = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`
+
+  function deleteSelected() {
+    const all = withSubs(chosen)
+    const subs = all.length - chosen.length
+    if (!all.length || !confirm(`¿Mandar ${plural(chosen.length, 'nota', 'notas')}${subs ? ` (y ${plural(subs, 'subnota', 'subnotas')})` : ''} al basurero? Puedes restaurarlas durante 30 días.`)) return
+    const when = nowIso()
+    for (const n of all) store.patch(n.id, { props: { borrada: when } })
+    if (noteId && all.some(n => n.id === noteId)) setNoteId(null)
+    setSelected(null)
+    setToast(`${plural(all.length, 'nota', 'notas')} al basurero. Puedes restaurarlas desde el Basurero durante 30 días.`)
+  }
+  function moveSelected(nbId: string) {
+    const nb = notebooks.find(x => x.id === nbId)
+    if (!nb) return
+    const all = withSubs(chosen)
+    for (const n of all) store.patch(n.id, { props: { notebook: nbId } })
+    setSelected(null)
+    setToast(`${plural(all.length, 'nota movida', 'notas movidas')} a "${nb.name}".`)
+  }
+  function restoreSelected() {
+    const k = chosen.length
+    for (const n of chosen) restoreOne(n)
+    setSelected(null)
+    setToast(`${plural(k, 'nota restaurada', 'notas restauradas')}.`)
+  }
+  function deleteSelectedForever() {
+    const all = [...new Map(chosen.flatMap(n => [n, ...trashedWith(n)]).map(n => [n.id, n])).values()]
+    if (!all.length || !confirm(`¿Eliminar ${plural(all.length, 'nota', 'notas')} para siempre? Esto no se puede deshacer.`)) return
+    for (const t of all) store.remove(t.id)
+    if (noteId && all.some(n => n.id === noteId)) setNoteId(null)
+    setSelected(null)
   }
 
   // La lista de recordatorios: pendientes, hoy, próximos y hechos (cerrado). Tocar uno abre su nota en esa línea.
@@ -720,10 +795,32 @@ export default function App() {
 
       <section className="lista" aria-label="Notas">
         <header>
+          {selected ? <div className="barra-seleccion" role="toolbar" aria-label="Notas seleccionadas">
+            <button className="btn-icono" onClick={() => setSelected(null)} title="Terminar de seleccionar" aria-label="Terminar de seleccionar"><XIcon size={18} /></button>
+            <strong>{chosen.length ? plural(chosen.length, 'seleccionada', 'seleccionadas') : 'Toca las notas'}</strong>
+            <button className="enlace" onClick={() => setSelected(chosen.length === list.length ? new Set() : new Set(list.map(([n]) => n.id)))}>
+              {chosen.length === list.length ? 'Ninguna' : 'Todas'}</button>
+            <span className="barra-seleccion-acciones">
+              {trashView ? <>
+                <button disabled={!chosen.length} onClick={restoreSelected}><RotateCcw size={16} /> Restaurar</button>
+                <button className="peligro" disabled={!chosen.length} onClick={deleteSelectedForever}><Trash2 size={16} /> Eliminar</button>
+              </> : <>
+                <label className={chosen.length ? 'mover' : 'mover deshabilitado'} title="Mover a otra libreta">
+                  <FolderInput size={16} aria-hidden="true" /> Mover
+                  <select value="" disabled={!chosen.length} aria-label="Mover a la libreta" onChange={e => moveSelected(e.target.value)}>
+                    <option value="">Mover a…</option>
+                    {notebooks.map(nb => <option key={nb.id} value={nb.id}>{nb.name}</option>)}
+                  </select>
+                </label>
+                <button className="peligro" disabled={!chosen.length} onClick={deleteSelected}><Trash2 size={16} /> Borrar</button>
+              </>}
+            </span>
+          </div> : <>
           <div className="lista-titulo">
             <h2>{remindView ? 'Recordatorios' : trashView ? 'Basurero' : notebookName ?? 'Todas las notas'}</h2>
             <small>{remindView ? reminders.length : list.length}</small>
             <button className="btn-icono" onClick={() => store.sync()} title="Sincronizar" aria-label="Sincronizar"><RefreshCw size={16} /></button>
+            {!remindView && list.length > 0 && <button className="btn-icono" onClick={() => setSelected(new Set())} title="Seleccionar varias notas" aria-label="Seleccionar varias notas"><CheckSquare size={16} /></button>}
             {trashView && trash.length > 0 && <button className="vaciar" onClick={emptyTrash}>Vaciar</button>}
           </div>
           <div className="lista-acciones">
@@ -736,14 +833,18 @@ export default function App() {
             </select>
             <span className={pendingCount || s.offline ? 'estado pendiente' : 'estado'} role="status">{status}</span>
           </div>
+          </>}
         </header>
         <div className="tarjetas">
           {remindView ? remindersList() : !ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
             : list.length === 0 ? <p className="vacio">{trashView ? 'El basurero está vacío' : 'Sin notas'}</p>
             : list.map(([n, depth]) => (
               // Se ordena entre sus hermanas: las del mismo nivel y la misma nota madre (data-grupo).
-              <div key={n.id} className="nota-fila" data-grupo={shownParent(n) ?? 'raiz'} style={{ marginLeft: 8 + depth * 16 }}>
-                <button className={n.id === noteId ? 'nota activa' : 'nota'} onClick={() => open(n.id)}>
+              <div key={n.id} className={selected ? 'nota-fila seleccionando' : 'nota-fila'} data-grupo={shownParent(n) ?? 'raiz'} style={{ marginLeft: 8 + depth * 16 }}>
+                <button className={`nota${n.id === noteId && !selected ? ' activa' : ''}${selected?.has(n.id) ? ' elegida' : ''}`} aria-pressed={selected ? selected.has(n.id) : undefined}
+                  onClick={e => clickNote(e, n.id)} onPointerDown={e => pressStart(e, n.id)} onPointerMove={pressMove} onPointerUp={pressEnd} onPointerCancel={pressEnd}
+                  onContextMenu={e => { if (e.nativeEvent instanceof PointerEvent && e.nativeEvent.pointerType !== 'mouse') e.preventDefault() }}>
+                  {selected && <span className="marca" aria-hidden="true">{selected.has(n.id) ? <CircleCheck size={20} /> : <Circle size={20} />}</span>}
                   <strong>
                     {depth > 0 && '↳ '}{s.conflicts[n.id] && '⚠️ '}{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}
                   </strong>
@@ -755,8 +856,8 @@ export default function App() {
                   {trashView && <span className="resumen basurero-dias">Se elimina en {daysLeft(n)} días</span>}
                   <small>{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
                 </button>
-                <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
-                  onPointerDown={e => startSort(e, (from, to) => saveOrder(siblings(shownParent(n)), from, to))}><GripVertical size={16} /></button>
+                {!selected && <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
+                  onPointerDown={e => startSort(e, (from, to) => saveOrder(siblings(shownParent(n)), from, to))}><GripVertical size={16} /></button>}
               </div>
             ))}
         </div>
