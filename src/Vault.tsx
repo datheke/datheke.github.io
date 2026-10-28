@@ -1,50 +1,27 @@
 import { Fingerprint, KeyRound, LockKeyhole } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { desktop } from './auth.ts'
+import { forgetPrint, openWithPrint, printAvailable, savedPrint, savePrint } from './print.ts'
 import * as vault from './vault.ts'
 
 // Pantallas de la caja fuerte (notas con clave): crear la clave, abrir con la clave o la huella, y "olvidé la clave".
 // La huella (solo Android) guarda la llave cifrada por el propio teléfono: sin el dedo no se puede leer.
 
-const HUELLA = 'datheke-huella'
-const android = desktop && /android/i.test(navigator.userAgent)
-const savedPrint = () => { try { return localStorage.getItem(HUELLA) ?? '' } catch { return '' } }
-const forgetPrint = () => { try { localStorage.removeItem(HUELLA) } catch { /* nada guardado */ } }
-
-async function printAvailable() {
-  if (!android) return false
-  try { return (await (await import('@tauri-apps/plugin-biometric')).checkStatus()).isAvailable } catch { return false }
-}
-
-async function savePrint() {
-  const { biometricCipher } = await import('@tauri-apps/plugin-biometric')
-  const r = await biometricCipher('Usar tu huella para abrir las notas con clave', { dataToEncrypt: vault.keyBits(), title: 'Datheke' })
-  localStorage.setItem(HUELLA, r.data)
-}
-
-async function openWithPrint(verifier: string) {
-  const { biometricCipher } = await import('@tauri-apps/plugin-biometric')
-  const r = await biometricCipher('Abrir tus notas con clave', { dataToDecrypt: savedPrint(), title: 'Datheke' })
-  return vault.unlockWithBits(r.data, verifier)
-}
-
 // Abrir: en lugar de la nota cuando está cerrada, y en la ventana antes de proteger otra nota.
+// onOpen(true): se abrió con la clave y este teléfono puede usar huella pero aún no la tiene: App ofrece activarla
+// en su propia ventana (esta pantalla desaparece apenas se abre la caja).
 export function Unlock({ verifier, onOpen, onForgot, compact }: {
-  verifier: string; onOpen: () => void; onForgot: () => void; compact?: boolean
+  verifier: string; onOpen: (offerPrint: boolean) => void; onForgot: () => void; compact?: boolean
 }) {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [print, setPrint] = useState(false) // hay huella guardada y el teléfono la tiene
-  const [offerPrint, setOfferPrint] = useState(false) // tras abrir con la clave: ofrecer la huella
-  const [canPrint, setCanPrint] = useState(false) // el teléfono tiene huella (para avisar que se puede activar)
-  const [printError, setPrintError] = useState('')
-
+  const [canPrint, setCanPrint] = useState(false) // el teléfono tiene huella
 
   async function withPrint() {
     setError('')
     try {
-      if (await openWithPrint(verifier)) return onOpen()
+      if (await openWithPrint(verifier)) return onOpen(false)
       forgetPrint() // la clave se cambió (aquí o en otro aparato): la huella guardada ya no sirve
       setPrint(false)
       setError('La clave cambió: escríbela una vez y vuelve a activar la huella.')
@@ -61,43 +38,17 @@ export function Unlock({ verifier, onOpen, onForgot, compact }: {
     })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function activatePrint() {
-    setPrintError('')
-    try {
-      await savePrint()
-      onOpen()
-    } catch (e) {
-      // Cancelar no es error; otro problema sí se muestra (antes se perdía en silencio).
-      const msg = e instanceof Error ? e.message : String(e)
-      if (/cancel/i.test(msg)) onOpen()
-      else setPrintError(`No se pudo activar la huella: ${msg}`)
-    }
-  }
-
   async function submit() {
     if (!password) return
+    const offer = canPrint && !savedPrint() // se decide antes: al abrir, esta pantalla se va
     setBusy(true)
     setError('')
     const ok = await vault.unlock(password, verifier)
     setBusy(false)
     if (!ok) { setError('Esa no es la clave.'); return }
     setPassword('')
-    if (!savedPrint() && await printAvailable()) setOfferPrint(true)
-    else onOpen()
+    onOpen(offer)
   }
-
-  if (offerPrint) return (
-    <div className={compact ? 'caja' : 'caja caja-grande'}>
-      <Fingerprint size={36} className="caja-icono" aria-hidden="true" />
-      <p><strong>¿Abrir con tu huella la próxima vez?</strong></p>
-      <p className="caja-nota">Tu clave sigue sirviendo igual. La huella solo funciona en este teléfono.</p>
-      <div className="caja-fila">
-        <button className="principal" onClick={activatePrint}><Fingerprint size={16} /> Sí, usar huella</button>
-        <button onClick={onOpen}>{printError ? 'Continuar' : 'Ahora no'}</button>
-      </div>
-      {printError && <p className="error">{printError}</p>}
-    </div>
-  )
 
   return (
     <form className={compact ? 'caja' : 'caja caja-grande'} onSubmit={e => { e.preventDefault(); submit() }}>
@@ -113,6 +64,39 @@ export function Unlock({ verifier, onOpen, onForgot, compact }: {
       {error && <p className="error">{error}</p>}
       <button type="button" className="enlace" onClick={onForgot}>¿Olvidaste la clave?</button>
     </form>
+  )
+}
+
+// Activar la huella (ventana aparte, con la caja ya abierta): guarda la llave cifrada por el teléfono.
+export function PrintOffer({ onDone }: { onDone: () => void }) {
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function activate() {
+    setError('')
+    setBusy(true)
+    try {
+      await savePrint()
+      onDone()
+    } catch (e) {
+      // Cancelar no es error; otro problema se muestra para poder arreglarlo.
+      const msg = e instanceof Error ? e.message : String(e)
+      if (/cancel/i.test(msg)) onDone()
+      else setError(`No se pudo activar la huella: ${msg}`)
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div className="caja">
+      <Fingerprint size={36} className="caja-icono" aria-hidden="true" />
+      <p><strong>¿Abrir con tu huella la próxima vez?</strong></p>
+      <p className="caja-nota">Tu clave sigue sirviendo igual. La huella solo funciona en este teléfono.</p>
+      <div className="caja-fila">
+        <button className="principal" onClick={activate} disabled={busy}><Fingerprint size={16} /> Sí, usar huella</button>
+        <button onClick={onDone}>{error ? 'Continuar' : 'Ahora no'}</button>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </div>
   )
 }
 

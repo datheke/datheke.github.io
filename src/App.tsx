@@ -16,7 +16,8 @@ import { startSort } from './sortable.ts'
 import { MoreMenu, Resizer } from './ui.tsx'
 import * as vault from './vault.ts'
 import { buildZip, changedSince, EVERY_MS, NeedsPermission, upload as uploadBackup } from './backup.ts'
-import { Create as CreateKey, Unlock } from './Vault.tsx'
+import { canOfferPrint } from './print.ts'
+import { Create as CreateKey, PrintOffer, Unlock } from './Vault.tsx'
 
 const UNTITLED = store.UNTITLED
 // Basurero: días que le quedan a una nota borrada, y la fecha que se le pone al borrarla.
@@ -69,7 +70,7 @@ export default function App() {
   // Al escribir en la nota (título o texto) la portada se esconde, y vuelve al abrirla de nuevo.
   const [writing, setWriting] = useState(false)
   // Ventana de la caja fuerte: crear la clave, abrirla antes de proteger una nota, o la clave nueva tras "olvidé la clave".
-  const [keyDialog, setKeyDialog] = useState<{ mode: 'crear' | 'abrir' | 'nueva'; then?: () => void } | null>(null)
+  const [keyDialog, setKeyDialog] = useState<{ mode: 'crear' | 'abrir' | 'nueva' | 'huella'; then?: () => void } | null>(null)
   const unlocked = useSyncExternalStore(vault.subscribe, vault.unlocked)
   // Respaldo semanal (backup.ts): estado del último intento en este aparato.
   const [backup, setBackup] = useState<{ busy?: boolean; msg?: string; needsLogin?: boolean }>({})
@@ -540,7 +541,10 @@ export default function App() {
             : locked && <p className="aviso-fijada">🔒 Nota fijada: puedes leerla, copiar y marcar casillas. Toca <strong>Editar</strong> para cambiarla.</p>}
           {sealedNote ? <div className="nota-scroll">
             <h1 className="titulo-cerrado">{note.name || UNTITLED}</h1>
-            <Unlock verifier={verifier} onOpen={() => { store.openVault() }} onForgot={forgotKey} />
+            <Unlock verifier={verifier} onForgot={forgotKey} onOpen={offer => {
+              store.openVault()
+              if (offer) setKeyDialog({ mode: 'huella' })
+            }} />
           </div> : <>
           {conflict && <div className="conflicto" role="alert">
             <p><strong>⚠️ Esta nota también se cambió en otro dispositivo.</strong> ¿Qué versión quieres conservar?</p>
@@ -582,18 +586,20 @@ export default function App() {
 
       {keyDialog && <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Clave de notas">
         <div className="ventana">
-          {keyDialog.mode === 'abrir'
-            ? <Unlock compact verifier={verifier} onForgot={() => { setKeyDialog(null); forgotKey() }} onOpen={async () => {
+          {keyDialog.mode === 'huella'
+            ? <PrintOffer onDone={() => { setKeyDialog(null); keyDialog.then?.() }} />
+            : keyDialog.mode === 'abrir'
+            ? <Unlock compact verifier={verifier} onForgot={() => { setKeyDialog(null); forgotKey() }} onOpen={async offer => {
               await store.openVault()
-              setKeyDialog(null)
-              keyDialog.then?.()
+              if (offer) setKeyDialog({ mode: 'huella', then: keyDialog.then })
+              else { setKeyDialog(null); keyDialog.then?.() }
             }} />
             : <CreateKey again={keyDialog.mode === 'nueva'} onCancel={() => setKeyDialog(null)}
               onNoKey={keyDialog.mode === 'nueva' ? removeAllKeys : undefined} onCreated={async v => {
               setVerifier(v)
               await store.openVault()
-              setKeyDialog(null)
-              keyDialog.then?.()
+              if (await canOfferPrint()) setKeyDialog({ mode: 'huella', then: keyDialog.then })
+              else { setKeyDialog(null); keyDialog.then?.() }
             }} />}
           {keyDialog.mode === 'abrir' && <button className="enlace" onClick={() => setKeyDialog(null)}>Cancelar</button>}
         </div>
