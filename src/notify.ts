@@ -81,9 +81,13 @@ async function show(f: Fire) {
 // de las demás (con clave y la caja cerrada, o aún sin bajar) se conservan sus avisos anteriores.
 export async function schedule(fires: Fire[], known: Set<string>) {
   const now = Date.now()
-  const keep = read<Fire[]>(AGENDA, []).filter(f => !known.has(f.noteId) && f.at > now - LATE_OK)
-  const snoozed = read<Fire[]>(AGENDA, []).filter(f => f.key.endsWith(':p') && f.at > now && known.has(f.noteId))
-  const all = [...fires, ...keep, ...snoozed].sort((a, b) => a.at - b.at)
+  const prev = read<Fire[]>(AGENDA, [])
+  const keep = prev.filter(f => f.at > now - LATE_OK && (
+    !known.has(f.noteId) // de notas que ahora no se pueden leer
+    || f.at <= now // los que tocan justo ahora (el reloj de Windows y la web aún no los mostró)
+    || f.key.endsWith(':p'))) // los pospuestos
+  // Sin repetidos: cada aviso una sola vez.
+  const all = [...new Map([...fires, ...keep].map(f => [`${f.key}@${f.at}`, f])).values()].sort((a, b) => a.at - b.at)
   const before = localStorage.getItem(AGENDA)
   write(AGENDA, all)
   if (!android || before === localStorage.getItem(AGENDA)) return
