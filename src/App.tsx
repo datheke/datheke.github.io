@@ -14,7 +14,8 @@ import { TEMPLATES } from './templates.ts'
 import { firstUnordered, lastUnordered, reorder } from './order.ts'
 import { startSort } from './sortable.ts'
 import { MoreMenu, Resizer } from './ui.tsx'
-import { Account } from './Account.tsx'
+import { Account, UpdateToast } from './Account.tsx'
+import { checkUpdate, type Update } from './update.ts'
 import * as vault from './vault.ts'
 import { buildZip, changedSince, EVERY_MS, NeedsPermission, upload as uploadBackup } from './backup.ts'
 import { canOfferPrint } from './print.ts'
@@ -76,6 +77,7 @@ export default function App() {
   // Respaldo semanal (backup.ts): estado del último intento en este aparato.
   const [backup, setBackup] = useState<{ busy?: boolean; msg?: string; needsLogin?: boolean }>({})
   const backingUp = useRef(false)
+  const [update, setUpdate] = useState<Update | null>(null) // versión más nueva disponible (update.ts)
   useEffect(() => {
     try { localStorage.setItem('datheke-diseno', JSON.stringify(layout)) } catch { /* sin guardar: el diseño de siempre */ }
   }, [layout])
@@ -219,6 +221,21 @@ export default function App() {
   const backupDue = ready && s.synced && !s.offline && !backup.needsLogin
     && backupOld(lastBackup) && changedSince(files, lastBackup)
   useEffect(() => { if (backupDue) queueMicrotask(() => doBackup(false)) }, [backupDue]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Versión nueva: se mira al abrir la app y luego cada 6 horas (y al volver a la app si pasó más de una hora).
+  useEffect(() => {
+    let last = 0
+    const check = () => {
+      if (Date.now() - last < 3600_000) return
+      last = Date.now()
+      checkUpdate().then(setUpdate)
+    }
+    const first = setTimeout(check, 3000)
+    const every = setInterval(() => { last = 0; check() }, 6 * 3600_000)
+    const back = () => { if (document.visibilityState === 'visible') check() }
+    document.addEventListener('visibilitychange', back)
+    return () => { clearTimeout(first); clearInterval(every); document.removeEventListener('visibilitychange', back) }
+  }, [])
 
   // La caja fuerte se cierra sola tras 5 minutos sin tocar la app (también si quedó en segundo plano).
   useEffect(() => {
@@ -395,7 +412,7 @@ export default function App() {
   return (
     <div className={appClass} style={{ '--columnas': columns } as CSSProperties}>
       <nav className="libretas" aria-label="Libretas">
-        <Account email={session.email} onLogout={logout} />
+        <Account email={session.email} onLogout={logout} update={update} />
         <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
         <button className={notebookId === null && !trashView ? 'item activo' : 'item'} onClick={() => { setNotebookId(null); setTrashView(false) }}>
           <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
@@ -580,6 +597,8 @@ export default function App() {
           </>}
         </> : <p className="vacio">Elige o crea una nota</p>}
       </main>
+
+      {update && <UpdateToast update={update} />}
 
       {keyDialog && <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Clave de notas">
         <div className="ventana">
