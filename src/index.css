@@ -477,3 +477,6 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .a-quien label { display: inline-flex; align-items: center; gap: 6px; }
 .recordar-tono { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
 .recordar-tono button { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; background: var(--fondo); }
+.recibir-web { width: 100%; text-align: left; border-radius: 10px; background: #e8f0fe; padding: 10px 14px; font-size: 14px; }
+.recibir-web p { margin: 0 0 4px; }
+.recibir-web ol { margin: 0 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
