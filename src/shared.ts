@@ -88,9 +88,10 @@ export function hash(s: string) {
 
 // Lo último que este aparato subió o bajó de cada nota compartida (base: fecha en Drive; sent: huella del texto).
 const STATE = 'datheke-compartidas'
-type St = Record<string, { base: string; sent: number }>
+type Entry = { base: string; sent: number; k?: boolean } // k: la última vez la nota tenía clave para todos
+type St = Record<string, Entry>
 export const readState = (): St => { try { return JSON.parse(localStorage.getItem(STATE) ?? '{}') } catch { return {} } }
-export function saveState(fileId: string, v: { base: string; sent: number } | null) {
+export function saveState(fileId: string, v: Entry | null) {
   const all = readState()
   if (v) all[fileId] = v
   else delete all[fileId]
@@ -142,3 +143,15 @@ export async function pick(): Promise<string | undefined> {
       .build().setVisible(true)
   })
 }
+
+// Ícono y portada viajan al final del archivo compartido, en un comentario que el editor no ve:
+// <!--datheke:{"icono":"💡","portada":"data:image/jpeg;base64,…"}-->
+export type Extra = { icono?: string; portada?: string }
+const EXTRA = /<!--datheke:(\{[\s\S]*?\})-->\s*$/
+export function splitExtra(html: string): { body: string; extra: Extra } {
+  const m = html.match(EXTRA)
+  if (!m) return { body: html, extra: {} }
+  try { return { body: html.slice(0, m.index).replace(/\s+$/, ''), extra: JSON.parse(m[1]) } } catch { return { body: html, extra: {} } }
+}
+export const joinExtra = (body: string, extra: Extra) =>
+  extra.icono || extra.portada ? `${body}\n<!--datheke:${JSON.stringify(extra)}-->` : body

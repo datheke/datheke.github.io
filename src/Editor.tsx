@@ -132,15 +132,16 @@ const Callout = Node.create({
 const attr = (name: string) => ({ default: null, parseHTML: (el: HTMLElement) => el.getAttribute(`data-${name}`), renderHTML: (a: Record<string, unknown>) => a[name] ? { [`data-${name}`]: a[name] } : {} })
 const toReminder = (a: Record<string, string | null>): Reminder => ({
   id: a.id ?? '', at: a.at ?? '', rep: a.rep ?? '', insist: a.insistir === 'true', done: a.hecho === 'true', hist: (a.historial ?? '').split(',').filter(Boolean),
+  ...(a.solo ? { solo: a.solo } : {}),
 })
-const ReminderTag = Node.create<{ onOpen: (id: string) => void }>({
+const ReminderTag = Node.create<{ onOpen: (id: string) => void; me: string }>({
   name: 'recordatorio',
   group: 'inline',
   inline: true,
   atom: true,
   selectable: false,
-  addOptions: () => ({ onOpen: () => {} }),
-  addAttributes: () => ({ id: attr('id'), at: attr('at'), rep: attr('rep'), insistir: attr('insistir'), hecho: attr('hecho'), historial: attr('historial') }),
+  addOptions: () => ({ onOpen: () => {}, me: '' }),
+  addAttributes: () => ({ id: attr('id'), at: attr('at'), rep: attr('rep'), insistir: attr('insistir'), hecho: attr('hecho'), historial: attr('historial'), solo: attr('solo') }),
   parseHTML: () => [{ tag: 'span[data-type="recordatorio"]' }],
   // En el HTML guardado (respaldo, copia de la PC) queda como texto: "🔔 15 nov · 09:00".
   renderHTML: ({ node, HTMLAttributes }) => ['span', mergeAttributes(HTMLAttributes, { 'data-type': 'recordatorio', class: 'rec' }), `🔔 ${chipText(toReminder(node.attrs))}`],
@@ -152,9 +153,10 @@ const ReminderTag = Node.create<{ onOpen: (id: string) => void }>({
       const paint = (n: typeof node) => {
         const r = toReminder(n.attrs)
         const g = groupOf(r)
-        dom.className = `rec ${g}`
         dom.dataset.id = r.id
-        dom.textContent = `${g === 'pendiente' ? '⏰' : g === 'hecho' ? '✓' : '🔔'} ${chipText(r)}`
+        const other = r.solo && r.solo.toLowerCase() !== this.options.me.toLowerCase() // en una compartida: le suena solo a otra persona
+        dom.className = `rec ${other ? 'de-otro' : g}`
+        dom.textContent = other ? `🔕 ${chipText(r)} · solo ${r.solo!.split('@')[0]}` : `${g === 'pendiente' ? '⏰' : g === 'hecho' ? '✓' : '🔔'} ${chipText(r)}${r.solo ? ' · solo yo' : ''}`
         dom.title = 'Recordatorio: toca para verlo o cambiarlo'
       }
       paint(node)
@@ -233,12 +235,13 @@ type Props = {
   onReminder: (id: string) => void // tocaron la etiqueta 🔔 de una línea
   onNewReminder: (label: string, insert: (r: Reminder) => void) => void // 🔔 de la barra o "/recordatorio"
   focusReminder?: string // al abrir desde la lista: ir a esa línea
+  me?: string // mi correo (recordatorios "solo para mí" en notas compartidas)
   inlineImages?: boolean // nota compartida: las fotos van dentro de la nota (la otra persona no ve tus fotos de Datheke)
 }
 
 // El contenido solo se usa al crear el editor; App lo vuelve a montar (key) al cambiar de nota.
 export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey, privacy, onPrivate,
-  onReminder, onNewReminder, focusReminder, inlineImages }: Props) {
+  onReminder, onNewReminder, focusReminder, inlineImages, me }: Props) {
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
   const latest = useRef({ onChange, notes, onError, onReminder, onNewReminder })
   useEffect(() => { latest.current = { onChange, notes, onError, onReminder, onNewReminder } })
@@ -272,7 +275,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       const pos = at.end()
       const space = at.parent.textContent.endsWith(' ') || !at.parent.textContent ? [] : [editor.schema.text(' ')]
       editor.view.dispatch(editor.state.tr.insert(pos, [...space, editor.schema.nodes.recordatorio.create({
-        id: r.id, at: r.at, rep: r.rep || null, insistir: r.insist ? 'true' : null, hecho: null, historial: r.hist.join(',') || null,
+        id: r.id, at: r.at, rep: r.rep || null, insistir: r.insist ? 'true' : null, hecho: null, historial: r.hist.join(',') || null, solo: r.solo || null,
       })]))
     })
   }
@@ -301,7 +304,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), Summary, DetailsContent,
       TextAlign.configure({ types: BLOCKS }), ParagraphFormat, MoveBlocks,
       // eslint-disable-next-line react-hooks/refs
-      ReminderTag.configure({ onOpen: id => latest.current.onReminder(id) }),
+      ReminderTag.configure({ onOpen: id => latest.current.onReminder(id), me: me ?? '' }),
       Placeholder.configure({ placeholder: 'Escribe / para insertar tablas, fotos, casillas, recuadros…' }),
       // Los comandos y el buscador de "@" leen refs solo al usarse (al escribir), no al dibujar.
       // eslint-disable-next-line react-hooks/refs

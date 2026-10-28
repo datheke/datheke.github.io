@@ -3,7 +3,8 @@
 //   at: la próxima vez que suena (ISO) · rep: cómo se repite · insistir: vuelve a avisar cada día hasta marcarlo
 //   hecho: ya se hizo (solo los que no se repiten) · historial: fechas en que se marcó hecho
 // rep: '' no se repite · 'dia' · 'sem:1,4' (días de la semana, 0 = domingo) · 'mes:15' (día del mes) · 'ano:3-10' (mes-día)
-export type Reminder = { id: string; at: string; rep: string; insist: boolean; done: boolean; hist: string[] }
+// solo: en una nota compartida, el correo de la única persona a la que le suena (vacío: a todos).
+export type Reminder = { id: string; at: string; rep: string; insist: boolean; done: boolean; hist: string[]; solo?: string }
 export type Group = 'pendiente' | 'hoy' | 'proximo' | 'hecho'
 
 const DAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
@@ -93,12 +94,12 @@ export function chipText(r: Reminder, now = new Date()) {
 // En el HTML de la nota: atributos data-* de la etiqueta.
 export const toAttrs = (r: Reminder) => ({
   'data-type': 'recordatorio', 'data-id': r.id, 'data-at': r.at, 'data-rep': r.rep || null,
-  'data-insistir': r.insist ? 'true' : null, 'data-hecho': r.done ? 'true' : null, 'data-historial': r.hist.join(',') || null,
+  'data-insistir': r.insist ? 'true' : null, 'data-hecho': r.done ? 'true' : null, 'data-historial': r.hist.join(',') || null, 'data-solo': r.solo || null,
 })
 export const fromEl = (el: Element): Reminder => ({
   id: el.getAttribute('data-id') ?? '', at: el.getAttribute('data-at') ?? '', rep: el.getAttribute('data-rep') ?? '',
   insist: el.getAttribute('data-insistir') === 'true', done: el.getAttribute('data-hecho') === 'true',
-  hist: (el.getAttribute('data-historial') ?? '').split(',').filter(Boolean),
+  hist: (el.getAttribute('data-historial') ?? '').split(',').filter(Boolean), ...(el.getAttribute('data-solo') ? { solo: el.getAttribute('data-solo')! } : {}),
 })
 
 // Los recordatorios de una nota con el texto de su línea (para la lista y la notificación).

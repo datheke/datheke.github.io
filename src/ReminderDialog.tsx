@@ -11,8 +11,8 @@ const WEEK = [[1, 'L'], [2, 'M'], [3, 'X'], [4, 'J'], [5, 'V'], [6, 'S'], [0, 'D
 const KINDS = [['', 'No se repite'], ['dia', 'Cada día'], ['sem', 'Días de la semana'], ['mes', 'Cada mes, ese día'], ['ano', 'Cada año, esa fecha']] as const
 const histDate = (iso: string) => new Date(iso).toLocaleDateString('es', { day: 'numeric', month: 'short', year: 'numeric' }).replace(/\./g, '')
 
-export function ReminderDialog({ reminder, label, locked, offline, onSave, onRemove, onDone, onHistory, onClose }: {
-  reminder?: Reminder; label: string; locked: boolean; offline: boolean
+export function ReminderDialog({ reminder, label, locked, offline, shared, me, onSave, onRemove, onDone, onHistory, onClose }: {
+  reminder?: Reminder; label: string; locked: boolean; offline: boolean; shared?: boolean; me?: string
   onSave: (r: Reminder) => void; onRemove: () => void; onDone: () => void; onHistory: (hist: string[]) => void; onClose: () => void
 }) {
   const start = reminder ? new Date(reminder.at) : quickTimes()[0].date
@@ -21,6 +21,8 @@ export function ReminderDialog({ reminder, label, locked, offline, onSave, onRem
   const [kind, setKind] = useState(reminder?.rep.split(':')[0] ?? '')
   const [days, setDays] = useState<number[]>(reminder?.rep.startsWith('sem:') ? reminder.rep.slice(4).split(',').map(Number) : [start.getDay()])
   const [insist, setInsist] = useState(reminder?.insist ?? false)
+  const [onlyMe, setOnlyMe] = useState(!!reminder?.solo)
+  const otherOnly = reminder?.solo && reminder.solo.toLowerCase() !== (me ?? '').toLowerCase() ? reminder.solo : ''
   const chosen = new Date(`${date}T${time}`)
   const valid = !isNaN(chosen.getTime()) && (kind !== 'sem' || days.length > 0)
   const rep = valid ? repeatFor(kind, chosen, days) : ''
@@ -31,7 +33,8 @@ export function ReminderDialog({ reminder, label, locked, offline, onSave, onRem
   function save() {
     // Con días de la semana, la primera vez es el primero de esos días desde la fecha elegida.
     const first = kind === 'sem' && !days.includes(chosen.getDay()) ? nextTime(chosen.toISOString(), rep, chosen) : chosen.toISOString()
-    onSave({ id: reminder?.id ?? crypto.randomUUID().slice(0, 8), at: first, rep, insist, done: false, hist: reminder?.hist ?? [] })
+    onSave({ id: reminder?.id ?? crypto.randomUUID().slice(0, 8), at: first, rep, insist, done: false, hist: reminder?.hist ?? [],
+      ...(otherOnly ? { solo: otherOnly } : onlyMe && shared && me ? { solo: me } : {}) })
   }
 
   return (
@@ -62,6 +65,10 @@ export function ReminderDialog({ reminder, label, locked, offline, onSave, onRem
         </div>}
         <label className="insistir"><input type="checkbox" checked={insist} onChange={e => setInsist(e.target.checked)} />
           <span><strong>Insistir hasta que lo marque</strong><small>Si no lo marcas hecho, vuelve a avisar cada día a la misma hora.</small></span></label>
+        {shared && (otherOnly
+          ? <p className="recordatorio-aviso"><BellOff size={15} aria-hidden="true" /> Este recordatorio le suena solo a {otherOnly}.</p>
+          : <label className="insistir"><input type="checkbox" checked={onlyMe} onChange={e => setOnlyMe(e.target.checked)} />
+            <span><strong>Solo para mí</strong><small>Nota compartida: los demás no reciben este aviso.</small></span></label>)}
         {valid && <p className="recordatorio-resumen"><Bell size={14} aria-hidden="true" />
           <span>Sonará <strong>{chosen.toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })} a las {time}</strong>{rep && <>, y luego <strong>{repeatText(rep)}</strong></>}.</span></p>}
         {past && <p className="error">Esa hora ya pasó.</p>}
