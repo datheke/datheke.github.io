@@ -39,21 +39,20 @@ jobs:
         with:
           name: Datheke-Windows
           path: src-tauri/target/release/bundle/nsis/*.exe
-      # Enlace fijo: github.com/datheke/datheke.github.io/releases/download/windows/Datheke-Windows.exe
-      - name: Publicar el instalador para descargar
+      # Cada versión es una "release" vX.Y.Z con los dos archivos, con su número en el nombre (Datheke-Windows-X.Y.Z.exe).
+      # La app mira la última para avisar que hay versión nueva. Solo desde main (las pruebas de otras ramas no se publican).
+      - name: Publicar el instalador
+        if: github.ref == 'refs/heads/main'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp src-tauri/target/release/bundle/nsis/*.exe Datheke-Windows.exe
           V=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          NOTAS="Datheke $V para Windows. Descarga Datheke-Windows.exe y ábrelo para instalar (encima de la versión anterior)."
-          if gh release view windows >/dev/null 2>&1; then
-            gh release upload windows Datheke-Windows.exe --clobber
-            gh release edit windows --title "Datheke para Windows ($V)" --notes "$NOTAS"
-          else
-            gh release create windows Datheke-Windows.exe --title "Datheke para Windows ($V)" --notes "$NOTAS" --latest=false
-          fi
+          F="Datheke-Windows-$V.exe"
+          cp src-tauri/target/release/bundle/nsis/*.exe "$F"
+          NOTAS="Datheke $V. Celular Android: descarga Datheke-$V.apk. Windows: descarga Datheke-Windows-$V.exe. Se instala encima de la versión anterior sin perder nada."
+          gh release create "v$V" --title "Datheke $V" --notes "$NOTAS" --latest --target "$GITHUB_SHA" 2>/dev/null || true
+          gh release upload "v$V" "$F" --clobber
 
   android:
     if: inputs.plataforma == 'android'
@@ -92,6 +91,11 @@ jobs:
           m=src-tauri/gen/android/app/src/main/AndroidManifest.xml
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />#' "$m"
           grep -q RECORD_AUDIO "$m" || { echo "No se pudo agregar el permiso del micrófono"; cat "$m"; exit 1; }
+      # Recordatorios a la hora exacta (si no, Android puede atrasarlos varios minutos).
+      - run: |
+          m=src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />#' "$m"
+          grep -q USE_EXACT_ALARM "$m" || { echo "No se pudo agregar el permiso de alarmas exactas"; exit 1; }
       - run: npx tauri icon public/icon.png
       - run: npx tauri android build --apk --target aarch64
         env:
@@ -110,16 +114,14 @@ jobs:
         with:
           name: Datheke-Android
           path: Datheke.apk
-      # Enlace fijo para el celular: github.com/datheke/datheke.github.io/releases/download/android/Datheke.apk
-      - name: Publicar el APK para descargar
+      - name: Publicar el APK
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           V=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          NOTAS="Datheke $V para Android. Toca Datheke.apk para descargarlo e instálalo encima del anterior."
-          if gh release view android >/dev/null 2>&1; then
-            gh release upload android Datheke.apk --clobber
-            gh release edit android --title "Datheke para Android ($V)" --notes "$NOTAS"
-          else
-            gh release create android Datheke.apk --title "Datheke para Android ($V)" --notes "$NOTAS" --latest
-          fi
+          F="Datheke-$V.apk"
+          cp Datheke.apk "$F"
+          NOTAS="Datheke $V. Celular Android: descarga Datheke-$V.apk. Windows: descarga Datheke-Windows-$V.exe. Se instala encima de la versión anterior sin perder nada."
+          gh release create "v$V" --title "Datheke $V" --notes "$NOTAS" --latest --target "$GITHUB_SHA" 2>/dev/null || true
+          gh release upload "v$V" "$F" --clobber

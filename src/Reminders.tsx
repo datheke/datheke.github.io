@@ -18,8 +18,8 @@ const DEVICE_NAME: Record<Device, string> = {
 
 // Cómo suena en modo Datheke, por aparato. ok = suena aunque Datheke esté cerrado o en segundo plano.
 const DATHEKE: { key: Device | 'web'; name: string; ok: boolean; text: string }[] = [
-  { key: 'android', name: 'Celular Android (app)', ok: true, text: 'Suena aunque la app esté cerrada, como una alarma. La primera vez te pide permiso para notificaciones.' },
-  { key: 'windows', name: 'Windows (app)', ok: true, text: 'Datheke queda en segundo plano (iconito junto al reloj) y arranca al prender la PC: suena aunque cierres la ventana.' },
+  { key: 'android', name: 'Celular Android (app)', ok: true, text: 'Suena aunque la app esté cerrada, como una alarma, con botones Hecho y Posponer. La primera vez te pide permiso para notificaciones.' },
+  { key: 'windows', name: 'Windows (app)', ok: true, text: 'Al cerrar la ventana, Datheke queda en segundo plano (iconito junto al reloj) y arranca al prender la PC: suena aunque no la tengas abierta. Para salir del todo: clic derecho en el iconito → Salir.' },
   { key: 'web', name: 'Web: iPhone, Mac u otra PC', ok: false, text: 'Solo suena con la página de Datheke abierta. Si está cerrada, al abrirla te muestra los recordatorios que pasaron.' },
 ]
 
@@ -83,7 +83,7 @@ export function ReminderHelp({ mode, current, onUse, onClose }: {
               </li>
             ))}
           </ul>
-          <p className="recordar-nota">¿Quieres que suene también en iPhone o Mac con todo cerrado? Usa <strong>Google Calendar</strong>.</p>
+          <p className="recordar-nota">Pronto: <strong>Google Calendar</strong>, para que suene también en iPhone y Mac con todo cerrado.</p>
         </> : <>
           <h2><CalendarDays size={20} aria-hidden="true" /> Recordatorios con Google Calendar</h2>
           <p>Datheke copia tus recordatorios a tu <strong>Google Calendar</strong> y es Calendar quien avisa. Datheke ya no suena, así <strong>nunca hay dos avisos</strong>.</p>

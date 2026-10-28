@@ -18,6 +18,8 @@ import { Account, UpdateToast } from './Account.tsx'
 import { checkUpdate, type Update } from './update.ts'
 import { ReminderHelp, type ReminderMode } from './Reminders.tsx'
 import { ReminderDialog } from './ReminderDialog.tsx'
+import { agenda, type Source } from './agenda.ts'
+import * as notify from './notify.ts'
 import { chipText, groupOf, markDone, remindersIn, repeatText, sortReminders, updateIn, type Group, type Reminder } from './remind.ts'
 import * as vault from './vault.ts'
 import { buildZip, changedSince, EVERY_MS, NeedsPermission, upload as uploadBackup } from './backup.ts'
@@ -154,12 +156,8 @@ export default function App() {
     if (t) store.replaceText(noteId, updateIn(t.text, id, r))
   }
   const lastBackup = settings?.appProperties?.respaldo ?? ''
-  // Quién avisa los recordatorios, igual en todos los aparatos de la cuenta (Reminders.tsx).
-  const reminderMode: ReminderMode = settings?.appProperties?.avisos === 'calendar' ? 'calendar' : 'datheke'
-  const setReminderMode = (m: ReminderMode) => act(() => {
-    if (settings) store.patch(settings.id, { props: { avisos: m === 'calendar' ? 'calendar' : null } })
-    else if (m === 'calendar') store.create({ kind: 'ajustes', avisos: 'calendar' }, 'Ajustes')
-  })
+  // Quién avisa los recordatorios. Por ahora siempre Datheke; Google Calendar viene en una versión siguiente.
+  const reminderMode: ReminderMode = 'datheke'
   const setLastBackup = (when: string) => act(() => {
     if (settings) store.patch(settings.id, { props: { respaldo: when } })
     else store.create({ kind: 'ajustes', respaldo: when }, 'Ajustes')
@@ -352,6 +350,34 @@ export default function App() {
     setWriting(false)
   }
 
+  // Avisos de los recordatorios (notify.ts): se programan de nuevo cada vez que cambian.
+  const sources: Source[] = reminders.map(x => ({ r: x.r, label: x.label, noteId: x.note.id, noteTitle: x.note.name || UNTITLED, locked: isLocked(x.note) }))
+  const knownNotes = allNotes.filter(n => s.texts[n.id] && !(isLocked(n) && !unlocked)).map(n => n.id)
+  const agendaKey = JSON.stringify(sources.map(x => [x.noteId, x.r, x.label, x.locked])) + knownNotes.join()
+  useEffect(() => {
+    if (!ready) return
+    notify.schedule(agenda(sources), new Set(knownNotes))
+  }, [ready, agendaKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Botones de la notificación (Android) y tocarla: abrir la nota en esa línea o marcar hecho.
+  const notifyRef = useRef({ open: (_n: string, _r: string) => {}, done: (_n: string, _r: string) => {} })
+  useEffect(() => {
+    notifyRef.current = {
+      open: (noteId, rid) => { setTrashView(false); open(noteId); setFocusRem(rid) },
+      done: (noteId, rid) => {
+        const x = reminders.find(y => y.note.id === noteId && y.r.id === rid)
+        if (x) changeReminder(noteId, rid, markDone(x.r))
+        else { open(noteId); setFocusRem(rid) } // con clave y la caja cerrada: se abre para marcarlo ahí
+      },
+    }
+  })
+  useEffect(() => {
+    let stop: (() => void) | undefined
+    notify.start({ open: (n, r) => notifyRef.current.open(n, r), done: (n, r) => notifyRef.current.done(n, r) }).then(f => { stop = f })
+    notify.autostart()
+    return () => stop?.()
+  }, [])
+
   function renameNotebook(nb: DriveFile) {
     const name = prompt('Nuevo nombre de la libreta', nb.name)?.trim()
     if (name) store.patch(nb.id, { name })
@@ -445,7 +471,10 @@ export default function App() {
   // La lista de recordatorios: pendientes, hoy, próximos y hechos (cerrado). Tocar uno abre su nota en esa línea.
   const GROUPS: [Group, string][] = [['pendiente', 'Pendientes'], ['hoy', 'Hoy'], ['proximo', 'Próximos'], ['hecho', 'Hechos']]
   function remindersList() {
-    const hint = lockedHidden && <p className="vacio pequeño">🔐 Los recordatorios de tus notas con clave aparecen al abrirlas.</p>
+    const hint = <>
+      <button className="enlace como-suenan" onClick={() => setReminderHelp('datheke')}>¿Cómo suenan los recordatorios en cada aparato?</button>
+      {lockedHidden && <p className="vacio pequeño">🔐 Los recordatorios de tus notas con clave aparecen al abrirlas (igual suenan).</p>}
+    </>
     if (!reminders.length) return <>{hint}<p className="vacio">Sin recordatorios. En una nota, ponte en una línea y toca la 🔔 de la barra.</p></>
     const row = (x: (typeof reminders)[number], g: Group) => (
       <div key={x.note.id + x.r.id} className="nota-fila">
@@ -479,7 +508,7 @@ export default function App() {
   return (
     <div className={appClass} style={{ '--columnas': columns } as CSSProperties}>
       <nav className="libretas" aria-label="Libretas">
-        <Account email={session.email} onLogout={logout} update={update} reminderMode={reminderMode} onReminderHelp={setReminderHelp} />
+        <Account email={session.email} onLogout={logout} update={update} />
         <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
         <button className={notebookId === null && !trashView && !remindView ? 'item activo' : 'item'} onClick={() => { setNotebookId(null); setTrashView(false); setRemindView(false) }}>
           <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
@@ -680,13 +709,12 @@ export default function App() {
         const n = s.files[remDlg.noteId]
         const apply = (r: Reminder | null) => { if (remDlg.id) changeReminder(remDlg.noteId, remDlg.id, r) }
         return <ReminderDialog reminder={cur} label={remDlg.label} locked={isLocked(n)} offline={s.offline} onClose={() => setRemDlg(null)}
-          onSave={r => { if (remDlg.insert) remDlg.insert(r); else apply(r); setRemDlg(null) }}
+          onSave={r => { if (remDlg.insert) remDlg.insert(r); else apply(r); setRemDlg(null); notify.askPermission() }}
           onRemove={() => { apply(null); setRemDlg(null) }}
           onDone={() => { if (cur) apply(markDone(cur)); setRemDlg(null) }}
           onHistory={hist => { if (cur) apply({ ...cur, hist }) }} />
       })()}
-      {reminderHelp && <ReminderHelp mode={reminderHelp} current={reminderMode} onClose={() => setReminderHelp(null)}
-        onUse={m => { setReminderMode(m); setReminderHelp(null) }} />}
+      {reminderHelp && <ReminderHelp mode={reminderHelp} current={reminderMode} onClose={() => setReminderHelp(null)} onUse={() => setReminderHelp(null)} />}
 
       {keyDialog && <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Clave de notas">
         <div className="ventana">
