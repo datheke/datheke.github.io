@@ -2,6 +2,7 @@ import { ArrowUpCircle, Check, Copy, ExternalLink, Globe, LogOut, X } from 'luci
 import { useEffect, useRef, useState } from 'react'
 import { desktop } from './auth.ts'
 import { getUpdate, type Update } from './update.ts'
+import { ReminderModeRow, type ReminderMode } from './Reminders.tsx'
 
 declare const __VERSION__: string // vite.config.ts
 
@@ -18,7 +19,10 @@ async function openWeb() {
 }
 
 // update: hay una versión más nueva (update.ts). Se nota con un puntito en el avatar y una línea en la tarjeta.
-export function Account({ email, onLogout, update }: { email: string; onLogout: () => void; update?: Update | null }) {
+export function Account({ email, onLogout, update, mode, calendarHere, onPickMode, onConnect }: {
+  email: string; onLogout: () => void; update?: Update | null
+  mode: ReminderMode; calendarHere: boolean; onPickMode: (m: ReminderMode) => void; onConnect: () => void
+}) {
   // Dónde se dibuja la tarjeta: flota sobre todo (la barra lateral la cortaría), debajo del botón y dentro de la pantalla.
   const [open, setOpen] = useState<{ left: number; top: number } | null>(null)
   const [copied, setCopied] = useState(false)
@@ -79,6 +83,12 @@ export function Account({ email, onLogout, update }: { email: string; onLogout: 
             {desktop && <button onClick={openWeb} title="Abrir en el navegador" aria-label="Abrir en el navegador"><ExternalLink size={15} /></button>}
           </div>
           {copied && <small className="cuenta-copiado" role="status">¡Dirección copiada!</small>}
+        </div>
+        <div className="cuenta-recordar">
+          <ReminderModeRow mode={mode} onPick={m => { close(); onPickMode(m) }} />
+          {mode === 'calendar' && !calendarHere && <p className="cuenta-nota">
+            En este aparato aún no está conectado: lo que cambies aquí llega a Calendar cuando abras Datheke en un aparato conectado.{' '}
+            <button className="enlace" onClick={() => { close(); onConnect() }}>Conectar aquí</button></p>}
         </div>
         <div className="cuenta-pie">
           <small>Datheke {__VERSION__} · {platform}</small>

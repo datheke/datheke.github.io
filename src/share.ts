@@ -101,3 +101,22 @@ export function pickFile(): Promise<File | undefined> {
     input.click()
   })
 }
+
+// "Abrir con Datheke" (Android: tocar el archivo en WhatsApp, Descargas…; Windows: doble clic): la app lo deja en la
+// carpeta temporal "recibidas" (MainActivity / lib.rs). Se toma el más antiguo y se borra de ahí.
+export async function takeReceived(): Promise<{ bytes: Uint8Array; name: string } | undefined> {
+  const { desktop } = await import('./auth.ts')
+  if (!desktop) return
+  try {
+    const fs = await import('@tauri-apps/plugin-fs')
+    const { join, appCacheDir } = await import('@tauri-apps/api/path')
+    const dir = await join(await appCacheDir(), 'recibidas')
+    if (!await fs.exists(dir)) return
+    const files = (await fs.readDir(dir)).filter(f => f.isFile).map(f => f.name).sort()
+    if (!files.length) return
+    const path = await join(dir, files[0])
+    const bytes = await fs.readFile(path)
+    await fs.remove(path).catch(() => {})
+    return { bytes, name: files[0].replace(/^\d+-/, '') }
+  } catch (e) { console.error('Nota recibida', e); return }
+}

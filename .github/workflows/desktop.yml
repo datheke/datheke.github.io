@@ -103,6 +103,8 @@ jobs:
       - run: |
           cargo fetch --manifest-path src-tauri/Cargo.toml
           python3 scripts/patch-android.py
+      # Abrir con Datheke: tocar un .datheke en WhatsApp, Descargas o un correo lo abre en la app.
+      - run: python3 scripts/patch-app.py
       - run: npx tauri icon public/icon.png
       - shell: bash
         run: |

@@ -63,8 +63,8 @@ export function ReminderModeRow({ mode, onPick }: { mode: ReminderMode; onPick: 
 }
 
 // Ventana flotante: qué hace el modo y cómo suena (Datheke) o cómo activarlo en cada aparato (Calendar).
-export function ReminderHelp({ mode, current, onUse, onClose }: {
-  mode: ReminderMode; current: ReminderMode; onUse: (m: ReminderMode) => void; onClose: () => void
+export function ReminderHelp({ mode, current, calendarHere, onUse, onClose }: {
+  mode: ReminderMode; current: ReminderMode; calendarHere: boolean; onUse: (m: ReminderMode) => void; onClose: () => void
 }) {
   const [tab, setTab] = useState(firstTab)
   const here = device === 'android' || device === 'windows' ? device : 'web'
@@ -83,11 +83,12 @@ export function ReminderHelp({ mode, current, onUse, onClose }: {
               </li>
             ))}
           </ul>
-          <p className="recordar-nota">Pronto: <strong>Google Calendar</strong>, para que suene también en iPhone y Mac con todo cerrado.</p>
+          <p className="recordar-nota">Otra opción: <strong>Google Calendar</strong> (en tu cuenta → Recordatorios), para que suene también en iPhone y Mac con todo cerrado.</p>
         </> : <>
           <h2><CalendarDays size={20} aria-hidden="true" /> Recordatorios con Google Calendar</h2>
           <p>Datheke copia tus recordatorios a tu <strong>Google Calendar</strong> y es Calendar quien avisa. Datheke ya no suena, así <strong>nunca hay dos avisos</strong>.</p>
-          <p className="recordar-nota">Lo que borres o cambies en Calendar también cambia en Datheke, y al revés. Borrarlo en Calendar cuenta como hecho.</p>
+          <p className="recordar-nota">Lo que borres o cambies en Calendar también cambia en Datheke, y al revés. Borrarlo en Calendar cuenta como hecho.
+            Van a un calendario aparte llamado <strong>Datheke</strong>: tus otros calendarios no se tocan. «Insistir» solo funciona con los avisos de Datheke.</p>
           <p><strong>Para que suene, haz esto una vez en cada aparato:</strong></p>
           <div className="pestanas" role="tablist">
             {(Object.keys(CALENDAR) as (keyof typeof CALENDAR)[]).map(k => (
@@ -98,10 +99,11 @@ export function ReminderHelp({ mode, current, onUse, onClose }: {
           </div>
           <ol className="recordar-pasos">{CALENDAR[tab].steps.map(s => <li key={s}>{s}</li>)}</ol>
           <p className="recordar-resultado"><CheckCircle2 size={16} aria-hidden="true" /> {CALENDAR[tab].result}</p>
+          {!calendarHere && <p className="recordar-nota">Al conectar, Google te pide permiso para el calendario. Si dice «Google no verificó esta app», toca <strong>Avanzado → Ir a Datheke</strong> (es normal en apps personales).</p>}
         </>}
         <div className="caja-fila recordar-botones">
-          {mode !== current
-            ? <><button className="principal" onClick={() => onUse(mode)}>{mode === 'calendar' ? 'Conectar Google Calendar' : 'Usar Datheke'}</button>
+          {mode !== current || (mode === 'calendar' && !calendarHere)
+            ? <><button className="principal" onClick={() => onUse(mode)}>{mode === 'calendar' ? (mode === current ? 'Conectar en este aparato' : 'Conectar Google Calendar') : 'Usar Datheke'}</button>
               <button onClick={onClose}>Cancelar</button></>
             : <button className="principal" onClick={onClose}>Entendido</button>}
         </div>
