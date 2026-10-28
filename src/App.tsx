@@ -754,6 +754,8 @@ export default function App() {
         let meta: shared.Remote
         try { meta = await shared.get(sh.id) } catch (e) {
           const code = shared.status(e)
+          // En este aparato nunca se pudo abrir (se agregó desde la web y Google aún no da acceso aquí): no se toca.
+          if (!st) continue
           if (!sh.owner && (code === 404 || code === 403)) { // te la dejaron de compartir: queda tu copia
             store.patch(n.id, { props: { fin: 'true' } })
             setToast(`${sh.dueno || 'Quien la compartió'} dejó de compartir «${title || UNTITLED}». Te quedó una copia como nota tuya.`)
@@ -1316,7 +1318,8 @@ export default function App() {
         ownerName={shareOf(note)?.dueno} myEmail={session.email} onShare={startShare} onRemove={removePerson}
         onLeave={() => { setShareOpen(false); deleteNote() }} onClose={() => setShareOpen(false)} />}
       {copyAsk && <CopyDialog who={copyAsk.who} onPick={copyAsk.resolve} />}
-      {recvMenu && <ReceiveDialog onClose={() => setRecvMenu(false)} onShared={addShared} onFile={() => { setRecvMenu(false); openReceived() }} />}
+      {recvMenu && <ReceiveDialog inApp={desktop} onOpenWeb={() => { import('@tauri-apps/plugin-opener').then(o => o.openUrl('https://datheke.github.io')).catch(fail) }}
+        onClose={() => setRecvMenu(false)} onShared={addShared} onFile={() => { setRecvMenu(false); openReceived() }} />}
       {received && (() => {
         const rems = (received.p.html.match(/data-type="recordatorio"/g) ?? []).length
         const photos = Object.keys(received.p.photos).length
