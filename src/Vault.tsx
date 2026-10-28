@@ -99,7 +99,10 @@ export function Unlock({ verifier, onOpen, onForgot, compact }: {
 }
 
 // Crear la clave: la primera vez que se protege una nota, y después de "olvidé la clave" (ya entró de nuevo con Google).
-export function Create({ again, onCreated, onCancel }: { again?: boolean; onCreated: (verifier: string) => void; onCancel: () => void }) {
+// onNoKey (solo tras "olvidé la clave"): en vez de una clave nueva, quitarles la clave a las notas.
+export function Create({ again, onCreated, onCancel, onNoKey }: {
+  again?: boolean; onCreated: (verifier: string) => void; onCancel: () => void; onNoKey?: () => void
+}) {
   const [one, setOne] = useState('')
   const [two, setTwo] = useState('')
   const [error, setError] = useState('')
@@ -131,6 +134,9 @@ export function Create({ again, onCreated, onCancel }: { again?: boolean; onCrea
         <button type="submit" className="principal" disabled={busy}>{busy ? 'Guardando…' : 'Guardar clave'}</button>
         <button type="button" onClick={onCancel}>Cancelar</button>
       </div>
+      {onNoKey && <button type="button" className="enlace" onClick={() => { forgetPrint(); onNoKey() }}>
+        No quiero clave: quitarla a mis notas
+      </button>}
     </form>
   )
 }
