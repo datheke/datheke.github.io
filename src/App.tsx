@@ -1,5 +1,5 @@
 import {
-  ChevronLeft, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, LogOut, Maximize2, Minimize2, Notebook,
+  ChevronLeft, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
   PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
@@ -14,6 +14,7 @@ import { TEMPLATES } from './templates.ts'
 import { firstUnordered, lastUnordered, reorder } from './order.ts'
 import { startSort } from './sortable.ts'
 import { MoreMenu, Resizer } from './ui.tsx'
+import { Account } from './Account.tsx'
 import * as vault from './vault.ts'
 import { buildZip, changedSince, EVERY_MS, NeedsPermission, upload as uploadBackup } from './backup.ts'
 import { canOfferPrint } from './print.ts'
@@ -394,11 +395,7 @@ export default function App() {
   return (
     <div className={appClass} style={{ '--columnas': columns } as CSSProperties}>
       <nav className="libretas" aria-label="Libretas">
-        <div className="cuenta">
-          <span className="avatar" aria-hidden="true">{session.email[0]?.toUpperCase()}</span>
-          <span className="correo" title={session.email}>{session.email}</span>
-          <button className="btn-icono" onClick={logout} title="Salir" aria-label="Salir"><LogOut size={16} /></button>
-        </div>
+        <Account email={session.email} onLogout={logout} />
         <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
         <button className={notebookId === null && !trashView ? 'item activo' : 'item'} onClick={() => { setNotebookId(null); setTrashView(false) }}>
           <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
