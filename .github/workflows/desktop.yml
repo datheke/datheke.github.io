@@ -99,10 +99,10 @@ jobs:
           m=src-tauri/gen/android/app/src/main/AndroidManifest.xml
           sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#&\n    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />\n    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />#' "$m"
           grep -q USE_EXACT_ALARM "$m" || { echo "No se pudo agregar el permiso de alarmas exactas"; exit 1; }
-      # El menú de compartir (sharekit) viene con compileSdk 35 y las librerías de Tauri piden 36: se sube a 36.
+      # Arreglos a plugins de Android (ver el archivo): compileSdk del menú de compartir y botones de la notificación.
       - run: |
           cargo fetch --manifest-path src-tauri/Cargo.toml
-          for f in ~/.cargo/registry/src/*/tauri-plugin-sharekit-*/android/build.gradle.kts; do sed -i 's/compileSdk = [0-9]*/compileSdk = 36/' "$f"; grep -H compileSdk "$f"; done
+          python3 scripts/patch-android.py
       - run: npx tauri icon public/icon.png
       - shell: bash
         run: |

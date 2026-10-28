@@ -53,13 +53,17 @@ export async function send(bytes: Uint8Array, name: string): Promise<'compartido
     const fs = await import('@tauri-apps/plugin-fs')
     const { join, appCacheDir, documentDir } = await import('@tauri-apps/api/path')
     if (android) {
-      // El menú de compartir del celular lee el archivo desde la carpeta temporal de la app.
-      const dir = await appCacheDir()
+      // El menú de compartir copia el archivo a la carpeta temporal de la app y lo entrega desde ahí. Se escribe en una
+      // subcarpeta: si estuviera en la misma ruta, la copia lo vaciaba (llegaba de 0 kB a WhatsApp).
+      const dir = await join(await appCacheDir(), 'enviar')
       await fs.mkdir(dir, { recursive: true }).catch(() => {})
       const path = await join(dir, name)
       await fs.writeFile(path, bytes)
       const { shareFile } = await import('@choochmeque/tauri-plugin-sharekit-api')
-      await shareFile(path, { mimeType: 'application/octet-stream', title: name })
+      try { await shareFile(path, { mimeType: 'application/octet-stream', title: name }) } catch (e) {
+        // Android avisa "cancelado" también cuando ya se compartió (WhatsApp no devuelve nada): no es un error.
+        if (!/cancel/i.test(String(e))) throw e
+      }
       return 'compartido'
     }
     // Windows: queda en Documentos/Datheke/Enviadas para adjuntarlo en WhatsApp o un correo.

@@ -8,7 +8,7 @@ import { AuthError, OfflineError, readNote, type DriveFile } from './drive.ts'
 import Editor, { Cover, EmojiPicker } from './Editor.tsx'
 import { startFolder } from './folder.ts'
 import { shortDate } from './format.ts'
-import { imageBlob, pickImage, uploadImage } from './images.ts'
+import { imageBlob, pickImage, uploadCover } from './images.ts'
 import { cleanReminders, fileName, pack, photoIds, pickFile, send, unpack, type Packed } from './share.ts'
 import * as store from './sync.ts'
 import { TEMPLATES } from './templates.ts'
@@ -264,16 +264,17 @@ export default function App() {
     && backupOld(lastBackup) && changedSince(files, lastBackup)
   useEffect(() => { if (backupDue) queueMicrotask(() => doBackup(false)) }, [backupDue]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Versión nueva: se mira al abrir la app y luego cada 6 horas (y al volver a la app si pasó más de una hora).
+  // Versión nueva: se mira al abrir la app y luego cada hora (cada 10 minutos mientras no haya nada nuevo).
   useEffect(() => {
     let last = 0
     const check = () => {
       if (Date.now() - last < 3600_000) return
       last = Date.now()
-      checkUpdate().then(setUpdate)
+      // Si no hay nada (o la versión del celular aún se está publicando), se vuelve a mirar en 10 minutos.
+      checkUpdate().then(u => { setUpdate(u); if (!u) last = Date.now() - 3000_000 })
     }
     const first = setTimeout(check, 3000)
-    const every = setInterval(() => { last = 0; check() }, 6 * 3600_000)
+    const every = setInterval(check, 10 * 60_000)
     const back = () => { if (document.visibilityState === 'visible') check() }
     document.addEventListener('visibilitychange', back)
     return () => { clearTimeout(first); clearInterval(every); document.removeEventListener('visibilitychange', back) }
@@ -376,7 +377,8 @@ export default function App() {
   })
   useEffect(() => {
     let stop: (() => void) | undefined
-    notify.start({ open: (n, r) => notifyRef.current.open(n, r), done: (n, r) => notifyRef.current.done(n, r) }).then(f => { stop = f })
+    notify.start({ open: (n, r) => notifyRef.current.open(n, r), done: (n, r) => notifyRef.current.done(n, r),
+      snoozed: at => setToast(`Listo: te lo vuelvo a recordar a las ${new Date(at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}.`) }).then(f => { stop = f })
     notify.autostart()
     return () => stop?.()
   }, [])
@@ -485,8 +487,10 @@ export default function App() {
     const file = await pickImage()
     if (!file) return
     try {
-      store.patch(note.id, { props: { cover: await uploadImage(file) } })
-    } catch (e) { fail(e) }
+      setToast('Poniendo la portada…')
+      store.patch(note.id, { props: { cover: await uploadCover(file) } })
+      setToast(null)
+    } catch (e) { setToast(null); fail(e) }
   }
 
 
@@ -625,7 +629,7 @@ export default function App() {
           </div>
           <div className="lista-acciones">
             <button className="principal solo-celular" onClick={() => newNote()}><Plus size={18} /> Nota</button>
-            <button className="btn-icono" onClick={openReceived} title="Abrir una nota recibida (.datheke)" aria-label="Abrir una nota recibida"><FileDown size={18} /></button>
+            <button className="recibir" onClick={openReceived} title="Abrir una nota que te enviaron (archivo .datheke)"><FileDown size={18} /> Nota recibida</button>
             <select value="" aria-label="Nueva nota desde plantilla" onChange={e => fromTemplate(e.target.value)}>
               <option value="">Desde plantilla…</option>
               {TEMPLATES.map(t => <option key={t.title} value={t.title}>{t.title}</option>)}
@@ -644,10 +648,11 @@ export default function App() {
                   <strong>
                     {depth > 0 && '↳ '}{s.conflicts[n.id] && '⚠️ '}{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}
                   </strong>
-                  {s.texts[n.id] && !(isLocked(n) && !unlocked) && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
-                  {isLocked(n) && !unlocked && <span className="resumen">🔐 Nota con clave</span>}
+                  {/* Con clave: en la lista nunca se ve su texto, aunque esté abierta con la clave (alguien puede ver la pantalla). */}
+                  {s.texts[n.id] && !isLocked(n) && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
+                  {isLocked(n) && <span className="resumen">🔐 Nota con clave</span>}
                   {!trashView && nextOf(n) && <span className={`tarjeta-recordatorio ${groupOf(nextOf(n)!.r)}`}>
-                    <Bell size={12} aria-hidden="true" /> {nextOf(n)!.label}: {chipText(nextOf(n)!.r)}</span>}
+                    <Bell size={12} aria-hidden="true" /> {isLocked(n) ? 'Recordatorio' : nextOf(n)!.label}: {chipText(nextOf(n)!.r)}</span>}
                   {trashView && <span className="resumen basurero-dias">Se elimina en {daysLeft(n)} días</span>}
                   <small>{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
                 </button>
