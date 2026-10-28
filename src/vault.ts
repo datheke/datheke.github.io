@@ -19,14 +19,21 @@ export const isSealed = (v: unknown): v is Sealed => !!v && typeof v === 'object
 export const MIN_LENGTH = 6
 export const AUTO_LOCK_MS = 5 * 60_000
 
-let key: CryptoKey | null = null
-let salt = ''
-let bits = '' // la llave en base64, solo mientras está abierta: para guardarla tras la huella (Android)
+// Llaves abiertas, por su sal: la de tus notas (principal) y las claves comunes de notas compartidas.
+// bits: la llave en base64, solo mientras está abierta (para guardarla tras la huella, en Android).
+const ring = new Map<string, { key: CryptoKey; bits: string }>()
+let mainSalt = ''
+let ver = 0
 const listeners = new Set<() => void>()
 export const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } }
-const changed = () => listeners.forEach(fn => fn())
-export const unlocked = () => key !== null
-export const keyBits = () => bits
+const changed = () => { ver++; listeners.forEach(fn => fn()) }
+export const version = () => ver
+export const unlocked = () => !!mainSalt && ring.has(mainSalt) // tu clave de notas
+export const any = () => ring.size > 0
+export const hasKey = (s?: string) => s ? ring.has(s) : unlocked() // sin sal: la principal
+export const keyBits = (s = mainSalt) => ring.get(s)?.bits ?? ''
+export const saltOf = (verifier?: string | null) => parseVault(verifier)?.salt
+export function forget(s: string) { if (ring.delete(s)) { if (s === mainSalt) mainSalt = ''; changed() } }
 
 type Vault = { salt: string; check: string }
 export const parseVault = (s?: string | null): Vault | null => {
@@ -46,53 +53,55 @@ async function fromBits(all: Uint8Array) {
   return { k, check }
 }
 
-function open_(k: CryptoKey, s: string, all: Uint8Array) {
-  key = k
-  salt = s
-  bits = b64(all)
+function open_(k: CryptoKey, s: string, all: Uint8Array, main: boolean) {
+  if (main && mainSalt && mainSalt !== s) ring.delete(mainSalt) // clave nueva: la vieja ya no sirve
+  ring.set(s, { key: k, bits: b64(all) })
+  if (main) mainSalt = s
   touch()
   changed()
 }
 
 // Clave nueva (primera vez o "olvidé la clave"): devuelve el verificador para guardar en Drive. Queda abierta.
-export async function create(password: string): Promise<string> {
+// main = false: clave común de una nota compartida (no cambia tu clave de notas).
+export async function create(password: string, main = true): Promise<string> {
   if (password.length < MIN_LENGTH) throw new Error(`La clave debe tener al menos ${MIN_LENGTH} caracteres.`)
   const s = b64(random(16))
   const all = await derive(password, s)
   const { k, check } = await fromBits(all)
-  open_(k, s, all)
+  open_(k, s, all, main)
   return `1.${s}.${check}`
 }
 
-export async function unlock(password: string, vault: string): Promise<boolean> {
+export async function unlock(password: string, vault: string, main = true): Promise<boolean> {
   const v = parseVault(vault)
   if (!v) return false
   const all = await derive(password, v.salt)
   const { k, check } = await fromBits(all)
   if (check !== v.check) return false
-  open_(k, v.salt, all)
+  open_(k, v.salt, all, main)
   return true
 }
 
 // Con la llave guardada tras la huella: también se compara con el verificador (si la clave cambió, ya no sirve).
-export async function unlockWithBits(saved: string, vault: string): Promise<boolean> {
+export async function unlockWithBits(saved: string, vault: string, main = true): Promise<boolean> {
   const v = parseVault(vault)
   if (!v) return false
   const all = unb64(saved)
   const { k, check } = await fromBits(all)
   if (check !== v.check) return false
-  open_(k, v.salt, all)
+  open_(k, v.salt, all, main)
   return true
 }
 
 export function lock() {
-  if (!key) return
-  key = null
-  bits = ''
+  if (!ring.size) return
+  ring.clear()
+  mainSalt = ''
   changed()
 }
 
-export async function seal(t: Snapshot): Promise<Sealed> {
+export async function seal(t: Snapshot, salt = mainSalt): Promise<Sealed> {
+  const key = ring.get(salt)?.key
   if (!key) throw new Error('La caja fuerte está cerrada.')
   const iv = random(12)
   const data = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(JSON.stringify(t))))
@@ -101,7 +110,8 @@ export async function seal(t: Snapshot): Promise<Sealed> {
 
 // null: cerrada, o cifrada con otra clave (cambiada en otro aparato) o dañada. Esa nota se vuelve a bajar de Drive.
 export async function open(s: Sealed): Promise<Snapshot | null> {
-  if (!key || s.salt !== salt) return null
+  const key = ring.get(s.salt)?.key
+  if (!key) return null
   try {
     const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(s.iv) }, key, unb64(s.data))
     return JSON.parse(dec.decode(plain))

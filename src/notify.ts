@@ -143,3 +143,11 @@ export async function clear() {
     if (pending.length) await n.cancel(pending.map(p => p.id))
   } catch (e) { console.error('No se pudieron quitar los avisos', e) }
 }
+
+// Tono del aviso: lo elige el teléfono (ajustes del canal "Recordatorios" de Datheke). En la app de Android hay un atajo.
+export function openToneSettings(): boolean {
+  const bridge = (window as unknown as { DathekeAndroid?: { ajustesAviso(): void } }).DathekeAndroid
+  if (!bridge) return false
+  bridge.ajustesAviso()
+  return true
+}

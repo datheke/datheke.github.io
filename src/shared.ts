@@ -88,7 +88,7 @@ export function hash(s: string) {
 
 // Lo último que este aparato subió o bajó de cada nota compartida (base: fecha en Drive; sent: huella del texto).
 const STATE = 'datheke-compartidas'
-type Entry = { base: string; sent: number; k?: boolean } // k: la última vez la nota tenía clave para todos
+type Entry = { base: string; sent: number }
 type St = Record<string, Entry>
 export const readState = (): St => { try { return JSON.parse(localStorage.getItem(STATE) ?? '{}') } catch { return {} } }
 export function saveState(fileId: string, v: Entry | null) {
