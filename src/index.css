@@ -40,7 +40,25 @@ button.enlace { border: none; padding: 0; text-decoration: underline; color: inh
 .app { display: grid; grid-template-columns: var(--columnas, 240px 6px 320px 6px minmax(0, 1fr)); height: 100dvh; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 
 .libretas { background: var(--barra); color: var(--barra-texto); padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; overflow-y: auto; min-width: 0; }
-.cuenta { display: flex; align-items: center; gap: 8px; padding: 2px 4px 12px; font-size: 13px; }
+.cuenta { position: relative; padding: 0 0 10px; font-size: 13px; }
+/* Avatar y correo: un botón que abre la tarjeta de la cuenta (Account.tsx). */
+.cuenta-boton { display: flex; align-items: center; gap: 8px; width: 100%; border: none; border-radius: 8px; padding: 4px; text-align: left; color: inherit; font-size: 13px; }
+.cuenta-boton:hover, .cuenta-boton[aria-expanded="true"] { background: var(--hover); }
+.cuenta-tarjeta { position: fixed; z-index: 60; width: min(300px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 12px; padding: 14px; background: var(--fondo); color: var(--texto); border: 1px solid var(--borde); border-radius: 12px; box-shadow: 0 10px 30px #0000002a; }
+.cuenta-quien { display: flex; align-items: center; gap: 10px; }
+.cuenta-quien small { display: block; color: var(--suave); font-size: 12px; }
+.cuenta-quien strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+.avatar.grande { width: 40px; height: 40px; font-size: 18px; }
+.cuenta-web { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; background: #eaf6ef; }
+.cuenta-web p { margin: 0; display: flex; align-items: center; gap: 6px; }
+.cuenta-nota { color: #3f5f4b; font-size: 12px; }
+.cuenta-direccion { display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px; border-radius: 8px; background: var(--fondo); border: 1px solid #cfe9da; }
+.cuenta-direccion span { flex: 1; font-weight: 600; color: var(--acento); user-select: all; }
+.cuenta-direccion button { display: inline-flex; border: none; padding: 6px; color: var(--suave); }
+.cuenta-direccion button:hover { background: var(--hover); color: var(--texto); }
+.cuenta-copiado { color: var(--acento); }
+.cuenta-pie { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--suave); }
+.cuenta-pie button { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 13px; }
 .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--acento); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
 .correo { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nueva-nota { margin: 2px 0 14px; padding: 10px 16px; font-size: 15px; }
