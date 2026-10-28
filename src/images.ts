@@ -3,9 +3,10 @@ import { readBlob } from './drive.ts'
 import { addImage } from './sync.ts'
 
 // Fotos a JPEG de máx. 1600 px (~150–350 KB) con fondo blanco (el JPEG no tiene transparencia).
-async function compress(file: File): Promise<Blob> {
+// La portada es una franja: con 1200 px de ancho basta (~80–150 KB), se pone y se baja en los otros aparatos más rápido.
+async function compress(file: File, max = 1600, quality = 0.8): Promise<Blob> {
   const bmp = await createImageBitmap(file)
-  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height))
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height))
   const canvas = document.createElement('canvas')
   canvas.width = Math.round(bmp.width * k)
   canvas.height = Math.round(bmp.height * k)
@@ -14,13 +15,16 @@ async function compress(file: File): Promise<Blob> {
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height)
   bmp.close()
-  return new Promise((ok, ko) => canvas.toBlob(b => b ? ok(b) : ko(new Error('No se pudo leer la foto.')), 'image/jpeg', 0.8))
+  return new Promise((ok, ko) => canvas.toBlob(b => b ? ok(b) : ko(new Error('No se pudo leer la foto.')), 'image/jpeg', quality))
 }
 
 // La foto queda en el dispositivo al instante y se sube con lo demás (también sin internet).
 // shortcut: las fotos que se borran de una nota (o de una nota borrada) quedan en Drive; se limpian en la etapa 6 (basurero).
 export async function uploadImage(file: File): Promise<string> {
   return addImage(await compress(file))
+}
+export async function uploadCover(file: File): Promise<string> {
+  return addImage(await compress(file, 1200, 0.75))
 }
 
 // Las fotos se guardan también en el dispositivo: se ven sin internet y se bajan una sola vez.
