@@ -471,3 +471,9 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .compartida-barra.fin { background: #f3f4f6; color: var(--suave); }
 .caja-cerrada-nueva { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 0 32px; max-width: 560px; }
 .caja-cerrada-nueva p { margin: 0; }
+.a-quien { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; }
+.a-quien legend { padding: 0 4px; font-weight: 600; font-size: 13px; }
+.a-quien legend small { font-weight: 400; color: var(--suave); }
+.a-quien label { display: inline-flex; align-items: center; gap: 6px; }
+.recordar-tono { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; border: 1px solid var(--borde); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.recordar-tono button { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; background: var(--fondo); }

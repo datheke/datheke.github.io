@@ -49,6 +49,9 @@ function persist() {
 // Notas con clave (protegida: 'true'). En el aparato van cifradas; con la caja cerrada su texto no está en memoria
 // (salvo cambios aún sin subir, que la pantalla igual tapa) y no se bajan de Drive hasta abrirla.
 export const isProtected = (id: string) => state.files[id]?.appProperties?.protegida === 'true'
+// Con qué llave se cifra la copia local: la clave común de la nota compartida, o tu clave de notas (undefined).
+const keySalt = (id: string) => vault.saltOf(state.files[id]?.appProperties?.clave_comun)
+const canSeal = (id: string) => vault.hasKey(keySalt(id))
 let sealed: Record<string, vault.Sealed> = {}
 
 async function storeText(id: string, t: Snapshot) {
@@ -56,8 +59,8 @@ async function storeText(id: string, t: Snapshot) {
     delete sealed[id]
     return db.set(`text:${id}`, t)
   }
-  if (!vault.unlocked()) return // nunca en claro; enforce la quita de memoria y se vuelve a bajar al abrir
-  const s = await vault.seal(t)
+  if (!canSeal(id)) return // nunca en claro; enforce la quita de memoria y se vuelve a bajar al abrir
+  const s = await vault.seal(t, keySalt(id))
   sealed[id] = s
   return db.set(`text:${id}`, s)
 }
@@ -73,7 +76,7 @@ function dropLocal(id: string) {
 async function enforce() {
   for (const [id, t] of Object.entries(state.texts)) {
     if (isProtected(id) && !sealed[id]) {
-      if (vault.unlocked()) await storeText(id, t)
+      if (canSeal(id)) await storeText(id, t)
       else if (!state.pending[id]?.content) dropLocal(id)
     } else if (!isProtected(id) && sealed[id]) await storeText(id, t)
   }
@@ -84,7 +87,7 @@ async function enforce() {
 export async function openVault() {
   const opened: Record<string, Snapshot> = {}
   for (const [id, s] of Object.entries(sealed)) {
-    if (state.texts[id]) continue
+    if (state.texts[id] || !canSeal(id)) continue // su llave no está abierta (otra clave común): sigue cifrada
     const t = await vault.open(s)
     if (t) opened[id] = t
     else dropLocal(id)
@@ -94,6 +97,11 @@ export async function openVault() {
   update({ texts: { ...state.texts, ...opened }, revs })
   await enforce()
   sync()
+}
+
+// Tras cambiar una clave: lo que está abierto se vuelve a cifrar con la llave nueva.
+export async function resealAll() {
+  for (const [id, t] of Object.entries(state.texts)) if (isProtected(id)) { delete sealed[id]; await storeText(id, t) }
 }
 
 export function closeVault() {
@@ -170,7 +178,7 @@ export async function start(email: string) {
     else texts[id] = v
   }
   update({ ...empty(), ...saved, texts })
-  if (vault.unlocked()) await openVault()
+  if (vault.any()) await openVault()
   else await enforce()
   sync()
 }
@@ -221,7 +229,7 @@ async function pull() {
   // Notas cambiadas en Drive: se bajan de a una; el usuario puede seguir editando mientras tanto.
   for (const f of remote) {
     if (f.appProperties?.kind !== 'note' || !state.files[f.id] || f.modifiedTime === state.base[f.id]) continue
-    if (isProtected(f.id) && !vault.unlocked()) continue // se baja al abrir la caja
+    if (isProtected(f.id) && !canSeal(f.id)) continue // se baja al abrir la caja
     if (state.conflicts[f.id]?.modifiedTime === f.modifiedTime) continue
     const theirs = { title: titleOf(f), text: await readNote(f.id, f.mimeType) }
     if (!state.files[f.id]) continue // se borró aquí mientras bajaba
@@ -330,7 +338,7 @@ export async function addImage(blob: Blob): Promise<string> {
 // Nota que todavía no se bajó a este dispositivo (se pide al abrirla).
 export async function ensureText(id: string) {
   const f = state.files[id]
-  if (!f || state.texts[id] || isProtected(id) && !vault.unlocked()) return
+  if (!f || state.texts[id] || isProtected(id) && !canSeal(id)) return
   const text = await readNote(id, f.mimeType)
   if (state.texts[id]) return
   setText(id, { title: titleOf(f), text }, f.modifiedTime)

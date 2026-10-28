@@ -67,8 +67,10 @@ export function ReminderDialog({ reminder, label, locked, offline, shared, me, o
           <span><strong>Insistir hasta que lo marque</strong><small>Si no lo marcas hecho, vuelve a avisar cada día a la misma hora.</small></span></label>
         {shared && (otherOnly
           ? <p className="recordatorio-aviso"><BellOff size={15} aria-hidden="true" /> Este recordatorio le suena solo a {otherOnly}.</p>
-          : <label className="insistir"><input type="checkbox" checked={onlyMe} onChange={e => setOnlyMe(e.target.checked)} />
-            <span><strong>Solo para mí</strong><small>Nota compartida: los demás no reciben este aviso.</small></span></label>)}
+          : <fieldset className="a-quien"><legend>¿A quién le suena? <small>(nota compartida)</small></legend>
+            <label><input type="radio" name="a-quien" checked={!onlyMe} onChange={() => setOnlyMe(false)} /> A todos</label>
+            <label><input type="radio" name="a-quien" checked={onlyMe} onChange={() => setOnlyMe(true)} /> Solo a mí</label>
+          </fieldset>)}
         {valid && <p className="recordatorio-resumen"><Bell size={14} aria-hidden="true" />
           <span>Sonará <strong>{chosen.toLocaleDateString('es', { weekday: 'long', day: 'numeric', month: 'long' })} a las {time}</strong>{rep && <>, y luego <strong>{repeatText(rep)}</strong></>}.</span></p>}
         {past && <p className="error">Esa hora ya pasó.</p>}
