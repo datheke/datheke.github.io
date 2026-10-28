@@ -324,3 +324,32 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
   font-size: 13px; box-shadow: 0 6px 20px #0000001f; }
 .aviso-version .btn-icono { width: 26px; height: 26px; color: #9a3412; }
 @media (min-width: 701px) { .aviso-version { left: auto; right: 16px; } }
+
+/* Recordatorios (Reminders.tsx): quién avisa, en la tarjeta de la cuenta, y la ventana que lo explica. */
+.recordar-modo p { margin: 0 0 6px; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.segmento { display: flex; padding: 3px; gap: 3px; border-radius: 10px; background: var(--lista); border: 1px solid var(--borde); }
+.segmento button { flex: 1; border: none; border-radius: 8px; padding: 6px 8px; font-size: 13px; color: var(--suave); }
+.segmento button.activo { background: var(--fondo); color: var(--texto); font-weight: 600; box-shadow: 0 1px 3px #0002; }
+.recordar-como { font-size: 12px; margin-top: 4px; color: var(--suave); }
+.recordar-ayuda { position: relative; align-items: stretch; gap: 10px; padding: 18px 18px 12px; text-align: left; font-size: 14px; width: min(480px, 100%); }
+.recordar-ayuda h2 { display: flex; align-items: center; gap: 8px; margin: 0 28px 0 0; font-size: 18px; }
+.recordar-ayuda p { margin: 0; }
+.recordar-ayuda .cerrar { position: absolute; top: 10px; right: 10px; }
+.recordar-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.recordar-lista li { display: flex; gap: 10px; padding: 10px; border-radius: 10px; border: 1px solid var(--borde); }
+.recordar-lista li.aqui { border-color: var(--acento); background: #eaf6ef; }
+.recordar-lista li div { display: flex; flex-direction: column; gap: 2px; }
+.recordar-lista li span { color: var(--suave); font-size: 13px; }
+.recordar-lista .ok { color: var(--acento); flex-shrink: 0; }
+.recordar-lista .ojo { color: #d97706; flex-shrink: 0; }
+.etiqueta { margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: var(--acento); color: #fff; font-size: 11px; font-weight: 600; }
+.recordar-nota { color: var(--suave); font-size: 13px; }
+.pestanas { display: flex; flex-wrap: wrap; gap: 4px; }
+.pestanas button { border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+.pestanas button.activo { background: var(--acento); border-color: var(--acento); color: #fff; font-weight: 600; }
+.recordar-pasos { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.recordar-resultado { display: flex; gap: 8px; align-items: flex-start; padding: 10px; border-radius: 10px; background: #eaf6ef; color: #1f5135; font-size: 13px; }
+.recordar-resultado svg { flex-shrink: 0; margin-top: 1px; }
+.recordar-botones { justify-content: flex-end; }
+.recordar-aparato { color: var(--suave); font-size: 11px; text-align: right; }
+.recordar-lista li span.etiqueta { color: #fff; font-size: 11px; }
