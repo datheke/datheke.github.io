@@ -4,5 +4,5 @@
   "description": "Huella para abrir las notas con clave (solo celular)",
   "platforms": ["android", "iOS"],
   "windows": ["main"],
-  "permissions": ["biometric:default"]
+  "permissions": ["biometric:default", "biometric:allow-biometric-cipher"]
 }
