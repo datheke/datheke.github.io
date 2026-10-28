@@ -385,3 +385,37 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .marcar-hecho { align-self: center; margin-right: 8px; color: var(--acento); }
 .grupo-recordatorios .nota-fila { display: flex; align-items: center; margin-left: 8px; }
 .grupo-recordatorios .nota-fila .nota { flex: 1; min-width: 0; }
+
+/* Recordatorio de una línea (Editor.tsx, ReminderTag): etiqueta al final de la línea. */
+.tiptap .rec { display: inline-flex; align-items: center; gap: 4px; margin-left: 4px; padding: 1px 9px; border-radius: 999px; background: #eaf6ef; color: #1f5135;
+  font-family: system-ui, sans-serif; font-size: 12px; font-weight: 600; line-height: 1.7; vertical-align: middle; cursor: pointer; white-space: nowrap; user-select: none; }
+.tiptap .rec.pendiente { background: #fee2e2; color: #991b1b; }
+.tiptap .rec.hecho { background: var(--lista); color: var(--suave); }
+.tiptap .rec:hover { filter: brightness(.96); }
+.tiptap summary .rec { font-size: 12px; font-weight: 600; }
+.rec-resaltado { outline: 3px solid #f59e0b; outline-offset: 2px; transition: outline .3s; }
+.recordatorio-estado { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 10px; background: #eaf6ef; color: #1f5135; font-size: 13px; font-weight: 600; }
+.recordatorio-estado.pendiente { background: #fee2e2; color: #991b1b; }
+.recordatorio-estado.hecho { background: var(--lista); color: var(--suave); }
+.recordatorio-estado .principal { padding: 5px 12px; font-size: 13px; }
+.dias-semana { display: flex; gap: 6px; }
+.dias-semana button { flex: 1; padding: 7px 0; border-radius: 8px; font-weight: 600; }
+.dias-semana button.activo { background: var(--acento); border-color: var(--acento); color: #fff; }
+.insistir { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; cursor: pointer; }
+.insistir input { margin-top: 3px; width: 18px; height: 18px; accent-color: var(--acento); }
+.insistir span { display: flex; flex-direction: column; }
+.insistir small { color: var(--suave); }
+.historial { border-top: 1px solid var(--borde); padding-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+.historial ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.historial li { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 2px 8px; border-radius: 6px; font-size: 13px; }
+.historial li:hover { background: var(--lista); }
+.historial .btn-icono { width: 26px; height: 26px; }
+.historial .enlace { align-self: flex-start; font-size: 12px; color: #b91c1c; }
+.en-nota { color: var(--suave); font-size: 12px; }
+.vacio.pequeño { font-size: 12px; padding-top: 8px; padding-bottom: 0; }
+.grupo-recordatorios.pendiente h3 { color: #b91c1c; }
+.grupo-recordatorios > summary { list-style: none; cursor: pointer; }
+.grupo-recordatorios > summary::-webkit-details-marker { display: none; }
+.tarjeta-recordatorio.pendiente { color: #b91c1c; font-weight: 600; }
+.grupo-recordatorios > summary h3::before { content: '▸ '; }
+.grupo-recordatorios[open] > summary h3::before { content: '▾ '; }

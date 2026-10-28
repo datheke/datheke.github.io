@@ -17,8 +17,8 @@ import { MoreMenu, Resizer } from './ui.tsx'
 import { Account, UpdateToast } from './Account.tsx'
 import { checkUpdate, type Update } from './update.ts'
 import { ReminderHelp, type ReminderMode } from './Reminders.tsx'
-import { ReminderChip, ReminderDialog } from './ReminderDialog.tsx'
-import { groupOf, nextTime, whenLabel, type Group, type Repeat } from './remind.ts'
+import { ReminderDialog } from './ReminderDialog.tsx'
+import { chipText, groupOf, markDone, remindersIn, repeatText, sortReminders, updateIn, type Group, type Reminder } from './remind.ts'
 import * as vault from './vault.ts'
 import { buildZip, changedSince, EVERY_MS, NeedsPermission, upload as uploadBackup } from './backup.ts'
 import { canOfferPrint } from './print.ts'
@@ -39,6 +39,18 @@ const messageOf = (e: unknown) => e instanceof AuthError ? 'auth'
 // Vista previa en texto de la otra versión (DOMParser no ejecuta nada de lo que lee).
 const plain = (html: string) =>
   new DOMParser().parseFromString(html.replace(/<\/(p|li|h\d|div|summary)>|<br\s*\/?>/gi, '\n'), 'text/html').body.textContent ?? ''
+// Recordatorios de una nota (remind.ts). Se guardan por texto, como las vistas previas: no se leen en cada tecla.
+const reminderCache = new Map<string, ReturnType<typeof remindersIn>>()
+function remindersOf(html: string) {
+  if (!html.includes('data-type="recordatorio"')) return []
+  let r = reminderCache.get(html)
+  if (!r) {
+    if (reminderCache.size > 300) reminderCache.clear()
+    r = remindersIn(html)
+    reminderCache.set(html, r)
+  }
+  return r
+}
 // Las primeras palabras de la nota para su tarjeta. Se guardan por texto: la lista se vuelve a dibujar en cada tecla.
 const previews = new Map<string, string>()
 function preview(html = '') {
@@ -68,7 +80,9 @@ export default function App() {
   const [notebookId, setNotebookId] = useState<string | null>(null) // null = todas
   const [trashView, setTrashView] = useState(false) // la lista muestra el basurero
   const [remindView, setRemindView] = useState(false) // la lista muestra los recordatorios
-  const [reminderFor, setReminderFor] = useState<DriveFile | null>(null) // ventana de recordatorio de esta nota
+  // Ventana de un recordatorio: uno que ya está en una línea (id) o uno nuevo (insert lo pone en la línea del cursor).
+  const [remDlg, setRemDlg] = useState<{ noteId: string; id?: string; label: string; insert?: (r: Reminder) => void } | null>(null)
+  const [focusRem, setFocusRem] = useState<string>() // al abrir una nota desde la lista: ir a esa línea
   const [noteId, setNoteId] = useState<string | null>(null)
   const [picker, setPicker] = useState(false) // selector de ícono de la nota
   const [problem, setProblem] = useState<string | null>(null) // error de una acción ('auth' = sesión vencida)
@@ -105,12 +119,6 @@ export default function App() {
   const siblings = (parent?: string) => visible.filter(n => shownParent(n) === parent).sort(firstUnordered(byDate))
   const tree = (parent?: string, depth = 0): [DriveFile, number][] =>
     siblings(parent).flatMap(n => [[n, depth] as [DriveFile, number], ...tree(n.id, depth + 1)])
-  // Recordatorios: las notas que tienen uno, por fecha (remind.ts).
-  const reminders = allNotes.filter(n => n.appProperties?.recordatorio)
-    .sort((a, b) => (a.appProperties!.recordatorio).localeCompare(b.appProperties!.recordatorio))
-  const isDone = (n: DriveFile) => n.appProperties?.hecho === 'true'
-  const pendingReminders = reminders.filter(n => !isDone(n)).length
-  const overdue = reminders.some(n => groupOf(n.appProperties!.recordatorio, isDone(n)) === 'vencido')
   const list = trashView ? trash.map(n => [n, 0] as [DriveFile, number]) : tree()
   const saveOrder = (items: DriveFile[], from: number, to: number) =>
     reorder(items, from, to).forEach(({ id, orden }) => store.patch(id, { props: { orden } }))
@@ -130,6 +138,21 @@ export default function App() {
     else store.create({ kind: 'ajustes', boveda: v }, 'Ajustes')
   })
   const isLocked = (n?: DriveFile) => n?.appProperties?.protegida === 'true' // nota con clave
+  // Recordatorios de todas las notas que están en este aparato (las con clave, solo con la caja abierta), por lo que falta.
+  const reminders = sortReminders(allNotes.flatMap(n => {
+    const t = s.texts[n.id]
+    if (!t || (isLocked(n) && !unlocked)) return []
+    return remindersOf(t.text).map(x => ({ ...x, note: n }))
+  }))
+  const pendingReminders = reminders.filter(x => groupOf(x.r) !== 'hecho').length
+  const overdue = reminders.some(x => groupOf(x.r) === 'pendiente')
+  const lockedHidden = allNotes.some(n => isLocked(n)) && !unlocked
+  const nextOf = (n: DriveFile) => reminders.find(x => x.note.id === n.id && groupOf(x.r) !== 'hecho') // el más urgente de la nota
+  // Cambia (o quita) un recordatorio dentro del texto de su nota; el editor se vuelve a dibujar si está abierta.
+  const changeReminder = (noteId: string, id: string, r: Reminder | null) => {
+    const t = s.texts[noteId]
+    if (t) store.replaceText(noteId, updateIn(t.text, id, r))
+  }
   const lastBackup = settings?.appProperties?.respaldo ?? ''
   // Quién avisa los recordatorios, igual en todos los aparatos de la cuenta (Reminders.tsx).
   const reminderMode: ReminderMode = settings?.appProperties?.avisos === 'calendar' ? 'calendar' : 'datheke'
@@ -324,6 +347,7 @@ export default function App() {
 
   function open(id: string | null) {
     setNoteId(id)
+    setFocusRem(undefined)
     setPicker(false)
     setWriting(false)
   }
@@ -382,15 +406,6 @@ export default function App() {
     } catch (e) { fail(e) }
   }
 
-  // Recordatorio: guardar, quitar y marcar hecho (uno que se repite pasa a la siguiente vez).
-  const saveReminder = (n: DriveFile, at: string, repeat: Repeat) =>
-    store.patch(n.id, { props: { recordatorio: at, repite: repeat || null, hecho: null } })
-  const removeReminder = (n: DriveFile) => store.patch(n.id, { props: { recordatorio: null, repite: null, hecho: null } })
-  function doneReminder(n: DriveFile) {
-    const r = n.appProperties?.repite as Repeat | undefined
-    if (r) store.patch(n.id, { props: { recordatorio: nextTime(n.appProperties!.recordatorio, r) } })
-    else store.patch(n.id, { props: { hecho: 'true' } })
-  }
 
   // Borrar manda al basurero (con sus subnotas); se puede restaurar durante 30 días.
   function deleteNote() {
@@ -427,26 +442,27 @@ export default function App() {
     setNoteId(null)
   }
 
-  // La lista de recordatorios: vencidos, hoy, próximos y hechos. Las notas con clave no muestran su título si la caja está cerrada.
-  const GROUPS: [Group, string][] = [['vencido', 'Vencidos'], ['hoy', 'Hoy'], ['proximo', 'Próximos'], ['hecho', 'Hechos']]
+  // La lista de recordatorios: pendientes, hoy, próximos y hechos (cerrado). Tocar uno abre su nota en esa línea.
+  const GROUPS: [Group, string][] = [['pendiente', 'Pendientes'], ['hoy', 'Hoy'], ['proximo', 'Próximos'], ['hecho', 'Hechos']]
   function remindersList() {
-    if (!reminders.length) return <p className="vacio">Sin recordatorios. En una nota: menú ⋯ → Recordatorio.</p>
-    return <>{GROUPS.map(([g, label]) => {
-      const items = reminders.filter(n => groupOf(n.appProperties!.recordatorio, isDone(n)) === g)
+    const hint = lockedHidden && <p className="vacio pequeño">🔐 Los recordatorios de tus notas con clave aparecen al abrirlas.</p>
+    if (!reminders.length) return <>{hint}<p className="vacio">Sin recordatorios. En una nota, ponte en una línea y toca la 🔔 de la barra.</p></>
+    const row = (x: (typeof reminders)[number], g: Group) => (
+      <div key={x.note.id + x.r.id} className="nota-fila">
+        <button className="nota" onClick={() => { open(x.note.id); setFocusRem(x.r.id) }}>
+          <strong>{x.label}</strong>
+          <small className="en-nota">en {x.note.appProperties?.icon && `${x.note.appProperties.icon} `}{x.note.name || UNTITLED}</small>
+          <span className={`tarjeta-recordatorio ${g}`}>{g === 'pendiente' ? '⏰' : g === 'hecho' ? '✓' : '🔔'} {chipText(x.r)}{x.r.rep && ` · ${repeatText(x.r.rep)}`}</span>
+        </button>
+        {g !== 'hecho' && <button className="btn-icono marcar-hecho" onClick={() => changeReminder(x.note.id, x.r.id, markDone(x.r))}
+          title="Marcar hecho" aria-label="Marcar hecho"><Check size={18} /></button>}
+      </div>
+    )
+    return <>{hint}{GROUPS.map(([g, label]) => {
+      const items = reminders.filter(x => groupOf(x.r) === g)
       if (!items.length) return null
-      return <section key={g} className={`grupo-recordatorios ${g}`}>
-        <h3>{label} <small>{items.length}</small></h3>
-        {items.map(n => (
-          <div key={n.id} className="nota-fila">
-            <button className={n.id === noteId ? 'nota activa' : 'nota'} onClick={() => open(n.id)}>
-              <strong>{isLocked(n) && !unlocked ? '🔐 Nota con clave' : <>{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}</>}</strong>
-              <span className={`tarjeta-recordatorio ${g}`}><Bell size={12} aria-hidden="true" /> {whenLabel(n.appProperties!.recordatorio)}
-                {n.appProperties?.repite && ` · ${({ dia: 'cada día', semana: 'cada semana', mes: 'cada mes' } as Record<string, string>)[n.appProperties.repite]}`}</span>
-            </button>
-            {g !== 'hecho' && <button className="btn-icono marcar-hecho" onClick={() => doneReminder(n)} title="Marcar como hecho" aria-label="Marcar como hecho"><Check size={16} /></button>}
-          </div>
-        ))}
-      </section>
+      if (g === 'hecho') return <details key={g} className={`grupo-recordatorios ${g}`}><summary><h3>{label} <small>{items.length}</small></h3></summary>{items.map(x => row(x, g))}</details>
+      return <section key={g} className={`grupo-recordatorios ${g}`}><h3>{label} <small>{items.length}</small></h3>{items.map(x => row(x, g))}</section>
     })}</>
   }
 
@@ -543,8 +559,8 @@ export default function App() {
                   </strong>
                   {s.texts[n.id] && !(isLocked(n) && !unlocked) && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
                   {isLocked(n) && !unlocked && <span className="resumen">🔐 Nota con clave</span>}
-                  {!trashView && n.appProperties?.recordatorio && !isDone(n) && <span className={`tarjeta-recordatorio ${groupOf(n.appProperties.recordatorio, false)}`}>
-                    <Bell size={12} aria-hidden="true" /> {whenLabel(n.appProperties.recordatorio)}</span>}
+                  {!trashView && nextOf(n) && <span className={`tarjeta-recordatorio ${groupOf(nextOf(n)!.r)}`}>
+                    <Bell size={12} aria-hidden="true" /> {nextOf(n)!.label}: {chipText(nextOf(n)!.r)}</span>}
                   {trashView && <span className="resumen basurero-dias">Se elimina en {daysLeft(n)} días</span>}
                   <small>{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
                 </button>
@@ -598,7 +614,6 @@ export default function App() {
                 : privacy === 'nota'
                   ? { label: 'Quitar privada (permitir Gemini)', icon: <ShieldOff size={16} />, onClick: () => setPrivate(note, false) }
                   : { label: 'Privada: sin Gemini', icon: <Shield size={16} />, onClick: () => setPrivate(note, true) },
-              { label: note.appProperties?.recordatorio ? 'Cambiar recordatorio' : 'Recordatorio', icon: <Bell size={16} />, onClick: () => setReminderFor(note) },
               { label: 'Guardar como plantilla', icon: <LayoutTemplate size={16} />, onClick: saveAsTemplate },
               { label: 'Borrar nota', icon: <Trash2 size={16} />, onClick: deleteNote, danger: true },
             ]} />
@@ -645,12 +660,14 @@ export default function App() {
             {picker && !locked && <EmojiPicker onPick={icon => { store.patch(note.id, { props: { icon } }); setPicker(false) }} />}
             {doc ? <>
               <input className="titulo" value={doc.title} placeholder="Título" readOnly={locked} onChange={e => store.edit(note.id, { title: e.target.value })} />
-              {note.appProperties?.recordatorio && !trashed && <ReminderChip at={note.appProperties.recordatorio} repeat={note.appProperties.repite}
-                done={isDone(note)} onEdit={() => setReminderFor(note)} onDone={() => doneReminder(note)} />}
+
               <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} content={doc.text} onChange={text => store.edit(note.id, { text })}
                 notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked}
                 geminiKey={geminiKey} onGeminiKey={setGeminiKey}
-                privacy={privacy} onPrivate={() => setPrivate(note, true)} />
+                privacy={privacy} onPrivate={() => setPrivate(note, true)}
+                onReminder={id => setRemDlg({ noteId: note.id, id, label: reminders.find(x => x.r.id === id)?.label ?? 'Recordatorio' })}
+                onNewReminder={(label, insert) => setRemDlg({ noteId: note.id, label, insert })}
+                focusReminder={focusRem} />
             </> : <p className="vacio">Cargando…</p>}
           </div>
           </>}
@@ -658,10 +675,16 @@ export default function App() {
       </main>
 
       {update && <UpdateToast update={update} />}
-      {reminderFor && <ReminderDialog at={reminderFor.appProperties?.recordatorio} repeat={reminderFor.appProperties?.repite as Repeat}
-        locked={isLocked(reminderFor)} offline={s.offline} onClose={() => setReminderFor(null)}
-        onSave={(at, r) => { saveReminder(reminderFor, at, r); setReminderFor(null) }}
-        onRemove={() => { removeReminder(reminderFor); setReminderFor(null) }} />}
+      {remDlg && (() => {
+        const cur = remDlg.id ? reminders.find(x => x.note.id === remDlg.noteId && x.r.id === remDlg.id)?.r : undefined
+        const n = s.files[remDlg.noteId]
+        const apply = (r: Reminder | null) => { if (remDlg.id) changeReminder(remDlg.noteId, remDlg.id, r) }
+        return <ReminderDialog reminder={cur} label={remDlg.label} locked={isLocked(n)} offline={s.offline} onClose={() => setRemDlg(null)}
+          onSave={r => { if (remDlg.insert) remDlg.insert(r); else apply(r); setRemDlg(null) }}
+          onRemove={() => { apply(null); setRemDlg(null) }}
+          onDone={() => { if (cur) apply(markDone(cur)); setRemDlg(null) }}
+          onHistory={hist => { if (cur) apply({ ...cur, hist }) }} />
+      })()}
       {reminderHelp && <ReminderHelp mode={reminderHelp} current={reminderMode} onClose={() => setReminderHelp(null)}
         onUse={m => { setReminderMode(m); setReminderHelp(null) }} />}
 

@@ -39,8 +39,10 @@ h1.titulo{font-size:2em;margin:8px 0 12px;line-height:1.2}
 .nota summary{cursor:pointer}
 .nota summary[data-level="1"]{font-size:1.8em;font-weight:700}.nota summary[data-level="2"]{font-size:1.45em;font-weight:700}
 .nota summary[data-level="3"]{font-size:1.2em;font-weight:600}
+.nota .rec{display:inline-block;margin-left:4px;padding:0 8px;border-radius:999px;background:#eaf6ef;color:#1f5135;font:600 12px system-ui,sans-serif}
 .pie{padding:24px 32px 0;color:#9ca3af;font-size:12px;font-family:system-ui,sans-serif}
-@media (max-width:600px){.cabeza,.nota,.pie{padding-left:16px;padding-right:16px}.portada{height:120px}}
+@media (max-width:600px){.cabeza,.nota,.nota .rec{display:inline-block;margin-left:4px;padding:0 8px;border-radius:999px;background:#eaf6ef;color:#1f5135;font:600 12px system-ui,sans-serif}
+.pie{padding-left:16px;padding-right:16px}.portada{height:120px}}
 @media print{.portada{height:140px}}
 `
 
