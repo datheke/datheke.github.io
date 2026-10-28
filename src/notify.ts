@@ -15,8 +15,10 @@ const MAX_ANDROID = 60
 const read = <T>(k: string, d: T): T => { try { return JSON.parse(localStorage.getItem(k) ?? '') as T } catch { return d } }
 const write = (k: string, v: unknown) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* sin guardar: se recalcula */ } }
 
-type Handlers = { open: (noteId: string, rid: string) => void; done: (noteId: string, rid: string) => void }
+type Handlers = { open: (noteId: string, rid: string) => void; done: (noteId: string, rid: string) => void; snoozed?: (at: number) => void }
 let handlers: Handlers = { open: () => {}, done: () => {} }
+// Con la app cerrada, Android repite el toque del botón unos segundos después (ver patch-android.py): se atiende una sola vez.
+const seen = new Map<string, number>()
 
 const plugin = () => import('@tauri-apps/plugin-notification')
 
@@ -39,14 +41,20 @@ export async function start(h: Handlers) {
       await n.createChannel({ id: 'recordatorios', name: 'Recordatorios', description: 'Avisos de tus recordatorios', importance: n.Importance.High, vibration: true, lights: true })
       await n.registerActionTypes([{ id: 'recordatorio', actions: [
         { id: 'hecho', title: 'Hecho ✓', foreground: true },
-        { id: 'posponer', title: 'Posponer 10 min', foreground: false },
+        { id: 'posponer', title: 'Posponer 10 min', foreground: true }, // Android abre la app un momento para programarlo
       ] }])
       await n.onAction(e => {
         const x = (e.notification?.extra ?? {}) as { noteId?: string; rid?: string; title?: string; body?: string }
         if (!x.noteId || !x.rid) return
+        const once = `${e.notification?.id}:${e.actionId}`
+        if (Date.now() - (seen.get(once) ?? 0) < 5 * 60_000) return
+        seen.set(once, Date.now())
         if (e.actionId === 'hecho') handlers.done(x.noteId, x.rid)
-        else if (e.actionId === 'posponer') snooze({ key: `${x.noteId}:${x.rid}:p`, at: Date.now() + 10 * 60_000, title: x.title ?? '🔔 Recordatorio', body: x.body ?? '', noteId: x.noteId, rid: x.rid })
-        else handlers.open(x.noteId, x.rid)
+        else if (e.actionId === 'posponer') {
+          const at = Date.now() + 10 * 60_000
+          snooze({ key: `${x.noteId}:${x.rid}:p`, at, title: x.title ?? '🔔 Recordatorio', body: x.body ?? '', noteId: x.noteId, rid: x.rid })
+          handlers.snoozed?.(at)
+        } else handlers.open(x.noteId, x.rid)
       })
     } catch (e) { console.error('Avisos de Android', e) }
     return () => {}

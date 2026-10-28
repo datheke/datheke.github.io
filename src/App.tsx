@@ -377,7 +377,8 @@ export default function App() {
   })
   useEffect(() => {
     let stop: (() => void) | undefined
-    notify.start({ open: (n, r) => notifyRef.current.open(n, r), done: (n, r) => notifyRef.current.done(n, r) }).then(f => { stop = f })
+    notify.start({ open: (n, r) => notifyRef.current.open(n, r), done: (n, r) => notifyRef.current.done(n, r),
+      snoozed: at => setToast(`Listo: te lo vuelvo a recordar a las ${new Date(at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}.`) }).then(f => { stop = f })
     notify.autostart()
     return () => stop?.()
   }, [])
@@ -647,10 +648,11 @@ export default function App() {
                   <strong>
                     {depth > 0 && '↳ '}{s.conflicts[n.id] && '⚠️ '}{n.appProperties?.icon && `${n.appProperties.icon} `}{n.name || UNTITLED}
                   </strong>
-                  {s.texts[n.id] && !(isLocked(n) && !unlocked) && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
-                  {isLocked(n) && !unlocked && <span className="resumen">🔐 Nota con clave</span>}
+                  {/* Con clave: en la lista nunca se ve su texto, aunque esté abierta con la clave (alguien puede ver la pantalla). */}
+                  {s.texts[n.id] && !isLocked(n) && <span className="resumen">{preview(s.texts[n.id].text)}</span>}
+                  {isLocked(n) && <span className="resumen">🔐 Nota con clave</span>}
                   {!trashView && nextOf(n) && <span className={`tarjeta-recordatorio ${groupOf(nextOf(n)!.r)}`}>
-                    <Bell size={12} aria-hidden="true" /> {nextOf(n)!.label}: {chipText(nextOf(n)!.r)}</span>}
+                    <Bell size={12} aria-hidden="true" /> {isLocked(n) ? 'Recordatorio' : nextOf(n)!.label}: {chipText(nextOf(n)!.r)}</span>}
                   {trashView && <span className="resumen basurero-dias">Se elimina en {daysLeft(n)} días</span>}
                   <small>{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
                 </button>
