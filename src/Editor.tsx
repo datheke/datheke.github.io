@@ -255,7 +255,12 @@ const OpenDetails = Extension.create({
         const details = $head.node(-1)
         if (details.type.name !== 'details' || details.attrs.open) return false
         const detailsPos = $head.before(-1)
-        view.dispatch(state.tr.setNodeMarkup(detailsPos, undefined, { ...details.attrs, open: true }))
+        let opening = state.tr.setNodeMarkup(detailsPos, undefined, { ...details.attrs, open: true })
+        // Y los desplegables vacíos que tenga adentro (creados antes y quedados cerrados): que se vean.
+        details.descendants((n, pos) => {
+          if (n.type.name === 'details' && !n.attrs.open && !n.textContent.trim()) opening = opening.setNodeMarkup(detailsPos + 1 + pos, undefined, { ...n.attrs, open: true })
+        })
+        view.dispatch(opening)
         // El contenido empieza justo después del título.
         const s2 = view.state
         const contentPos = s2.doc.resolve(detailsPos + 1).posAtIndex(1)
@@ -280,6 +285,10 @@ const OpenDetails = Extension.create({
             if (view.isDestroyed) return
             const { $from } = view.state.selection
             let tr = view.state.tr
+            // Desplegables recién creados (título vacío) que nacieron cerrados: se abren, así se ve lo de adentro.
+            view.state.doc.descendants((n, pos) => {
+              if (n.type.name === 'details' && !n.attrs.open && !n.firstChild?.textContent.trim()) tr = tr.setNodeMarkup(pos, undefined, { ...n.attrs, open: true })
+            })
             for (let d = $from.depth; d > 1; d--) {
               if ($from.node(d).type.name !== 'detailsContent') continue
               const details = $from.node(d - 1)
