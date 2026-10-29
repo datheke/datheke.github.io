@@ -3,6 +3,7 @@ import {
   PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
+import { closeTop, useBack } from './back.ts'
 import { connectCalendar, desktop, forgetSession, hasCalendar, loadSession, resume, signIn } from './auth.ts'
 import { deleteCalendar, ensureCalendar, syncCalendar, type Item as CalItem } from './calendar.ts'
 import { AuthError, OfflineError, readNote, type DriveFile } from './drive.ts'
@@ -111,6 +112,24 @@ export default function App() {
   const backingUp = useRef(false)
   const [update, setUpdate] = useState<Update | null>(null) // versión más nueva disponible (update.ts)
   const [reminderHelp, setReminderHelp] = useState<ReminderMode | null>(null) // ventana que explica un modo de aviso
+  // Regresar (Android): primero se cierra la ventana o el menú abierto; luego App (ver backRef más abajo).
+  useBack(!!remDlg, () => setRemDlg(null))
+  useBack(shareOpen, () => setShareOpen(false))
+  useBack(recvMenu, () => setRecvMenu(false))
+  useBack(!!received, () => setReceived(null))
+  useBack(!!reminderHelp, () => setReminderHelp(null))
+  useBack(!!keyDialog, () => setKeyDialog(null))
+  useBack(!!copyAsk, () => copyAsk?.resolve(null))
+  useBack(picker, () => setPicker(false))
+  useBack(!!selected, () => setSelected(null))
+  const backRef = useRef<() => void>(() => {})
+  useEffect(() => {
+    if (!desktop || !/android/i.test(navigator.userAgent)) return
+    let listener: { unregister(): Promise<void> } | undefined, stop = false
+    import('@tauri-apps/api/app').then(a => a.onBackButtonPress(() => { if (!closeTop()) backRef.current() }))
+      .then(l => { if (stop) l.unregister(); else listener = l }).catch(e => console.error('Botón regresar', e))
+    return () => { stop = true; listener?.unregister() }
+  }, [])
   useEffect(() => {
     try { localStorage.setItem('datheke-diseno', JSON.stringify(layout)) } catch { /* sin guardar: el diseño de siempre */ }
   }, [layout])
@@ -1056,6 +1075,16 @@ export default function App() {
       if (g === 'hecho') return <details key={g} className={`grupo-recordatorios ${g}`}><summary><h3>{label} <small>{items.length}</small></h3></summary>{items.map(x => row(x, g))}</details>
       return <section key={g} className={`grupo-recordatorios ${g}`}><h3>{label} <small>{items.length}</small></h3>{items.map(x => row(x, g))}</section>
     })}</>
+  }
+
+  // Sin nada abierto: de la subnota a su nota madre, de la nota a la lista, de una libreta (o Recordatorios, Basurero)
+  // a Todas las notas, y desde Todas las notas sale de la app (queda en segundo plano, como las demás apps).
+  backRef.current = () => {
+    if (note) return open(parent ? parent.id : null)
+    if (notebookId || trashView || remindView) { setNotebookId(null); setTrashView(false); setRemindView(false); return }
+    const bridge = (window as unknown as { DathekeAndroid?: { salir(): void } }).DathekeAndroid
+    if (bridge?.salir) bridge.salir()
+    else import('@tauri-apps/api/app').then(a => a.exit(0)).catch(() => {})
   }
 
   if (!session) return (

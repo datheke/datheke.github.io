@@ -1,3 +1,4 @@
+import { useBack } from './back.ts'
 import { Ellipsis } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react'
 
@@ -33,6 +34,7 @@ type Item = { label: string; icon: ReactNode; onClick: () => void; danger?: bool
 // Botón "⋯" con las acciones que no se usan siempre. Se cierra al elegir, al tocar afuera o con Escape.
 export function MoreMenu({ items }: { items: Item[] }) {
   const [open, setOpen] = useState(false)
+  useBack(open, () => setOpen(false))
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
