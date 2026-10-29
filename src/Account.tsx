@@ -1,6 +1,7 @@
 import { ArrowUpCircle, Check, Copy, ExternalLink, Globe, LogOut, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { desktop } from './auth.ts'
+import { useBack } from './back.ts'
 import { getUpdate, type Update } from './update.ts'
 import { ReminderModeRow, type ReminderMode } from './Reminders.tsx'
 
@@ -40,6 +41,7 @@ export function Account({ email, onLogout, update, mode, calendarHere, onPickMod
     }
   }, [open])
   const close = () => setOpen(null)
+  useBack(!!open, close)
 
   async function copy() {
     try {

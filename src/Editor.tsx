@@ -6,10 +6,11 @@ import { TableKit } from '@tiptap/extension-table'
 import TextAlign from '@tiptap/extension-text-align'
 import { TextStyleKit } from '@tiptap/extension-text-style'
 import { Placeholder } from '@tiptap/extensions'
-import { PluginKey } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { EditorContent, Extension, mergeAttributes, Node, ReactRenderer, useEditor, useEditorState, type ChainedCommands, type Editor as TiptapEditor, type Range } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
+import { flip, size } from '@floating-ui/dom'
 import StarterKit from '@tiptap/starter-kit'
 import {
   AudioLines, Baseline, Bell, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, ClipboardPaste, GripVertical, Highlighter,
@@ -23,6 +24,7 @@ import { imageDataUrl, imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
 import { appFonts, isFromApp } from './paste.ts'
 import { wordAt } from './word.ts'
+import { useBack } from './back.ts'
 import { chipText, groupOf, type Reminder } from './remind.ts'
 
 // Las opciones con lo que tiene el texto: si no está en la lista (tamaño pegado con su formato original) se agrega.
@@ -88,6 +90,29 @@ function popup() {
   }
 }
 
+// Dónde va la ventanita: debajo del cursor, o arriba si abajo no cabe (teclado del celular), pero nunca encima de la
+// barra de herramientas; su alto se ajusta al espacio que queda y se desplaza por dentro.
+const toolbarBottom = () => Math.max(0, document.querySelector('.barra-fija')?.getBoundingClientRect().bottom ?? 0)
+const room = () => ({ top: toolbarBottom() + 6, bottom: 8, left: 8, right: 8 })
+const MENU_PLACE = {
+  placement: 'bottom-start' as const,
+  flip: false,
+  floatingUi: {
+    middleware: [
+      flip(() => ({ padding: room(), fallbackPlacements: ['top-start'] })),
+      size(() => ({
+        padding: room(),
+        apply({ availableHeight, elements }: { availableHeight: number; elements: { floating: HTMLElement } }) {
+          const h = `${Math.max(120, Math.min(280, Math.floor(availableHeight)))}px`
+          elements.floating.style.maxHeight = h
+          const menu = elements.floating.querySelector<HTMLElement>('.menu') // la lista de adentro es la que se desplaza
+          if (menu) menu.style.maxHeight = h
+        },
+      })),
+    ],
+  },
+}
+
 // Menú "/": al escribir "/" se elige qué insertar.
 const Slash = Extension.create<{ items: Command[] }>({
   name: 'slash',
@@ -100,6 +125,7 @@ const Slash = Extension.create<{ items: Command[] }>({
       items: ({ query }) => this.options.items.filter(i => fold(i.label).includes(fold(query))),
       command: ({ editor, range, props }) => props.run(editor, range),
       render: popup,
+      ...MENU_PLACE,
     })]
   },
 })
@@ -208,6 +234,66 @@ const Summary = DetailsSummary.extend({
   },
 })
 
+// Desplegables que no esconden lo nuevo:
+//  - Enter al final del título de un desplegable cerrado lo abre y pone el cursor adentro (no queda oculto).
+//  - Si algo se escribe o se crea dentro de un desplegable cerrado (también uno dentro de otro), se abre.
+// Se hace en dos pasos: primero se abre (el contenido se vuelve visible) y luego se mueve el cursor; si fuera en un
+// solo paso, TipTap vería el cursor en algo escondido y lo sacaría al título.
+const OpenDetails = Extension.create({
+  name: 'openDetails',
+  priority: 1000, // antes que el Enter de TipTap (que en uno cerrado crea la línea afuera)
+  addKeyboardShortcuts() {
+    return {
+      Enter: ({ editor }) => {
+        const { state, view } = editor
+        const { $head, empty } = state.selection
+        if (!empty || $head.parent.type.name !== 'detailsSummary') return false
+        // Al final del título (después solo puede quedar la etiqueta 🔔 de un recordatorio, sin texto).
+        let textAfter = false
+        $head.parent.content.cut($head.parentOffset).forEach(n => { if (n.isText) textAfter = true })
+        if (textAfter) return false
+        const details = $head.node(-1)
+        if (details.type.name !== 'details' || details.attrs.open) return false
+        const detailsPos = $head.before(-1)
+        view.dispatch(state.tr.setNodeMarkup(detailsPos, undefined, { ...details.attrs, open: true }))
+        // El contenido empieza justo después del título.
+        const s2 = view.state
+        const contentPos = s2.doc.resolve(detailsPos + 1).posAtIndex(1)
+        const content = s2.doc.nodeAt(contentPos)
+        if (!content) return true
+        const first = content.firstChild
+        let tr = s2.tr
+        if (!first || first.type.name !== 'paragraph' || first.content.size > 0) tr = tr.insert(contentPos + 1, s2.schema.nodes.paragraph.create())
+        tr = tr.setSelection(TextSelection.near(tr.doc.resolve(contentPos + 2))).scrollIntoView()
+        view.dispatch(tr)
+        return true
+      },
+    }
+  },
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: new PluginKey('openDetails'),
+      view: () => ({
+        update: (view, prev) => {
+          if (prev.doc.eq(view.state.doc)) return
+          const open = () => {
+            if (view.isDestroyed) return
+            const { $from } = view.state.selection
+            let tr = view.state.tr
+            for (let d = $from.depth; d > 1; d--) {
+              if ($from.node(d).type.name !== 'detailsContent') continue
+              const details = $from.node(d - 1)
+              if (details.type.name === 'details' && !details.attrs.open) tr = tr.setNodeMarkup($from.before(d - 1), undefined, { ...details.attrs, open: true })
+            }
+            if (tr.docChanged) view.dispatch(tr.setMeta('addToHistory', false))
+          }
+          setTimeout(open)
+        },
+      }),
+    })]
+  },
+})
+
 // Alt+↑ / Alt+↓ suben o bajan lo que tiene el cursor (en la PC, además de arrastrar con la agarradera).
 const MoveBlocks = Extension.create({
   name: 'moveBlocks',
@@ -302,7 +388,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     extensions: [
       StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true, onReadOnlyChecked: () => true }), TableKit, DriveImage, Callout,
       Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), Summary, DetailsContent,
-      TextAlign.configure({ types: BLOCKS }), ParagraphFormat, MoveBlocks,
+      TextAlign.configure({ types: BLOCKS }), ParagraphFormat, MoveBlocks, OpenDetails,
       // eslint-disable-next-line react-hooks/refs
       ReminderTag.configure({ onOpen: id => latest.current.onReminder(id), me: me ?? '' }),
       Placeholder.configure({ placeholder: 'Escribe / para insertar tablas, fotos, casillas, recuadros…' }),
@@ -315,6 +401,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
         suggestion: {
           items: ({ query }) => latest.current.notes.filter(n => fold(n.label).includes(fold(query))).slice(0, 8),
           render: popup,
+          ...MENU_PLACE,
         },
       }),
     ],
@@ -540,6 +627,7 @@ function Toolbar({ editor, uploading, onPhoto, onReminder, geminiKey, onGeminiKe
 }) {
   const [panel, setPanel] = useState<'emojis' | 'text' | 'highlight' | 'ia' | 'voz' | null>(null)
   const toggle = (p: typeof panel) => setPanel(panel === p ? null : p)
+  useBack(!!panel, () => setPanel(null))
   const s = useEditorState({
     editor,
     selector: ({ editor: e }) => {
