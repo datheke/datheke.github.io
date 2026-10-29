@@ -48,6 +48,12 @@ METHODS = r'''
 
 // Abre los ajustes del canal "Recordatorios" de Datheke: ahí se elige el tono, la vibración, etc.
 class DathekeAndroid(private val a: android.app.Activity) {
+  // "Regresar" desde Todas las notas: la app queda en segundo plano, como las demás (no se cierra del todo).
+  @android.webkit.JavascriptInterface
+  fun salir() {
+    a.runOnUiThread { a.moveTaskToBack(true) }
+  }
+
   @android.webkit.JavascriptInterface
   fun ajustesAviso() {
     a.runOnUiThread {
