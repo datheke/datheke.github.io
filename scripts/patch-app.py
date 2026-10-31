@@ -7,7 +7,16 @@ act = glob.glob('src-tauri/gen/android/app/src/main/java/**/MainActivity.kt', re
 s = open(act).read()
 CALL = 'super.onCreate(savedInstanceState)\n'
 if CALL not in s: sys.exit('MainActivity: no se encontró onCreate')
-s = s.replace(CALL, CALL + '    recibir(intent)\n', 1)
+# Teclado: con la app de borde a borde, el teclado tapaba lo de abajo de la nota. Se achica la página hasta el borde del
+# teclado (menos la barra de navegación, que la página ya deja libre con safe-area-inset-bottom).
+KEYBOARD = """    androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { v, insets ->
+      val ime = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime()).bottom
+      val nav = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars()).bottom
+      v.setPadding(0, 0, 0, maxOf(0, ime - nav))
+      insets
+    }
+"""
+s = s.replace(CALL, CALL + '    recibir(intent)\n' + KEYBOARD, 1)
 METHODS = r'''
   override fun onNewIntent(intent: android.content.Intent) {
     super.onNewIntent(intent)

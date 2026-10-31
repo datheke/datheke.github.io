@@ -440,6 +440,15 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   // false: cambiar entre fijada y editable no es un cambio de la nota (si no, se marcaba para subir al abrirla).
   useEffect(() => { if (editor.isEditable !== editable) editor.setEditable(editable, false) }, [editor, editable])
 
+  // Al salir el teclado del celular la parte visible se achica: el cursor vuelve a quedar a la vista.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const show = () => { if (editor.isFocused) editor.commands.scrollIntoView() }
+    vv.addEventListener('resize', show)
+    return () => vv.removeEventListener('resize', show)
+  }, [editor])
+
   // Nota fijada: no se escribe, pero las casillas sí se marcan y desmarcan (lista de compras en el súper).
   // TipTap deja la casilla marcada (onReadOnlyChecked) y aquí se guarda el cambio en la nota.
   useEffect(() => {
