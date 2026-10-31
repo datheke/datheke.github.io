@@ -449,6 +449,18 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     return () => vv.removeEventListener('resize', show)
   }, [editor])
 
+  // Flechita de un desplegable: el cursor pasa a su título (si no, se quedaba donde estaba, p. ej. al final de la nota, y
+  // al salir el teclado la nota saltaba hasta allá).
+  useEffect(() => {
+    const dom = editor.view.dom
+    const toTitle = (e: Event) => {
+      const summary = (e.target as HTMLElement).closest('.details > button')?.parentElement?.querySelector('summary')
+      if (summary && editor.isEditable) editor.commands.setTextSelection(editor.view.posAtDOM(summary, summary.childNodes.length))
+    }
+    dom.addEventListener('click', toTitle, true)
+    return () => dom.removeEventListener('click', toTitle, true)
+  }, [editor])
+
   // Nota fijada: no se escribe, pero las casillas sí se marcan y desmarcan (lista de compras en el súper).
   // TipTap deja la casilla marcada (onReadOnlyChecked) y aquí se guarda el cambio en la nota.
   useEffect(() => {
