@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Schema, type Node } from '@tiptap/pm/model'
 import { EditorState, TextSelection } from '@tiptap/pm/state'
-import { moveBlock, moveTo } from './blocks.ts'
+import { exitDetails, moveBlock, moveTo } from './blocks.ts'
 
 const schema = new Schema({
   nodes: {
@@ -71,4 +71,40 @@ test('arrastrar un renglón dentro de su lista', () => {
 test('soltarlo donde estaba no cambia nada', () => {
   const doc = schema.node('doc', null, [p('uno'), p('dos')])
   assert.equal(moveTo(EditorState.create({ doc }), startOf(doc, 'dos'), 1), null)
+})
+
+// Desplegables uno dentro de otro: Enter en un renglón vacío al final sale un nivel hacia afuera.
+const shape = (n: Node): string => n.type.name === 'details' ? `[${n.firstChild!.textContent}: ${shape(n.lastChild!)}]`
+  : n.type.name === 'paragraph' ? n.textContent || '_' : n.content.content.map(shape).join(' ')
+// Cursor en el primer renglón vacío que viene después del texto `after`.
+function atEmpty(doc: Node, after: string) {
+  let seen = false, pos = -1
+  doc.descendants((n, at) => {
+    if (n.isText && n.text?.includes(after)) seen = true
+    if (seen && pos < 0 && n.type.name === 'paragraph' && !n.content.size) pos = at + 1
+  })
+  return EditorState.create({ doc, selection: TextSelection.create(doc, pos) })
+}
+const exit = (s: EditorState) => { let out: EditorState | null = null; exitDetails(s, tr => { out = s.apply(tr) }); return out as EditorState | null }
+
+test('Enter en el renglón vacío del final de un sub-desplegable: el siguiente queda al lado, no adentro', () => {
+  const s = exit(atEmpty(schema.node('doc', null, [det('Principal', det('Sub 1', p('dato'), p('')))]), 'dato'))!
+  assert.equal(shape(s.doc), '[Principal: [Sub 1: dato] _]')
+  assert.equal(s.selection.$from.node(-1).type.name, 'detailsContent') // sigue dentro de Principal
+  assert.equal(shape(exit(s)!.doc), '[Principal: [Sub 1: dato]] _') // otro Enter: sale también de Principal
+})
+
+test('los renglones vacíos de más se quitan al salir; si ya hay uno vacío afuera, se usa ese', () => {
+  const s = exit(atEmpty(schema.node('doc', null, [det('T', p('a'), p(''), p('')), p('')]), 'a'))!
+  assert.equal(shape(s.doc), '[T: a] _')
+})
+
+test('desplegable recién creado (solo un renglón vacío): sale y el desplegable conserva su renglón', () => {
+  const s = exit(atEmpty(schema.node('doc', null, [det('Nuevo', p('')), p('fin')]), 'Nuevo'))!
+  assert.equal(shape(s.doc), '[Nuevo: _] _ fin')
+})
+
+test('no sale si después hay texto, ni fuera de un desplegable', () => {
+  assert.equal(exit(atEmpty(schema.node('doc', null, [det('T', p(''), p('abajo'))]), 'T')), null)
+  assert.equal(exit(atEmpty(schema.node('doc', null, [p('x'), p('')]), 'x')), null)
 })
