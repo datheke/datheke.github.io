@@ -18,7 +18,7 @@ import {
   Sparkles, Strikethrough, Table, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react'
-import { moveBlock, movableDepth, moveTo } from './blocks.ts'
+import { exitDetails, moveBlock, movableDepth, moveTo } from './blocks.ts'
 import GeminiPanel, { type Privacy } from './GeminiPanel.tsx'
 import { imageDataUrl, imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
@@ -247,6 +247,7 @@ const OpenDetails = Extension.create({
       Enter: ({ editor }) => {
         const { state, view } = editor
         const { $head, empty } = state.selection
+        if (empty && exitDetails(state, view.dispatch)) return true
         if (!empty || $head.parent.type.name !== 'detailsSummary') return false
         // Al final del título (después solo puede quedar la etiqueta 🔔 de un recordatorio, sin texto).
         let textAfter = false
@@ -449,16 +450,26 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     return () => vv.removeEventListener('resize', show)
   }, [editor])
 
-  // Flechita de un desplegable: el cursor pasa a su título (si no, se quedaba donde estaba, p. ej. al final de la nota, y
-  // al salir el teclado la nota saltaba hasta allá).
+  // Flechita de un desplegable: solo lo abre o cierra. El cursor se queda donde estaba y no sale el teclado (antes la
+  // nota saltaba al cursor, o lo escrito luego caía en el título del desplegable).
   useEffect(() => {
     const dom = editor.view.dom
-    const toTitle = (e: Event) => {
-      const summary = (e.target as HTMLElement).closest('.details > button')?.parentElement?.querySelector('summary')
-      if (summary && editor.isEditable) editor.commands.setTextSelection(editor.view.posAtDOM(summary, summary.childNodes.length))
+    const toggle = (e: Event) => {
+      const box = (e.target as HTMLElement).closest('.details > button')?.parentElement
+      if (!box || !editor.isEditable) return
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.type !== 'click') return
+      const summary = box.querySelector('summary')
+      if (!summary) return
+      const $p = editor.state.doc.resolve(editor.view.posAtDOM(summary, 0))
+      for (let d = $p.depth; d > 0; d--) {
+        const n = $p.node(d)
+        if (n.type.name === 'details') return editor.view.dispatch(editor.state.tr.setNodeMarkup($p.before(d), undefined, { ...n.attrs, open: !n.attrs.open }))
+      }
     }
-    dom.addEventListener('click', toTitle, true)
-    return () => dom.removeEventListener('click', toTitle, true)
+    for (const t of ['pointerdown', 'mousedown', 'click']) dom.addEventListener(t, toggle, true)
+    return () => { for (const t of ['pointerdown', 'mousedown', 'click']) dom.removeEventListener(t, toggle, true) }
   }, [editor])
 
   // Nota fijada: no se escribe, pero las casillas sí se marcan y desmarcan (lista de compras en el súper).

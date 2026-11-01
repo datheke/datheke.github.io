@@ -40,3 +40,20 @@ export function moveTo(state: EditorState, start: number, to: number): Transacti
   tr.insert(at, node)
   return tr.setSelection(Selection.near(tr.doc.resolve(at + 1))).scrollIntoView()
 }
+
+// Enter en un renglón vacío al final de un desplegable (después solo quedan renglones vacíos): sale un nivel hacia
+// afuera. Así se arma principal → sub 1, sub 2… (y sub del sub) sin que cada desplegable nuevo quede dentro del anterior.
+export function exitDetails(state: EditorState, dispatch: (tr: Transaction) => void) {
+  const { $head } = state.selection
+  if ($head.parent.type.name !== 'paragraph' || $head.parent.content.size || $head.depth < 3 || $head.node(-1).type.name !== 'detailsContent') return false
+  const content = $head.node(-1)
+  const idx = $head.index(-1)
+  for (let i = idx; i < content.childCount; i++) if (content.child(i).type.name !== 'paragraph' || content.child(i).content.size) return false
+  // El desplegable no puede quedar sin nada adentro: si es el único renglón, se queda.
+  let tr = state.tr.delete(idx === 0 ? $head.after() : $head.before(), $head.end(-1))
+  const after = tr.mapping.map($head.after(-2))
+  const next = tr.doc.nodeAt(after)
+  if (next?.type.name !== 'paragraph' || next.content.size) tr = tr.insert(after, state.schema.nodes.paragraph.create()) // si ya hay un renglón vacío, se usa ese
+  dispatch(tr.setSelection(TextSelection.create(tr.doc, after + 1)).scrollIntoView())
+  return true
+}
