@@ -181,7 +181,8 @@ body.cambiando-ancho { cursor: col-resize; }
 .tiptap p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--suave); float: left; height: 0; pointer-events: none; }
 .tiptap img { max-width: 100%; height: auto; border-radius: 6px; display: block; margin: 8px 0; }
 .tiptap img.ProseMirror-selectednode { outline: 3px solid var(--acento); }
-.tiptap hr { border: none; border-top: 1px solid var(--borde); margin: 16px 0; }
+/* La raya se ve igual, pero toda su franja (33px) se puede tocar: así se agrega un renglón debajo (Editor.tsx). */
+.tiptap hr { border: none; height: 33px; margin: 0; background: linear-gradient(var(--borde), var(--borde)) center / 100% 1px no-repeat; }
 .tiptap .enlace-nota { color: var(--acento); background: #2f9e5b14; border-radius: 4px; padding: 0 3px; cursor: pointer; }
 .tiptap div[data-type="callout"] { position: relative; background: #eef2ff; border-radius: 8px; padding: 10px 12px 10px 42px; margin: 8px 0; }
 .tiptap div[data-type="callout"]::before { content: attr(data-emoji); position: absolute; left: 12px; top: 10px; }

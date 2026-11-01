@@ -418,6 +418,21 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     content: initial,
     editable,
     editorProps: {
+      // El cursor nunca queda pegado al borde (al teclado del celular): se deja espacio al escribir y al volver a la nota.
+      scrollThreshold: { top: 40, bottom: 80, left: 0, right: 0 },
+      scrollMargin: { top: 40, bottom: 80, left: 0, right: 0 },
+      // Tocar un separador pone el cursor en un renglón debajo (se crea si no hay uno vacío): así se puede escribir entre
+      // dos separadores, o entre un separador y un desplegable.
+      handleClickOn: (view, _pos, node, nodePos, _event, direct) => {
+        if (!direct || !view.editable || node.type.name !== 'horizontalRule') return false
+        const after = nodePos + node.nodeSize
+        const next = view.state.doc.nodeAt(after)
+        let tr = view.state.tr
+        if (next?.type.name !== 'paragraph' || next.content.size) tr = tr.insert(after, view.state.schema.nodes.paragraph.create())
+        view.dispatch(tr.setSelection(TextSelection.create(tr.doc, after + 1)).scrollIntoView())
+        view.focus()
+        return true
+      },
       // De otro lado entra solo el texto, con el formato de la nota; el original queda para "Mantener formato original".
       // Lo copiado de la app, y lo que no trae texto (una foto de una página), va como viene.
       handlePaste: (view, event) => {
@@ -445,7 +460,8 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   useEffect(() => {
     const vv = window.visualViewport
     if (!vv) return
-    const show = () => { if (editor.isFocused) editor.commands.scrollIntoView() }
+    // Otra vez al terminar de salir el teclado (al volver a la app sale de a poco y el cursor quedaba casi tapado).
+    const show = () => { for (const ms of [0, 350]) setTimeout(() => { if (!editor.isDestroyed && editor.isFocused) editor.commands.scrollIntoView() }, ms) }
     vv.addEventListener('resize', show)
     return () => vv.removeEventListener('resize', show)
   }, [editor])
