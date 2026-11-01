@@ -466,6 +466,25 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     return () => vv.removeEventListener('resize', show)
   }, [editor])
 
+  // Tocar el espacio entre dos cosas sin renglón (dos desplegables, un desplegable y una tabla…) crea un renglón ahí.
+  useEffect(() => {
+    const dom = editor.view.dom
+    const between = (e: MouseEvent) => {
+      const box = e.target as HTMLElement
+      if (!editor.isEditable || (box !== dom && box.dataset.type !== 'detailsContent')) return
+      const i = [...box.children].findIndex(k => k.getBoundingClientRect().top > e.clientY)
+      if (i <= 0) return
+      const pos = editor.view.posAtDOM(box, i)
+      const $pos = editor.state.doc.resolve(pos)
+      if (!$pos.nodeBefore || !$pos.nodeAfter || $pos.nodeBefore.isTextblock || $pos.nodeAfter.isTextblock) return
+      const tr = editor.state.tr.insert(pos, editor.schema.nodes.paragraph.create())
+      editor.view.dispatch(tr.setSelection(TextSelection.create(tr.doc, pos + 1)).scrollIntoView())
+      editor.view.focus()
+    }
+    dom.addEventListener('click', between)
+    return () => dom.removeEventListener('click', between)
+  }, [editor])
+
   // Flechita de un desplegable: solo lo abre o cierra. El cursor se queda donde estaba y no sale el teclado (antes la
   // nota saltaba al cursor, o lo escrito luego caía en el título del desplegable).
   useEffect(() => {
