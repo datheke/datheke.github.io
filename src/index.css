@@ -90,6 +90,11 @@ body.cambiando-ancho { cursor: col-resize; }
 .buscador input { flex: 1; min-width: 0; border: none; outline: none; background: none; padding: 7px 0; font-size: 14px; color: var(--texto); }
 .buscador .btn-icono { width: 30px; height: 30px; }
 .nota mark, .buscado { background: #fff59d; color: inherit; border-radius: 2px; }
+.buscado.actual { background: #ffb74d; }
+.buscar-nota { display: flex; align-items: center; gap: 2px; padding: 4px 8px 4px 12px; border-bottom: 1px solid var(--borde); background: var(--fondo); color: var(--suave); }
+.buscar-nota input { flex: 1; min-width: 0; border: none; outline: none; background: none; padding: 5px 6px; font-size: 14px; color: var(--texto); }
+.buscar-cuenta { font-size: 12px; white-space: nowrap; padding: 0 4px; }
+.btn-icono.activo { background: var(--activo); color: var(--texto); }
 .lista-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .lista-acciones select { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; background: var(--fondo); font-size: 13px; max-width: 100%; }
 .lista-acciones .recibir { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; background: var(--fondo); font-size: 13px; color: inherit; cursor: pointer; }
@@ -258,7 +263,7 @@ body.cambiando-ancho { cursor: col-resize; }
   div.item { padding: 5px 4px 5px 10px; }
   .item .btn-icono, .seccion .btn-icono { width: 34px; height: 34px; }
   .nota strong { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-  .buscador input { font-size: 16px; }
+  .buscador input, .buscar-nota input { font-size: 16px; }
   .nota-barra { padding: 6px 8px; gap: 2px; }
   .nota-barra .volver { display: inline-flex; }
   .ruta { margin: 0 2px; }

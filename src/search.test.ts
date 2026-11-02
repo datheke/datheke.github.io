@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { findRanges, highlight, matches, searchWords, snippet } from './search.ts'
+import { Schema } from '@tiptap/pm/model'
+import { closedDetails, findInDoc, findRanges, highlight, matches, searchWords, snippet } from './search.ts'
 
 const hits = (parts: { text: string; hit: boolean }[]) => parts.filter(p => p.hit).map(p => p.text)
 
@@ -42,6 +43,38 @@ test('el pedacito muestra la palabra aunque esté lejos, y avisa lo que corta', 
   assert.deepEqual(hits(parts), ['jamón'])
   assert.equal(parts[0].text, '…')
   assert.equal(parts[parts.length - 1].text, '…')
+})
+
+const schema = new Schema({ nodes: {
+  doc: { content: 'block+' },
+  paragraph: { group: 'block', content: 'inline*' },
+  details: { group: 'block', content: 'detailsSummary detailsContent', attrs: { open: { default: false } } },
+  detailsSummary: { content: 'inline*' },
+  detailsContent: { content: 'block+' },
+  chip: { group: 'inline', inline: true, atom: true },
+  text: { group: 'inline' },
+} })
+const { node, text: t } = { node: schema.node.bind(schema), text: schema.text.bind(schema) }
+const textAt = (doc: ReturnType<typeof node>, r: { from: number; to: number }) => doc.textBetween(r.from, r.to)
+
+test('dentro de la nota encuentra cada palabra en su lugar, aunque haya cosas en medio del renglón', () => {
+  const doc = node('doc', null, [node('paragraph', null, [t('pan y '), node('chip'), t(' más Pan')]), node('paragraph', null, [t('sin nada')])])
+  const found = findInDoc(doc, searchWords('pan'))
+  assert.equal(found.length, 2)
+  assert.deepEqual(found.map(r => textAt(doc, r)), ['pan', 'Pan'])
+})
+
+test('dice qué desplegables cerrados esconden la palabra, y no los que no', () => {
+  const inner = node('details', { open: false }, [node('detailsSummary', null, [t('título')]), node('detailsContent', null, [node('paragraph', null, [t('adentro')])])])
+  const doc = node('doc', null, [node('details', { open: false }, [node('detailsSummary', null, [t('afuera')]), node('detailsContent', null, [inner])])])
+  const [title] = findInDoc(doc, searchWords('afuera'))
+  const [deep] = findInDoc(doc, searchWords('adentro'))
+  const [middle] = findInDoc(doc, searchWords('titulo'))
+  assert.deepEqual(closedDetails(doc, title.from), [])
+  assert.equal(closedDetails(doc, middle.from).length, 1)
+  assert.equal(closedDetails(doc, deep.from).length, 2)
+  const open = node('doc', null, [node('details', { open: true }, [node('detailsSummary', null, [t('a')]), node('detailsContent', null, [node('paragraph', null, [t('adentro')])])])])
+  assert.deepEqual(closedDetails(open, findInDoc(open, searchWords('adentro'))[0].from), [])
 })
 
 test('si estaba solo en el título, el pedacito es el inicio de la nota', () => {

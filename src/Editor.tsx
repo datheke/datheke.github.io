@@ -14,9 +14,9 @@ import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
 import { flip, size } from '@floating-ui/dom'
 import StarterKit from '@tiptap/starter-kit'
 import {
-  AudioLines, Baseline, Bell, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, ClipboardPaste, GripVertical, Highlighter,
-  ImagePlus, Italic, Link, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Redo2, RemoveFormatting, Smile,
-  Sparkles, Strikethrough, Table, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2,
+  AudioLines, Baseline, Bell, BetweenHorizontalEnd, BetweenVerticalEnd, Bold, ChevronDown, ChevronUp, ClipboardPaste, GripVertical, Highlighter,
+  ImagePlus, Italic, Link, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Redo2, RemoveFormatting, Search, Smile,
+  Sparkles, Strikethrough, Table, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2, X,
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react'
 import { exitDetails, moveBlock, movableDepth, moveTo } from './blocks.ts'
@@ -24,7 +24,7 @@ import GeminiPanel, { type Privacy } from './GeminiPanel.tsx'
 import { imageDataUrl, imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
 import { appFonts, isFromApp } from './paste.ts'
-import { findRanges, fold, searchWords } from './search.ts'
+import { closedDetails, findInDoc, fold, searchWords } from './search.ts'
 import { runSlash, slashAllowed, type Command } from './slash.ts'
 import { wordAt } from './word.ts'
 import { useBack } from './back.ts'
@@ -131,31 +131,66 @@ const Slash = Extension.create<{ items: Command[] }>({
   },
 })
 
-// Palabras del buscador resaltadas en la nota: se dibujan encima, no se guardan en el texto ni cuentan como un cambio.
-const findKey = new PluginKey<DecorationSet>('buscar')
+// Buscar dentro de la nota: las palabras se resaltan encima del texto, sin guardarse en él ni contar como un cambio.
+type Found = { words: string[]; at: number; ranges: { from: number; to: number }[]; marks: DecorationSet }
+const NOTHING_FOUND: Found = { words: [], at: 0, ranges: [], marks: DecorationSet.empty }
+const findKey = new PluginKey<Found>('buscar')
 const FindWords = Extension.create({
   name: 'buscar',
-  addProseMirrorPlugins: () => [new Plugin<DecorationSet>({
+  addProseMirrorPlugins: () => [new Plugin<Found>({
     key: findKey,
     state: {
-      init: () => DecorationSet.empty,
+      init: () => NOTHING_FOUND,
       apply(tr, old) {
-        const words: string[] | undefined = tr.getMeta(findKey)
-        if (!words) return old.map(tr.mapping, tr.doc)
-        const marks: Decoration[] = []
-        if (words.length) tr.doc.descendants((node, pos) => {
-          if (!node.isTextblock) return true
-          let text = ''
-          node.forEach(child => { text += child.isText ? child.text : '￼'.repeat(child.nodeSize) }) // una letra por posición
-          for (const [from, to] of findRanges(text, words)) marks.push(Decoration.inline(pos + 1 + from, pos + 1 + to, { class: 'buscado' }))
-          return false
-        })
-        return DecorationSet.create(tr.doc, marks)
+        const meta: { words?: string[]; at?: number } | undefined = tr.getMeta(findKey)
+        if (!meta && !(tr.docChanged && old.words.length)) return old
+        const words = meta?.words ?? old.words
+        if (!words.length) return NOTHING_FOUND
+        const ranges = meta?.words || tr.docChanged ? findInDoc(tr.doc, words) : old.ranges
+        const at = Math.max(0, Math.min(meta?.at ?? old.at, ranges.length - 1))
+        const marks = ranges.map((r, i) => Decoration.inline(r.from, r.to, { class: i === at ? 'buscado actual' : 'buscado' }))
+        return { words, at, ranges, marks: DecorationSet.create(tr.doc, marks) }
       },
     },
-    props: { decorations: state => findKey.getState(state) },
+    props: { decorations: state => findKey.getState(state)?.marks },
   })],
 })
+
+// Lleva a la palabra actual, abriendo los desplegables que la escondan. Eso no se guarda: buscar nunca cambia la nota
+// (tampoco una fijada o una del basurero) y el cursor no se mueve del buscador.
+function showFound(editor: TiptapEditor) {
+  const found = findKey.getState(editor.state)
+  const hit = found?.ranges[found.at]
+  if (!hit) return
+  const closed = closedDetails(editor.state.doc, hit.from)
+  if (closed.length) {
+    const tr = editor.state.tr.setMeta('addToHistory', false).setMeta('preventUpdate', true)
+    for (const pos of closed) tr.setNodeMarkup(pos, undefined, { ...tr.doc.nodeAt(pos)?.attrs, open: true })
+    editor.view.dispatch(tr)
+  }
+  editor.view.dom.querySelector('.buscado.actual')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
+// La barrita para buscar dentro de la nota. Enter: siguiente; Mayús+Enter: anterior; Esc: cerrar.
+function FindBar({ value, at, total, onChange, onStep, onClose }: {
+  value: string; at: number; total: number; onChange: (v: string) => void; onStep: (d: number) => void; onClose: () => void
+}) {
+  const keep = (e: { preventDefault(): void }) => e.preventDefault() // el cursor se queda en la cajita (y el teclado abierto)
+  return (
+    <div className="buscar-nota" role="search">
+      <Search size={16} aria-hidden="true" />
+      <input autoFocus={!value} value={value} onChange={e => onChange(e.target.value)} placeholder="Buscar en esta nota" aria-label="Buscar en esta nota" enterKeyHint="search"
+        onKeyDown={e => {
+          if (e.key === 'Enter') { e.preventDefault(); onStep(e.shiftKey ? -1 : 1) }
+          else if (e.key === 'Escape') onClose()
+        }} />
+      <span className="buscar-cuenta" role="status">{value.trim() && (total ? `${at + 1} de ${total}` : 'Sin resultados')}</span>
+      <button type="button" className="btn-icono" disabled={!total} onMouseDown={keep} onClick={() => onStep(-1)} title="Anterior" aria-label="Anterior"><ChevronUp size={18} /></button>
+      <button type="button" className="btn-icono" disabled={!total} onMouseDown={keep} onClick={() => onStep(1)} title="Siguiente" aria-label="Siguiente"><ChevronDown size={18} /></button>
+      <button type="button" className="btn-icono" onClick={onClose} title="Cerrar la búsqueda" aria-label="Cerrar la búsqueda"><X size={18} /></button>
+    </div>
+  )
+}
 
 // La nota guarda <img src="drive:ID">; aquí se muestra bajando la foto con la sesión.
 const DriveImage = Image.extend({
@@ -358,14 +393,15 @@ type Props = {
   onReminder: (id: string) => void // tocaron la etiqueta 🔔 de una línea
   onNewReminder: (label: string, insert: (r: Reminder) => void) => void // 🔔 de la barra o "/recordatorio"
   focusReminder?: string // al abrir desde la lista: ir a esa línea
-  find?: string // lo escrito en el buscador: se resalta en la nota y se va a la primera palabra
+  find: string | null // buscar dentro de la nota: lo escrito (null: la barrita está cerrada)
+  onFind: (text: string | null) => void
   me?: string // mi correo (recordatorios "solo para mí" en notas compartidas)
   inlineImages?: boolean // nota compartida: las fotos van dentro de la nota (la otra persona no ve tus fotos de Datheke)
 }
 
 // El contenido solo se usa al crear el editor; App lo vuelve a montar (key) al cambiar de nota.
 export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey, privacy, onPrivate,
-  onReminder, onNewReminder, focusReminder, find, inlineImages, me }: Props) {
+  onReminder, onNewReminder, focusReminder, find, onFind, inlineImages, me }: Props) {
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
   const latest = useRef({ onChange, notes, onError, onReminder, onNewReminder })
   useEffect(() => { latest.current = { onChange, notes, onError, onReminder, onNewReminder } })
@@ -474,6 +510,9 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       },
     },
     onUpdate: ({ editor, transaction }) => {
+      // A una nota que termina en un bloque el editor le agrega solo un renglón vacío al menor movimiento (o al volver a
+      // dibujarse): eso no es un cambio de la persona. Se guarda junto con el próximo cambio de verdad.
+      if (!transaction.docChanged) return
       latest.current.onChange(editor.getHTML())
       const p = pasting.current
       pasting.current = null
@@ -579,19 +618,24 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     return () => clearTimeout(t)
   }, [editor, focusReminder])
 
-  // Desde el buscador: resaltar lo buscado e ir a la primera palabra (abriendo el desplegable que la tenga adentro).
+  // Buscar dentro de la nota: resaltar lo escrito e ir a la primera palabra (al dejar de escribir un momento).
   useEffect(() => {
     const words = searchWords(find ?? '')
-    editor.view.dispatch(editor.state.tr.setMeta(findKey, words))
+    if (words.length || findKey.getState(editor.state)?.words.length) editor.view.dispatch(editor.state.tr.setMeta(findKey, { words, at: 0 }))
     if (!words.length) return
-    const first = () => editor.view.dom.querySelector<HTMLElement>('.buscado')
-    const t = setTimeout(() => {
-      const box = first()?.closest('.details')
-      if (box && !box.classList.contains('is-open') && !first()?.closest('summary')) box.querySelector<HTMLButtonElement>(':scope > button')?.click()
-      first()?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-    }, 150)
+    const t = setTimeout(() => showFound(editor), 150)
     return () => clearTimeout(t)
   }, [editor, find])
+  const found = useEditorState({ editor, selector: ({ editor: e }) => {
+    const f = findKey.getState(e.state)
+    return `${f?.at ?? 0}/${f?.ranges.length ?? 0}`
+  } }).split('/').map(Number)
+  const stepFound = (d: number) => {
+    const f = findKey.getState(editor.state)
+    if (!f?.ranges.length) return
+    editor.view.dispatch(editor.state.tr.setMeta(findKey, { at: (f.at + d + f.ranges.length) % f.ranges.length }))
+    showFound(editor)
+  }
 
   // Agarradera ⠿ para arrastrar bloques, como en Evernote: junto al bloque bajo el mouse o, en el celular (sin mouse),
   // junto al del cursor. Se mueve lo mismo que con Subir/Bajar (movableDepth), entre sus hermanos.
@@ -683,9 +727,10 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
 
   // La barra de formato y el aviso de pegado quedan fijos arriba al bajar por la nota (la portada se va con el texto).
   return <>
-    {editable && <div className="barra-fija">
-      <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} onReminder={() => newReminder(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey}
-        privacy={privacy} onPrivate={onPrivate} />
+    {(editable || find !== null) && <div className="barra-fija">
+      {find !== null && <FindBar value={find} at={found[0]} total={found[1]} onChange={onFind} onStep={stepFound} onClose={() => onFind(null)} />}
+      {editable && <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} onReminder={() => newReminder(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey}
+        privacy={privacy} onPrivate={onPrivate} />}
       {pasted && <div className="pegado" role="status">
         <ClipboardPaste size={16} aria-hidden="true" /> Se pegó solo el texto, con el formato de la nota.
         <button type="button" className="principal" onMouseDown={e => e.preventDefault()} onClick={() => {
