@@ -7,7 +7,7 @@ import TextAlign from '@tiptap/extension-text-align'
 import { TextStyleKit } from '@tiptap/extension-text-style'
 import { Placeholder } from '@tiptap/extensions'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
-import { EditorContent, Extension, mergeAttributes, Node, ReactRenderer, useEditor, useEditorState, type ChainedCommands, type Editor as TiptapEditor, type Range } from '@tiptap/react'
+import { EditorContent, Extension, mergeAttributes, Node, ReactRenderer, useEditor, useEditorState, type ChainedCommands, type Editor as TiptapEditor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
 import { flip, size } from '@floating-ui/dom'
@@ -23,6 +23,7 @@ import GeminiPanel, { type Privacy } from './GeminiPanel.tsx'
 import { imageDataUrl, imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
 import { appFonts, isFromApp } from './paste.ts'
+import { runSlash, slashAllowed, type Command } from './slash.ts'
 import { wordAt } from './word.ts'
 import { useBack } from './back.ts'
 import { chipText, groupOf, type Reminder } from './remind.ts'
@@ -46,7 +47,6 @@ const INDENT_PX = 40
 const MAX_INDENT = 8
 const EMOJIS = '😀 😂 😍 🥰 😎 🤔 😢 😡 👍 👎 👏 🙏 💪 🎉 ❤️ ⭐ 🔥 ✅ ❌ ⚠️ 💡 📌 📎 📝 📅 ⏰ 🛒 🏠 💼 💰 📚 🎓 ✈️ 🚗 🍎 🍕 ☕ 🎵 🐶 🌱'.split(' ')
 
-type Command = { label: string; run: (editor: TiptapEditor, range: Range) => void }
 type Handle = { onKeyDown: (e: KeyboardEvent) => boolean }
 
 // Para buscar sin importar tildes ni mayúsculas.
@@ -122,8 +122,10 @@ const Slash = Extension.create<{ items: Command[] }>({
       editor: this.editor,
       pluginKey: new PluginKey('slash'),
       char: '/',
+      allowedPrefixes: null,
+      allow: ({ state, range }) => slashAllowed(state.doc, range.from),
       items: ({ query }) => this.options.items.filter(i => fold(i.label).includes(fold(query))),
-      command: ({ editor, range, props }) => props.run(editor, range),
+      command: ({ editor, range, props }) => runSlash(editor, range, props),
       render: popup,
       ...MENU_PLACE,
     })]
@@ -390,8 +392,8 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     { label: 'Desplegable', run: (e, r) => e.chain().focus().deleteRange(r).setDetails().run() },
     { label: 'Cita', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
     { label: 'Separador', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
-    { label: 'Recordatorio 🔔', run: (e, r) => { e.chain().focus().deleteRange(r).run(); newReminder(e) } },
-    { label: 'Enlace a otra nota (@)', run: (e, r) => e.chain().focus().deleteRange(r).insertContent('@').run() },
+    { label: 'Recordatorio 🔔', inline: true, run: (e, r) => { e.chain().focus().deleteRange(r).run(); newReminder(e) } },
+    { label: 'Enlace a otra nota (@)', inline: true, run: (e, r) => e.chain().focus().deleteRange(r).insertContent('@').run() },
   ]
 
   const editor = useEditor({
