@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Llaves de firma: este repositorio es público
+*.jks
+*.keystore
