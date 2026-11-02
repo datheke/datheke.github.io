@@ -1206,7 +1206,7 @@ export default function App() {
               // Se ordena entre sus hermanas: las del mismo nivel y la misma nota madre (data-grupo).
               <div key={n.id} className={selected ? 'nota-fila seleccionando' : 'nota-fila'} data-grupo={shownParent(n) ?? 'raiz'} style={{ marginLeft: 8 + depth * 16 }}>
                 <button className={`nota${n.id === noteId && !selected ? ' activa' : ''}${selected?.has(n.id) ? ' elegida' : ''}`} aria-pressed={selected ? selected.has(n.id) : undefined}
-                  onClick={e => clickNote(e, n.id)} onPointerDown={e => pressStart(e, n.id)} onPointerMove={pressMove} onPointerUp={pressEnd} onPointerCancel={pressEnd}
+                  title={n.name || UNTITLED} onClick={e => clickNote(e, n.id)} onPointerDown={e => pressStart(e, n.id)} onPointerMove={pressMove} onPointerUp={pressEnd} onPointerCancel={pressEnd}
                   onContextMenu={e => { if (e.nativeEvent instanceof PointerEvent && e.nativeEvent.pointerType !== 'mouse') e.preventDefault() }}>
                   {selected && <span className="marca" aria-hidden="true">{selected.has(n.id) ? <CircleCheck size={20} /> : <Circle size={20} />}</span>}
                   <strong>
