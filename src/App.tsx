@@ -297,6 +297,22 @@ export default function App() {
     if (noteId && hasNote && !hasDoc) store.ensureText(noteId).catch(e => setProblem(messageOf(e)))
   }, [noteId, hasNote, hasDoc, vaultVersion])
 
+  // Ctrl+F con una nota abierta: buscar dentro de ella (a diferencia del buscador del navegador, abre los desplegables y
+  // cuenta "2 de 10"). Sin nota abierta sigue siendo el del navegador.
+  useEffect(() => {
+    if (!hasDoc) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'f') return
+      e.preventDefault()
+      setNoteFind(v => v ?? '')
+      const box = document.querySelector<HTMLInputElement>('.buscar-nota input')
+      box?.focus()
+      box?.select()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [hasDoc])
+
   // Lo que lleva más de 30 días en el basurero se elimina (en cualquier aparato que esté abierto, ya sincronizado).
   useEffect(() => {
     if (!ready || !s.synced) return
