@@ -979,7 +979,13 @@ export default function App() {
 
   // Seleccionar varias notas: mantener presionada una (celular), Ctrl+clic o el botón "Seleccionar" (PC).
   // Luego borrar (al basurero), mover a otra libreta o, en el basurero, restaurar o eliminar para siempre.
-  useEffect(() => { setSelected(null) }, [notebookId, trashView, remindView])
+  // Cambiar de libreta o de vista termina la selección: se ajusta al dibujar, para que no se vea en la vista nueva.
+  const selectView = `${notebookId}|${trashView}|${remindView}`
+  const [selectedIn, setSelectedIn] = useState(selectView)
+  if (selectedIn !== selectView) {
+    setSelectedIn(selectView)
+    setSelected(null)
+  }
   useEffect(() => {
     if (!selected) return
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelected(null) }
