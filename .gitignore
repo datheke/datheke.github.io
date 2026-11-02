@@ -23,6 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# Llaves de firma: este repositorio es público
+# Llaves de firma y secretos: este repositorio es público
 *.jks
 *.keystore
+.env*
