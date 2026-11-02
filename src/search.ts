@@ -1,3 +1,5 @@
+import type { Node } from '@tiptap/pm/model'
+
 // Buscador de notas: sin importar tildes ni mayúsculas. Busca en la copia del aparato, así funciona sin internet.
 export type Part = { text: string; hit: boolean }
 
@@ -55,6 +57,29 @@ export function findRanges(text: string, words: string[]): [number, number][] {
     else merged.push([r[0], r[1]])
   }
   return merged
+}
+
+// Las palabras dentro de una nota abierta, en posiciones del editor.
+export function findInDoc(doc: Node, words: string[]) {
+  const found: { from: number; to: number }[] = []
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return true
+    let text = ''
+    node.forEach(child => { text += child.isText ? child.text : '￼'.repeat(child.nodeSize) }) // una letra por posición
+    for (const [from, to] of findRanges(text, words)) found.push({ from: pos + 1 + from, to: pos + 1 + to })
+    return false
+  })
+  return found
+}
+
+// Los desplegables cerrados que esconden esa posición (su título siempre se ve).
+export function closedDetails(doc: Node, pos: number) {
+  const $pos = doc.resolve(pos)
+  const closed: number[] = []
+  for (let d = 1; d < $pos.depth; d++) {
+    if ($pos.node(d).type.name === 'details' && !$pos.node(d).attrs.open && $pos.node(d + 1).type.name === 'detailsContent') closed.push($pos.before(d))
+  }
+  return closed
 }
 
 function split(text: string, ranges: [number, number][]): Part[] {

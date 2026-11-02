@@ -17,7 +17,7 @@ import { cleanReminders, fileName, pack, photoIds, pickFile, send, takeReceived,
 import * as store from './sync.ts'
 import { TEMPLATES } from './templates.ts'
 import { firstUnordered, lastUnordered, reorder } from './order.ts'
-import { highlight, matches, searchWords, snippet, type Part } from './search.ts'
+import { findRanges, highlight, matches, searchWords, snippet, type Part } from './search.ts'
 import { startSort } from './sortable.ts'
 import { MoreMenu, Resizer } from './ui.tsx'
 import { Account, UpdateToast } from './Account.tsx'
@@ -105,6 +105,7 @@ export default function App() {
   const [query, setQuery] = useState('') // buscador: mientras haya algo escrito, la lista muestra los resultados
   const searched = useDeferredValue(query) // escribir no espera a que termine de buscar
   const words = searchWords(searched)
+  const [noteFind, setNoteFind] = useState<string | null>(null) // buscar dentro de la nota abierta (null: la barrita está cerrada)
   // Ventana de un recordatorio: uno que ya está en una línea (id) o uno nuevo (insert lo pone en la línea del cursor).
   const [received, setReceived] = useState<{ p: Packed; notebook: string } | null>(null) // nota .datheke recibida, por agregar
   const [shareOpen, setShareOpen] = useState(false) // ventana "Compartir"
@@ -139,6 +140,7 @@ export default function App() {
   useBack(!!copyAsk, () => copyAsk?.resolve(null))
   useBack(picker, () => setPicker(false))
   useBack(!!selected, () => setSelected(null))
+  useBack(noteFind !== null, () => setNoteFind(null))
   const backRef = useRef<() => void>(() => {})
   useEffect(() => {
     if (!desktop || !/android/i.test(navigator.userAgent)) return
@@ -451,6 +453,7 @@ export default function App() {
     setPicker(false)
     setWriting(false)
     setNavOpen(false)
+    setNoteFind(null)
   }
 
   // Elegir una libreta o una vista. En el celular lleva de la pantalla de libretas a sus notas.
@@ -1244,7 +1247,11 @@ export default function App() {
         <div className="tarjetas">
           {words.length ? (found.length === 0 ? <p className="vacio">No se encontró “{searched.trim()}”</p> : found.map(n => (
             <div key={n.id} className="nota-fila" style={{ marginLeft: 8 }}>
-              <button className={`nota${n.id === noteId ? ' activa' : ''}`} title={n.name || UNTITLED} onClick={() => open(n.id)}>
+              {/* Si la palabra está en el texto, la nota abre buscándola; si estaba solo en el título, abre normal. */}
+              <button className={`nota${n.id === noteId ? ' activa' : ''}`} title={n.name || UNTITLED} onClick={() => {
+                open(n.id)
+                if (findRanges(textOf(n), words).length) setNoteFind(searched.trim())
+              }}>
                 <strong>{n.appProperties?.icon && `${n.appProperties.icon} `}{marked(highlight(n.name || UNTITLED, words))}</strong>
                 <span className="resumen">{isLocked(n) ? '🔐 Nota con clave' : marked(snippet(textOf(n), words))}</span>
                 <small>{notebooks.find(nb => nb.id === n.appProperties?.notebook)?.name} · {shortDate(n.modifiedTime)}</small>
@@ -1304,6 +1311,8 @@ export default function App() {
               {withKey ? <LockKeyhole size={14} className="privada-icono" aria-label="Nota con clave" />
                 : privacy && <ShieldCheck size={14} className="privada-icono" aria-label="Privada: sin Gemini" />}
             </div>
+            {doc && <button className={noteFind !== null ? 'btn-icono activo' : 'btn-icono'} onClick={() => setNoteFind(noteFind === null ? '' : null)}
+              title="Buscar en esta nota" aria-label="Buscar en esta nota" aria-pressed={noteFind !== null}><Search size={18} /></button>}
             {!trashed && <>
             <button className={locked ? 'fijar fijada' : 'fijar'} onClick={() => store.patch(note.id, { props: { locked: locked ? null : 'true' } })}
               title={locked ? 'Cambiar la nota' : 'Fijar: solo leer y copiar, sin cambios sin querer'}>
@@ -1391,7 +1400,7 @@ export default function App() {
                 privacy={privacy} onPrivate={() => setPrivate(note, true)}
                 onReminder={id => setRemDlg({ noteId: note.id, id, label: reminders.find(x => x.r.id === id)?.label ?? 'Recordatorio' })}
                 onNewReminder={(label, insert) => setRemDlg({ noteId: note.id, label, insert })}
-                focusReminder={focusRem} find={searched} />
+                focusReminder={focusRem} find={noteFind} onFind={setNoteFind} />
             </> : <p className="vacio">Cargando…</p>}
           </div>
           </>}
