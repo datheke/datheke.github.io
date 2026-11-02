@@ -85,6 +85,11 @@ body.cambiando-ancho { cursor: col-resize; }
 .lista-titulo { display: flex; align-items: center; gap: 8px; }
 .lista-titulo h2 { margin: 0; font-size: 20px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lista-titulo small { color: var(--suave); font-size: 14px; margin-right: auto; }
+.buscador { display: flex; align-items: center; gap: 6px; padding-left: 10px; border: 1px solid var(--borde); border-radius: 8px; background: var(--fondo); color: var(--suave); }
+.buscador:focus-within { border-color: var(--acento); }
+.buscador input { flex: 1; min-width: 0; border: none; outline: none; background: none; padding: 7px 0; font-size: 14px; color: var(--texto); }
+.buscador .btn-icono { width: 30px; height: 30px; }
+.nota mark, .buscado { background: #fff59d; color: inherit; border-radius: 2px; }
 .lista-acciones { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .lista-acciones select { border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; background: var(--fondo); font-size: 13px; max-width: 100%; }
 .lista-acciones .recibir { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 10px; background: var(--fondo); font-size: 13px; color: inherit; cursor: pointer; }
@@ -216,7 +221,7 @@ body.cambiando-ancho { cursor: col-resize; }
 .agarre-lista { width: 24px; height: 28px; flex-shrink: 0; opacity: .35; }
 .nota-fila .agarre-lista { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); }
 .nota-fila:hover .agarre-lista, .nota.activa + .agarre-lista, .item:hover .agarre-lista, .item.activo .agarre-lista { opacity: .8; }
-@media (hover: none) { .nota-fila .agarre-lista { opacity: .5; } }
+@media (hover: none) { .nota-fila .agarre-lista, .item .agarre-lista { opacity: .5; } }
 .soltar-arriba { box-shadow: 0 -3px 0 var(--acento); }
 .soltar-abajo { box-shadow: 0 3px 0 var(--acento); }
 .soltar-izq { box-shadow: -3px 0 0 var(--acento); }
@@ -242,22 +247,18 @@ body.cambiando-ancho { cursor: col-resize; }
   .app.sin-lista .lista, .app.sin-lista .divisor-lista { display: none; }
 }
 
-/* Celular: libretas arriba en una fila de botones; la lista o la nota ocupan el resto. Sin líneas para el ancho. */
+/* Celular: una pantalla a la vez, libretas → notas → la nota. Sin líneas para el ancho. */
 @media (max-width: 700px) {
-  .app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .divisor, .app .solo-pc { display: none; }
   .app .solo-celular { display: inline-flex; }
-  .libretas { flex-direction: row; align-items: center; gap: 6px; overflow-x: auto; padding: 8px; border-bottom: 1px solid var(--borde); }
-  .libretas > * { flex-shrink: 0; }
-  .cuenta { padding: 0 2px; }
-  .correo { display: none; }
-  .item, div.item { width: auto; border: 1px solid var(--borde); border-radius: 999px; padding: 5px 12px; background: var(--fondo); }
-  .item.activo { background: var(--texto); border-color: var(--texto); color: #fff; }
-  .item.activo small, .item.activo .btn-icono { color: #ffffffb3; }
-  .seccion { margin: 0; padding: 0; }
-  .seccion span { display: none; }
-  .app.con-nota .libretas, .app.con-nota .lista, .app:not(.con-nota) .editor { display: none; }
-  .app.con-nota { grid-template-rows: 1fr; }
+  .app:not(.con-libretas) .libretas, .app.con-libretas .lista, .app:not(.con-nota) .editor, .app.con-nota .lista { display: none; }
+  .libretas { padding: 12px; }
+  .item { padding: 12px 10px; font-size: 16px; }
+  div.item { padding: 5px 4px 5px 10px; }
+  .item .btn-icono, .seccion .btn-icono { width: 34px; height: 34px; }
+  .nota strong { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .buscador input { font-size: 16px; }
   .nota-barra { padding: 6px 8px; gap: 2px; }
   .nota-barra .volver { display: inline-flex; }
   .ruta { margin: 0 2px; }

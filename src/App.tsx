@@ -1,8 +1,8 @@
 import {
   Bell, Users, Check, CheckSquare, ChevronLeft, CircleCheck, Circle, X as XIcon, FolderInput, RotateCcw, FileDown, Send, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
-  PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Shield, ShieldCheck, ShieldOff, Trash2,
+  PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Search, Shield, ShieldCheck, ShieldOff, Trash2,
 } from 'lucide-react'
-import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
+import { useDeferredValue, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { closeTop, useBack } from './back.ts'
 import { connectCalendar, desktop, forgetSession, hasCalendar, loadSession, resume, signIn } from './auth.ts'
 import { deleteCalendar, ensureCalendar, syncCalendar, type Item as CalItem } from './calendar.ts'
@@ -17,6 +17,7 @@ import { cleanReminders, fileName, pack, photoIds, pickFile, send, takeReceived,
 import * as store from './sync.ts'
 import { TEMPLATES } from './templates.ts'
 import { firstUnordered, lastUnordered, reorder } from './order.ts'
+import { highlight, matches, searchWords, snippet, type Part } from './search.ts'
 import { startSort } from './sortable.ts'
 import { MoreMenu, Resizer } from './ui.tsx'
 import { Account, UpdateToast } from './Account.tsx'
@@ -69,6 +70,18 @@ function preview(html = '') {
   }
   return p
 }
+// El texto completo de la nota para el buscador; también se guarda por texto.
+const plains = new Map<string, string>()
+function plainOf(html = '') {
+  let p = plains.get(html)
+  if (p === undefined) {
+    if (plains.size > 5000) plains.clear()
+    p = plain(html)
+    plains.set(html, p)
+  }
+  return p
+}
+const marked = (parts: Part[]) => parts.map((p, i) => p.hit ? <mark key={i}>{p.text}</mark> : p.text)
 
 // Ancho de las columnas, lista oculta y pantalla completa: son de cada aparato (las pantallas no son iguales) y solo
 // valen en pantallas anchas; en el celular se ve una columna a la vez. Sin poder guardar, va el diseño de siempre.
@@ -88,6 +101,10 @@ export default function App() {
   const [trashView, setTrashView] = useState(false) // la lista muestra el basurero
   const [selected, setSelected] = useState<Set<string> | null>(null) // seleccionar varias notas (null: no se está seleccionando)
   const [remindView, setRemindView] = useState(false) // la lista muestra los recordatorios
+  const [navOpen, setNavOpen] = useState(false) // celular: se ve la pantalla de libretas (en la PC siempre se ven)
+  const [query, setQuery] = useState('') // buscador: mientras haya algo escrito, la lista muestra los resultados
+  const searched = useDeferredValue(query) // escribir no espera a que termine de buscar
+  const words = searchWords(searched)
   // Ventana de un recordatorio: uno que ya está en una línea (id) o uno nuevo (insert lo pone en la línea del cursor).
   const [received, setReceived] = useState<{ p: Packed; notebook: string } | null>(null) // nota .datheke recibida, por agregar
   const [shareOpen, setShareOpen] = useState(false) // ventana "Compartir"
@@ -172,6 +189,10 @@ export default function App() {
   const isLocked = (n?: DriveFile) => n?.appProperties?.protegida === 'true' // nota con clave
   const commonKey = (n?: DriveFile) => n?.appProperties?.clave_comun || '' // verificador de la clave común (compartida)
   const isClosed = (n?: DriveFile) => isLocked(n) && !vault.hasKey(vault.saltOf(commonKey(n))) // con clave y su llave cerrada
+  // Resultados: primero donde todo está en el título. De una nota con clave solo se busca el título, aunque esté abierta.
+  const textOf = (n: DriveFile) => isLocked(n) ? '' : plainOf(s.texts[n.id]?.text)
+  const found = words.length ? regular.filter(n => matches(n.name, textOf(n), words))
+    .sort((a, b) => Number(matches(b.name, '', words)) - Number(matches(a.name, '', words)) || byDate(a, b)) : []
   // Recordatorios de todas las notas que están en este aparato (las con clave, solo con la caja abierta), por lo que falta.
   const reminders = sortReminders(allNotes.flatMap(n => {
     const t = s.texts[n.id]
@@ -230,7 +251,7 @@ export default function App() {
   const countOf = (nbId: string) => allNotes.filter(n => n.appProperties?.notebook === nbId).length
   const columns = layout.expanded ? 'minmax(0, 1fr)'
     : `${layout.sidebar}px 6px ${layout.listHidden ? '' : `${layout.list}px 6px `}minmax(0, 1fr)`
-  const appClass = ['app', noteId && 'con-nota', layout.expanded && 'expandida', layout.listHidden && 'sin-lista'].filter(Boolean).join(' ')
+  const appClass = ['app', noteId && 'con-nota', navOpen && !noteId && 'con-libretas', layout.expanded && 'expandida', layout.listHidden && 'sin-lista'].filter(Boolean).join(' ')
 
   // Cada columna entre su mínimo y su máximo, y la nota con al menos MIN_EDITOR de ancho.
   function resize(which: 'sidebar' | 'list', width: number) {
@@ -429,6 +450,16 @@ export default function App() {
     setFocusRem(undefined)
     setPicker(false)
     setWriting(false)
+    setNavOpen(false)
+  }
+
+  // Elegir una libreta o una vista. En el celular lleva de la pantalla de libretas a sus notas.
+  function go(nb: string | null, view?: 'basurero' | 'recordatorios') {
+    setNotebookId(nb)
+    setTrashView(view === 'basurero')
+    setRemindView(view === 'recordatorios')
+    setNavOpen(false)
+    setQuery('')
   }
 
   // Avisos de los recordatorios (notify.ts): se programan de nuevo cada vez que cambian.
@@ -1083,11 +1114,15 @@ export default function App() {
     })}</>
   }
 
-  // Sin nada abierto: de la subnota a su nota madre, de la nota a la lista, de una libreta (o Recordatorios, Basurero)
-  // a Todas las notas, y desde Todas las notas sale de la app (queda en segundo plano, como las demás apps).
+  // Sin nada abierto: de la subnota a su nota madre, de la nota a la lista, de los resultados a la lista, de la lista a las
+  // libretas y de ahí sale de la app (queda en segundo plano, como las demás apps). En pantallas anchas las libretas
+  // siempre se ven: de una libreta a Todas las notas, y de ahí sale.
   backRef.current = () => {
     if (note) return open(parent ? parent.id : null)
-    if (notebookId || trashView || remindView) { setNotebookId(null); setTrashView(false); setRemindView(false); return }
+    if (query) return setQuery('')
+    const narrow = window.matchMedia('(max-width: 700px)').matches
+    if (narrow && !navOpen) return setNavOpen(true)
+    if (!narrow && (notebookId || trashView || remindView)) return go(null)
     const bridge = (window as unknown as { DathekeAndroid?: { salir(): void } }).DathekeAndroid
     if (bridge?.salir) bridge.salir()
     else import('@tauri-apps/api/app').then(a => a.exit(0)).catch(() => {})
@@ -1109,22 +1144,22 @@ export default function App() {
         <Account email={session.email} onLogout={logout} update={update} mode={reminderMode} calendarHere={calendarHere}
           onPickMode={m => setReminderHelp(m)} onConnect={() => setReminderHelp('calendar')} />
         <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
-        <button className={notebookId === null && !trashView && !remindView ? 'item activo' : 'item'} onClick={() => { setNotebookId(null); setTrashView(false); setRemindView(false) }}>
+        <button className={notebookId === null && !trashView && !remindView ? 'item activo' : 'item'} onClick={() => go(null)}>
           <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
         </button>
-        <button className={remindView ? 'item activo' : 'item'} onClick={() => { setRemindView(true); setTrashView(false); setNotebookId(null) }}>
+        <button className={remindView ? 'item activo' : 'item'} onClick={() => go(null, 'recordatorios')}>
           <Bell size={16} /><span>Recordatorios</span><small className={overdue ? 'vencidos' : undefined}>{pendingReminders || ''}</small>
         </button>
         <div className="seccion">
           <span>Libretas</span>
           <button className="btn-icono" title="Nueva libreta" aria-label="Nueva libreta" onClick={() => {
             const name = prompt('Nombre de la nueva libreta')?.trim()
-            if (name) act(() => setNotebookId(store.create({ kind: 'notebook' }, name)))
+            if (name) act(() => go(store.create({ kind: 'notebook' }, name)))
           }}><Plus size={16} /></button>
         </div>
         {notebooks.map(nb => (
           <div key={nb.id} className={notebookId === nb.id ? 'item activo' : 'item'} data-grupo="libretas">
-            <button className="item-nombre" onClick={() => { setNotebookId(nb.id); setTrashView(false); setRemindView(false) }}>
+            <button className="item-nombre" title={nb.name} onClick={() => go(nb.id)}>
               <Notebook size={16} /><span>{nb.name}</span><small>{countOf(nb.id)}</small>
             </button>
             {isPrivate(nb) && notebookId !== nb.id && <ShieldCheck size={14} className="privada-icono" aria-label="Libreta privada" />}
@@ -1144,7 +1179,7 @@ export default function App() {
               onPointerDown={e => startSort(e, (from, to) => saveOrder(notebooks, from, to))}><GripVertical size={14} /></button>
           </div>
         ))}
-        <button className={trashView ? 'item activo basurero' : 'item basurero'} onClick={() => { setTrashView(true); setRemindView(false); setNotebookId(null) }}>
+        <button className={trashView ? 'item activo basurero' : 'item basurero'} onClick={() => go(null, 'basurero')}>
           <Trash2 size={16} /><span>Basurero</span><small>{trash.length || ''}</small>
         </button>
         <div className="respaldo">
@@ -1181,11 +1216,18 @@ export default function App() {
             </span>
           </div> : <>
           <div className="lista-titulo">
-            <h2>{remindView ? 'Recordatorios' : trashView ? 'Basurero' : notebookName ?? 'Todas las notas'}</h2>
-            <small>{remindView ? reminders.length : list.length}</small>
+            <button className="btn-icono solo-celular" onClick={() => setNavOpen(true)} title="Libretas" aria-label="Ver las libretas"><ChevronLeft size={20} /></button>
+            <h2>{words.length ? 'Resultados' : remindView ? 'Recordatorios' : trashView ? 'Basurero' : notebookName ?? 'Todas las notas'}</h2>
+            <small>{words.length ? found.length : remindView ? reminders.length : list.length}</small>
             <button className="btn-icono" onClick={() => store.sync()} title="Sincronizar" aria-label="Sincronizar"><RefreshCw size={16} /></button>
-            {!remindView && list.length > 0 && <button className="btn-icono" onClick={() => setSelected(new Set())} title="Seleccionar varias notas" aria-label="Seleccionar varias notas"><CheckSquare size={16} /></button>}
-            {trashView && trash.length > 0 && <button className="vaciar" onClick={emptyTrash}>Vaciar</button>}
+            {!words.length && !remindView && list.length > 0 && <button className="btn-icono" onClick={() => setSelected(new Set())} title="Seleccionar varias notas" aria-label="Seleccionar varias notas"><CheckSquare size={16} /></button>}
+            {!words.length && trashView && trash.length > 0 && <button className="vaciar" onClick={emptyTrash}>Vaciar</button>}
+          </div>
+          <div className="buscador" role="search">
+            <Search size={16} aria-hidden="true" />
+            <input value={query} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') setQuery('') }}
+              placeholder="Buscar en tus notas" aria-label="Buscar en tus notas" enterKeyHint="search" />
+            {query && <button className="btn-icono" onClick={() => setQuery('')} title="Borrar la búsqueda" aria-label="Borrar la búsqueda"><XIcon size={16} /></button>}
           </div>
           <div className="lista-acciones">
             <button className="principal solo-celular" onClick={() => newNote()}><Plus size={18} /> Nota</button>
@@ -1200,7 +1242,16 @@ export default function App() {
           </>}
         </header>
         <div className="tarjetas">
-          {remindView ? remindersList() : !ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
+          {words.length ? (found.length === 0 ? <p className="vacio">No se encontró “{searched.trim()}”</p> : found.map(n => (
+            <div key={n.id} className="nota-fila" style={{ marginLeft: 8 }}>
+              <button className={`nota${n.id === noteId ? ' activa' : ''}`} title={n.name || UNTITLED} onClick={() => open(n.id)}>
+                <strong>{n.appProperties?.icon && `${n.appProperties.icon} `}{marked(highlight(n.name || UNTITLED, words))}</strong>
+                <span className="resumen">{isLocked(n) ? '🔐 Nota con clave' : marked(snippet(textOf(n), words))}</span>
+                <small>{notebooks.find(nb => nb.id === n.appProperties?.notebook)?.name} · {shortDate(n.modifiedTime)}</small>
+              </button>
+            </div>
+          )))
+            : remindView ? remindersList() : !ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
             : list.length === 0 ? <p className="vacio">{trashView ? 'El basurero está vacío' : 'Sin notas'}</p>
             : list.map(([n, depth]) => (
               // Se ordena entre sus hermanas: las del mismo nivel y la misma nota madre (data-grupo).
@@ -1340,7 +1391,7 @@ export default function App() {
                 privacy={privacy} onPrivate={() => setPrivate(note, true)}
                 onReminder={id => setRemDlg({ noteId: note.id, id, label: reminders.find(x => x.r.id === id)?.label ?? 'Recordatorio' })}
                 onNewReminder={(label, insert) => setRemDlg({ noteId: note.id, label, insert })}
-                focusReminder={focusRem} />
+                focusReminder={focusRem} find={searched} />
             </> : <p className="vacio">Cargando…</p>}
           </div>
           </>}
