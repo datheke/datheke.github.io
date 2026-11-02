@@ -7,6 +7,7 @@ import TextAlign from '@tiptap/extension-text-align'
 import { TextStyleKit } from '@tiptap/extension-text-style'
 import { Placeholder } from '@tiptap/extensions'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { EditorContent, Extension, mergeAttributes, Node, ReactRenderer, useEditor, useEditorState, type ChainedCommands, type Editor as TiptapEditor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
@@ -23,6 +24,7 @@ import GeminiPanel, { type Privacy } from './GeminiPanel.tsx'
 import { imageDataUrl, imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
 import { appFonts, isFromApp } from './paste.ts'
+import { findRanges, fold, searchWords } from './search.ts'
 import { runSlash, slashAllowed, type Command } from './slash.ts'
 import { wordAt } from './word.ts'
 import { useBack } from './back.ts'
@@ -48,9 +50,6 @@ const MAX_INDENT = 8
 const EMOJIS = '😀 😂 😍 🥰 😎 🤔 😢 😡 👍 👎 👏 🙏 💪 🎉 ❤️ ⭐ 🔥 ✅ ❌ ⚠️ 💡 📌 📎 📝 📅 ⏰ 🛒 🏠 💼 💰 📚 🎓 ✈️ 🚗 🍎 🍕 ☕ 🎵 🐶 🌱'.split(' ')
 
 type Handle = { onKeyDown: (e: KeyboardEvent) => boolean }
-
-// Para buscar sin importar tildes ni mayúsculas.
-const fold = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
 
 function Menu({ items, command, ref }: { items: { label: string }[]; command: (item: unknown) => void; ref?: Ref<Handle> }) {
   const [index, setIndex] = useState(0)
@@ -130,6 +129,32 @@ const Slash = Extension.create<{ items: Command[] }>({
       ...MENU_PLACE,
     })]
   },
+})
+
+// Palabras del buscador resaltadas en la nota: se dibujan encima, no se guardan en el texto ni cuentan como un cambio.
+const findKey = new PluginKey<DecorationSet>('buscar')
+const FindWords = Extension.create({
+  name: 'buscar',
+  addProseMirrorPlugins: () => [new Plugin<DecorationSet>({
+    key: findKey,
+    state: {
+      init: () => DecorationSet.empty,
+      apply(tr, old) {
+        const words: string[] | undefined = tr.getMeta(findKey)
+        if (!words) return old.map(tr.mapping, tr.doc)
+        const marks: Decoration[] = []
+        if (words.length) tr.doc.descendants((node, pos) => {
+          if (!node.isTextblock) return true
+          let text = ''
+          node.forEach(child => { text += child.isText ? child.text : '￼'.repeat(child.nodeSize) }) // una letra por posición
+          for (const [from, to] of findRanges(text, words)) marks.push(Decoration.inline(pos + 1 + from, pos + 1 + to, { class: 'buscado' }))
+          return false
+        })
+        return DecorationSet.create(tr.doc, marks)
+      },
+    },
+    props: { decorations: state => findKey.getState(state) },
+  })],
 })
 
 // La nota guarda <img src="drive:ID">; aquí se muestra bajando la foto con la sesión.
@@ -333,13 +358,14 @@ type Props = {
   onReminder: (id: string) => void // tocaron la etiqueta 🔔 de una línea
   onNewReminder: (label: string, insert: (r: Reminder) => void) => void // 🔔 de la barra o "/recordatorio"
   focusReminder?: string // al abrir desde la lista: ir a esa línea
+  find?: string // lo escrito en el buscador: se resalta en la nota y se va a la primera palabra
   me?: string // mi correo (recordatorios "solo para mí" en notas compartidas)
   inlineImages?: boolean // nota compartida: las fotos van dentro de la nota (la otra persona no ve tus fotos de Datheke)
 }
 
 // El contenido solo se usa al crear el editor; App lo vuelve a montar (key) al cambiar de nota.
 export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey, privacy, onPrivate,
-  onReminder, onNewReminder, focusReminder, inlineImages, me }: Props) {
+  onReminder, onNewReminder, focusReminder, find, inlineImages, me }: Props) {
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
   const latest = useRef({ onChange, notes, onError, onReminder, onNewReminder })
   useEffect(() => { latest.current = { onChange, notes, onError, onReminder, onNewReminder } })
@@ -400,7 +426,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     extensions: [
       StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true, onReadOnlyChecked: () => true }), TableKit, DriveImage, Callout,
       Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), Summary, DetailsContent,
-      TextAlign.configure({ types: BLOCKS }), ParagraphFormat, MoveBlocks, OpenDetails,
+      TextAlign.configure({ types: BLOCKS }), ParagraphFormat, MoveBlocks, OpenDetails, FindWords,
       // eslint-disable-next-line react-hooks/refs
       ReminderTag.configure({ onOpen: id => latest.current.onReminder(id), me: me ?? '' }),
       Placeholder.configure({ placeholder: 'Escribe / para insertar tablas, fotos, casillas, recuadros…' }),
@@ -552,6 +578,20 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     }, 150)
     return () => clearTimeout(t)
   }, [editor, focusReminder])
+
+  // Desde el buscador: resaltar lo buscado e ir a la primera palabra (abriendo el desplegable que la tenga adentro).
+  useEffect(() => {
+    const words = searchWords(find ?? '')
+    editor.view.dispatch(editor.state.tr.setMeta(findKey, words))
+    if (!words.length) return
+    const first = () => editor.view.dom.querySelector<HTMLElement>('.buscado')
+    const t = setTimeout(() => {
+      const box = first()?.closest('.details')
+      if (box && !box.classList.contains('is-open') && !first()?.closest('summary')) box.querySelector<HTMLButtonElement>(':scope > button')?.click()
+      first()?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }, 150)
+    return () => clearTimeout(t)
+  }, [editor, find])
 
   // Agarradera ⠿ para arrastrar bloques, como en Evernote: junto al bloque bajo el mouse o, en el celular (sin mouse),
   // junto al del cursor. Se mueve lo mismo que con Subir/Bajar (movableDepth), entre sus hermanos.
