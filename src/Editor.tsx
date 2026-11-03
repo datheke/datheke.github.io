@@ -404,8 +404,8 @@ type Props = {
 export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey, privacy, onPrivate,
   onReminder, onNewReminder, focusReminder, find, onFind, inlineImages, me }: Props) {
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
-  const latest = useRef({ onChange, notes, onError, onReminder, onNewReminder })
-  useEffect(() => { latest.current = { onChange, notes, onError, onReminder, onNewReminder } })
+  const latest = useRef({ onChange, notes, onError, onReminder, onNewReminder, geminiKey, privacy })
+  useEffect(() => { latest.current = { onChange, notes, onError, onReminder, onNewReminder, geminiKey, privacy } })
   // Fuentes que la app no tiene (pegadas antes de existir appFonts) se ven con la letra de la nota, igual en todos lados.
   const [initial] = useState(() => appFonts(content))
   const [uploading, setUploading] = useState(0)
@@ -462,7 +462,9 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
 
   const editor = useEditor({
     extensions: [
-      StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true, onReadOnlyChecked: () => true }), TableKit, DriveImage, Callout, Calculator,
+      StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true, onReadOnlyChecked: () => true }), TableKit, DriveImage, Callout,
+      // eslint-disable-next-line react-hooks/refs
+      Calculator.configure({ gemini: () => ({ key: latest.current.geminiKey, private: !!latest.current.privacy }) }),
       Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), Summary, DetailsContent,
       TextAlign.configure({ types: BLOCKS }), ParagraphFormat, MoveBlocks, OpenDetails, FindWords,
       // eslint-disable-next-line react-hooks/refs
