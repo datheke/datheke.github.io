@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Schema } from '@tiptap/pm/model'
-import { calcRows, evaluate, letterOf, numberIn, showNumber, toNumber, type Row } from './calc.ts'
+import { EditorState } from '@tiptap/pm/state'
+import { addRow, calcRows, cleanFormula, evaluate, formulaPrompt, letterOf, looksLikeRow, numberIn, showNumber, toNumber, type Row } from './calc.ts'
 
 const schema = new Schema({
   nodes: {
@@ -127,4 +128,46 @@ test('resultado con coma decimal', () => {
   assert.equal(showNumber(1563), '1.563')
   assert.equal(showNumber(2.5), '2,5')
   assert.equal(showNumber(333.333), '333,33')
+})
+
+test('un gasto escrito en la cajita se reconoce (y una cuenta no)', () => {
+  assert.equal(looksLikeRow('Seguro: 85', []), true)
+  assert.equal(looksLikeRow('Gasolina 40', rows), true)
+  assert.equal(looksLikeRow('A + B', rows), false)
+  assert.equal(looksLikeRow('todo', rows), false)
+  assert.equal(looksLikeRow('85', rows), false)
+  assert.equal(looksLikeRow('suma seguro y luz', rows), false)
+})
+
+const added = (...blocks: ReturnType<typeof schema.node>[]) => {
+  const doc = schema.node('doc', null, blocks)
+  const next = addRow(EditorState.create({ doc }), posOf(doc), 'Gas: 3').doc
+  return { next, rows: calcRows(next, posOf(next)) }
+}
+
+test('pasar el gasto a la lista: al final de la lista, con casilla si es de casillas', () => {
+  const { next, rows } = added(schema.node('taskList', null, [task('Seguro: 85', true)]), p(), calc)
+  assert.deepEqual(rows.map(r => [r.label, r.value, r.checked]), [['Seguro', 85, true], ['Gas', 3, false]])
+  assert.equal(next.child(0).childCount, 2)
+  assert.equal(next.child(1).textContent, '') // el renglón vacío se queda donde estaba
+})
+
+test('pasar el gasto sin lista: párrafo encima, o el primero si la nota estaba vacía', () => {
+  assert.deepEqual(added(p('Luz: 25'), p(), calc).rows.map(r => r.label), ['Luz', 'Gas'])
+  const empty = added(calc)
+  assert.deepEqual(empty.rows.map(r => [r.letter, r.label, r.value]), [['A', 'Gas', 3]])
+  assert.equal(empty.next.child(0).textContent, 'Gas: 3')
+})
+
+test('pedido a Gemini con las letras y su respuesta limpia', () => {
+  const prompt = formulaPrompt('suma seguro y pasaporte y réstale la luz', rows)
+  assert.match(prompt, /A: Seguro = 85\nB: Pasaporte = 90/)
+  assert.match(prompt, /marcados, sin marcar/)
+  assert.match(prompt, /Pedido: suma seguro y pasaporte y réstale la luz$/)
+  assert.equal(cleanFormula('A + B - H'), 'A + B - H')
+  assert.equal(cleanFormula('```\n(A + B) - H\n```'), '(A + B) - H')
+  assert.equal(cleanFormula('Cuenta: A + B = 175'), 'A + B')
+  assert.equal(cleanFormula('= A + B.'), 'A + B')
+  assert.equal(cleanFormula('NO'), '')
+  assert.equal(value(cleanFormula('Cuenta: (A + B) - H = 150')), 150)
 })

@@ -1,4 +1,5 @@
 import type { Node } from '@tiptap/pm/model'
+import type { EditorState, Transaction } from '@tiptap/pm/state'
 import { fold } from './search.ts'
 
 // Calculadora de la nota: toma los números de los renglones de arriba (A, B, C…) y hace la cuenta que se escriba.
@@ -144,3 +145,38 @@ export function evaluate(formula: string, rows: Row[]): Result {
 const round = (n: number) => Math.round(n * 100) / 100 + 0
 
 export const showNumber = (n: number) => n.toLocaleString('es-EC', { maximumFractionDigits: 2 })
+
+// "Seguro: 85" escrito en la cajita de la cuenta: es un gasto, no una cuenta (tiene nombre y número, y no se puede calcular).
+export const looksLikeRow = (text: string, rows: Row[]) => !!numberIn(text)?.label && 'error' in evaluate(text, rows)
+
+// Pasa ese gasto a la lista de encima de la calculadora (al final, con el mismo tipo de renglón) o, si no hay lista,
+// como párrafo justo encima (antes de los renglones vacíos).
+export function addRow(state: EditorState, pos: number, text: string): Transaction {
+  const { schema } = state
+  const $pos = state.doc.resolve(pos)
+  const parent = $pos.parent
+  let index = $pos.index() - 1
+  let at = pos
+  while (index >= 0 && parent.child(index).type.name === 'paragraph' && !parent.child(index).textContent.trim()) at -= parent.child(index--).nodeSize
+  const para = schema.nodes.paragraph.create(null, schema.text(text.trim()))
+  const list = index >= 0 && LISTS.includes(parent.child(index).type.name) ? parent.child(index) : null
+  if (!list) return state.tr.insert(at, para)
+  const item = list.type.name === 'taskList' ? schema.nodes.taskItem.create({ checked: false }, para) : schema.nodes.listItem.create(null, para)
+  return state.tr.insert(at - 1, item)
+}
+
+// Para Gemini: los renglones con su letra y el pedido; responde solo la cuenta.
+export const formulaPrompt = (request: string, rows: Row[]) =>
+  'Convierte el pedido en una cuenta para una calculadora.\nRenglones (letra: nombre = valor):\n'
+  + rows.map(r => `${r.letter}: ${r.label || '(sin nombre)'} = ${r.value}`).join('\n')
+  + (rows.some(r => r.checked !== null) ? '\nTambién puedes usar: todo, marcados, sin marcar.' : '\nTambién puedes usar: todo.')
+  + '\nResponde SOLO la cuenta en una línea, con las letras, números, + - * / y paréntesis. Sin "=", sin el resultado y sin explicar.'
+  + ' Si el pedido no se puede hacer con estos renglones, responde NO.'
+  + `\nPedido: ${request.trim()}`
+
+// La respuesta de Gemini, limpia: la primera línea, sin "Cuenta:", sin "=" ni el resultado. Vacía si dijo NO.
+export function cleanFormula(answer: string) {
+  const line = answer.replace(/```[a-z]*/gi, '').split('\n').map(l => l.trim()).find(Boolean) ?? ''
+  const f = line.replace(/^(cuenta|f[oó]rmula)\s*:\s*/i, '').replace(/^=\s*/, '').replace(/\s*=.*$/, '').replace(/[`.]+$/, '').trim()
+  return /^no$/i.test(f) ? '' : f
+}

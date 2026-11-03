@@ -505,3 +505,5 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .calc-ayuda.error { color: #b91c1c; }
 .tiptap .calc-letra { display: inline-block; min-width: 1.4em; margin-right: 6px; padding: 0 4px; border-radius: 4px; background: #e0f2e9; color: #1f5135;
   font: 600 11px/1.6 system-ui, sans-serif; text-align: center; vertical-align: middle; user-select: none; pointer-events: none; }
+.calc-botones button.calc-accion { border-color: var(--acento); color: var(--acento); font-weight: 600; }
+.calc-botones button:disabled { opacity: .6; }
