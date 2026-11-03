@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Schema } from '@tiptap/pm/model'
 import { EditorState } from '@tiptap/pm/state'
-import { addRow, calcRequest, calcRows, cleanFormula, evaluate, formulaPrompt, letterOf, looksLikeRow, numberIn, showNumber, toNumber, type Row } from './calc.ts'
+import { addRow, calcRequest, calcRows, existingCalc, cleanFormula, evaluate, formulaPrompt, letterOf, looksLikeRow, numberIn, showNumber, toNumber, type Row } from './calc.ts'
 
 const schema = new Schema({
   nodes: {
@@ -178,4 +178,14 @@ test('respuesta de Gemini que es una cuenta (y la que no)', () => {
   assert.equal(calcRequest('  CUENTA:   sin marcar\n'), 'sin marcar')
   assert.equal(calcRequest('Seguro: 85\nLuz: 25'), null)
   assert.equal(calcRequest('Comprar pan. CUENTA: todo'), null)
+})
+
+test('la calculadora que ya está en la nota: la de antes del cursor, si no la de después; sin números no cuenta', () => {
+  const doc = schema.node('doc', null, [p('Luz: 25'), calc, p(), p('Agua: 10'), calc, p(), schema.node('horizontalRule'), calc, p()])
+  const calcs: number[] = []
+  doc.descendants((n, pos) => { if (n.type.name === 'calculadora') calcs.push(pos) })
+  assert.equal(existingCalc(doc, doc.content.size), calcs[1]) // la tercera no tiene números encima
+  assert.equal(existingCalc(doc, calcs[1]), calcs[0])
+  assert.equal(existingCalc(doc, 0), calcs[0])
+  assert.equal(existingCalc(schema.node('doc', null, [p('hola')]), 1), null)
 })
