@@ -73,13 +73,13 @@ export async function checkKey(key: string) {
   if (!res.ok) throw await failure(res)
 }
 
-async function generate(parts: Part[], key: string): Promise<string> {
+async function generate(parts: Part[], key: string, system = RULES): Promise<string> {
   if (!key) throw new GeminiError('Falta vincular Gemini.')
   const saved = savedModel()
   const models = saved ? [saved, ...MODELS.filter(m => m !== saved)] : MODELS
   for (const model of models) {
     const res = await post(`${API}/${model}:generateContent`, key, {
-      systemInstruction: { parts: [{ text: RULES }] },
+      systemInstruction: { parts: [{ text: system }] },
       contents: [{ role: 'user', parts }],
       generationConfig: { temperature: 0.3 },
     })
@@ -99,6 +99,11 @@ async function generate(parts: Part[], key: string): Promise<string> {
 // La tarea sobre el HTML de la nota (o de lo seleccionado); con la nota vacía, Gemini crea desde cero.
 export const ask = (instruction: string, html: string, key: string) =>
   generate([{ text: html.trim() ? `${instruction}\n\nTexto de la nota:\n${html}` : instruction }], key)
+
+// Calculadora: el pedido con palabras ("suma seguro y luz") se vuelve una cuenta ("A + H"). La cuenta la hace la app,
+// no Gemini (la IA puede equivocarse sumando). Solo van los nombres y valores de los renglones, no la nota entera.
+export const askFormula = (prompt: string, key: string) =>
+  generate([{ text: prompt }], key, 'Eres la calculadora de una app de notas. Respondes solo con una cuenta, en una línea.')
 
 // Dictado: el audio (WAV) va a Gemini, que lo escribe ya ordenado.
 export const askAudio = (wavBase64: string, key: string) =>
