@@ -428,36 +428,28 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   const [initial] = useState(() => appFonts(content))
   const [uploading, setUploading] = useState(0)
   // Lo último que se pegó (dónde quedó y el original), para "Mantener formato original"; se olvida con el siguiente cambio.
-  // kind: 'otro' = de otro lado, entró solo el texto (se puede volver al original); 'app' = copiado en Datheke, entró tal cual
-  // (se puede pegar sin formato).
-  // start: dónde empieza lo pegado (si el cursor estaba en un renglón vacío, el bloque pegado lo reemplaza).
+  // Lo pegado entra siempre sin formato; html es el formato para "Pegar con formato": 'app' = copiado en Datheke (vuelve tal
+  // cual), 'otro' = de la web, WhatsApp, Word… (vuelve con su formato original).
   type Pasting = { from: number; start: number; html: string; text: string; kind: 'otro' | 'app' }
   const pasting = useRef<Pasting | null>(null)
   const [pasted, setPasted] = useState<(Pasting & { to: number }) | null>(null)
   const plainPaste = useRef(false) // lo que se pega ahora es solo texto: va en tamaño 14
   const inPaste = useRef(false) // pasteText/pasteHTML vuelven a pasar por handlePaste
 
-  // Pegar: lo copiado en la app entra tal cual (aunque el teclado del celular haya guardado solo el texto); lo de otro lado,
-  // solo el texto en tamaño 14 y sin renglones vacíos de más. false: que el editor lo pegue como siempre.
+  // Pegar: siempre solo el texto, en tamaño 14 y sin renglones vacíos de más. Si hay formato (copiado en la app, aunque el
+  // teclado del celular haya guardado solo el texto, o de otro lado), el aviso ofrece "Pegar con formato".
   function smartPaste(view: EditorView, text: string, html: string, event?: ClipboardEvent): boolean {
+    if (!text) return false
     const { from, $from } = view.state.selection
     const start = $from.parent.isTextblock && !$from.parent.content.size && $from.depth > 0 ? $from.before() : from
     const own = copiedHtml(text) ?? (html && isFromApp(html) ? html : null)
-    inPaste.current = true
+    pasting.current = own ? { from, start, html: own, text, kind: 'app' } : html ? { from, start, html, text, kind: 'otro' } : null
+    inPaste.current = plainPaste.current = true
     try {
-      if (own) {
-        pasting.current = { from, start, html: own, text, kind: 'app' }
-        view.pasteHTML(own, event)
-      } else {
-        if (!text) return false
-        pasting.current = html ? { from, start, html, text, kind: 'otro' } : null
-        plainPaste.current = true
-        view.pasteText(tidyText(text), event)
-      }
+      view.pasteText(tidyText(text), event)
       return true
     } finally {
-      inPaste.current = false
-      plainPaste.current = false
+      inPaste.current = plainPaste.current = false
     }
   }
   async function pasteButton(editor: TiptapEditor) {
@@ -595,7 +587,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   // false: cambiar entre fijada y editable no es un cambio de la nota (si no, se marcaba para subir al abrirla).
   useEffect(() => { if (editor.isEditable !== editable) editor.setEditable(editable, false) }, [editor, editable])
 
-  // Nota fijada en el celular: zoom con dos dedos, de 85% a 250%. Solo para leer: se va al editar, al cambiar de nota o al salir
+  // Nota fijada en el celular: zoom con dos dedos, de 85% a 250% (dos toques: al máximo y de vuelta a normal). Solo para leer: se va al editar, al cambiar de nota o al salir
   // (el editor se vuelve a crear). Lo hace la app, así funciona igual en la app y en la web.
   useEffect(() => {
     const box = frame.current
@@ -604,18 +596,37 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     let start: { d: number; z: number } | null = null
     let zoom = 1
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
-    const down = (e: TouchEvent) => { if (e.touches.length === 2) start = { d: dist(e.touches), z: zoom } }
+    let p0 = { x: 0, y: 0 }
+    const down = (e: TouchEvent) => {
+      if (e.touches.length === 1) { p0 = { x: e.touches[0].clientX, y: e.touches[0].clientY }; moved = false }
+      if (e.touches.length === 2) { start = { d: dist(e.touches), z: zoom }; moved = true }
+    }
     const move = (e: TouchEvent) => {
+      if (e.touches.length === 1 && Math.hypot(e.touches[0].clientX - p0.x, e.touches[0].clientY - p0.y) > 10) moved = true // deslizar no es un toque
       if (!start || e.touches.length !== 2) return
       e.preventDefault()
       zoom = Math.min(2.5, Math.max(0.85, start.z * dist(e.touches) / start.d))
       content.style.zoom = String(Math.round(zoom * 100) / 100)
     }
-    const up = (e: TouchEvent) => { if (e.touches.length < 2) start = null }
+    // Dos toques seguidos: al máximo; si ya hay zoom (más o menos), a normal.
+    let last = { t: 0, x: 0, y: 0 }
+    let moved = false
+    const set = (z: number) => { zoom = z; content.style.zoom = z === 1 ? '' : String(z) }
+    const up = (e: TouchEvent) => {
+      if (e.touches.length < 2) start = null
+      if (e.touches.length || e.changedTouches.length !== 1 || moved) return
+      const p = e.changedTouches[0]
+      const now = Date.now()
+      if (now - last.t < 300 && Math.hypot(p.clientX - last.x, p.clientY - last.y) < 30) {
+        e.preventDefault()
+        set(Math.abs(zoom - 1) < 0.01 ? 2.5 : 1)
+        last = { t: 0, x: 0, y: 0 }
+      } else last = { t: now, x: p.clientX, y: p.clientY }
+    }
     box.style.touchAction = 'pan-x pan-y' // el navegador no hace su propio zoom de toda la página
     box.addEventListener('touchstart', down, { passive: true })
     box.addEventListener('touchmove', move, { passive: false })
-    box.addEventListener('touchend', up)
+    box.addEventListener('touchend', up, { passive: false })
     box.addEventListener('touchcancel', up)
     return () => {
       box.removeEventListener('touchstart', down)
@@ -836,27 +847,21 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       {editable && <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} onReminder={() => newReminder(editor)} onPaste={() => pasteButton(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey}
         privacy={privacy} onPrivate={onPrivate} />}
       {pasted && <div className="pegado" role="status">
-        <ClipboardPaste size={16} aria-hidden="true" /> {pasted.kind === 'app' ? 'Se pegó tal cual.' : 'Se pegó solo el texto, con el formato de la nota.'}
+        <ClipboardPaste size={16} aria-hidden="true" /> Se pegó sin formato.
         <button type="button" className="principal" onMouseDown={e => e.preventDefault()} onClick={() => {
-          // Se vuelve a pegar encima, con el pegado del editor: sigue en el renglón como un pegado normal.
+          // Lo pegado se cambia por el formato, con el pegado del editor: si empezó en un renglón vacío, ese renglón se usa
+          // para el bloque (lista, separador…); si no, va en lugar del texto pegado.
+          const { state, view } = editor
+          const to = Math.min(pasted.to, state.doc.content.size)
+          if (pasted.start !== pasted.from) {
+            const tr = state.tr.replaceWith(pasted.start, to, state.schema.nodes.paragraph.create())
+            view.dispatch(tr.setSelection(TextSelection.near(tr.doc.resolve(pasted.start + 1))))
+          } else editor.commands.setTextSelection({ from: pasted.from, to })
+          view.focus()
           inPaste.current = true
-          try {
-            if (pasted.kind === 'app') {
-              // Lo pegado (casillas, separadores…) se cambia por un renglón vacío y ahí va solo el texto.
-              const { state, view } = editor
-              const to = Math.min(pasted.to, state.doc.content.size)
-              const tr = state.tr.replaceWith(pasted.start, to, state.schema.nodes.paragraph.create())
-              view.dispatch(tr.setSelection(TextSelection.near(tr.doc.resolve(pasted.start + 1))))
-              view.focus()
-              plainPaste.current = true
-              view.pasteText(tidyText(pasted.text))
-            } else {
-              editor.chain().focus().setTextSelection({ from: pasted.from, to: pasted.to }).run()
-              editor.view.pasteHTML(appFonts(pasted.html))
-            }
-          } finally { inPaste.current = false; plainPaste.current = false }
+          try { view.pasteHTML(pasted.kind === 'app' ? pasted.html : appFonts(pasted.html)) } finally { inPaste.current = false }
           setPasted(null)
-        }}>{pasted.kind === 'app' ? 'Pegar sin formato' : 'Mantener formato original'}</button>
+        }}>Pegar con formato</button>
         <button type="button" className="btn-icono" aria-label="Cerrar" onClick={() => setPasted(null)}>✕</button>
       </div>}
     </div>}
@@ -975,7 +980,7 @@ function Toolbar({ editor, uploading, onPhoto, onReminder, onPaste, geminiKey, o
       </Btn>
       <Btn label="Dictar a Gemini" active={panel === 'voz'} onClick={() => toggle('voz')}><AudioLines size={18} className="chispa" /></Btn>
       <Btn label="Recordatorio en esta línea" onClick={onReminder}><Bell size={18} /></Btn>
-      <Btn label="Pegar (lo copiado en Datheke va tal cual)" onClick={onPaste}><ClipboardPaste size={18} /></Btn>
+      <Btn label="Pegar" onClick={onPaste}><ClipboardPaste size={18} /></Btn>
       <select aria-label="Estilo de párrafo" value={s.block} onChange={e => {
         const level = Number(e.target.value) as 0 | 1 | 2 | 3
         const { from, to, $from, $to } = editor.state.selection
