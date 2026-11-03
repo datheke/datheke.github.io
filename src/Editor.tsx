@@ -587,17 +587,49 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   // false: cambiar entre fijada y editable no es un cambio de la nota (si no, se marcaba para subir al abrirla).
   useEffect(() => { if (editor.isEditable !== editable) editor.setEditable(editable, false) }, [editor, editable])
 
-  // Nota fijada en el celular: zoom con dos dedos, de 85% a 250% (dos toques: al máximo y de vuelta a normal). Solo para leer: se va al editar, al cambiar de nota o al salir
-  // (el editor se vuelve a crear). Lo hace la app, así funciona igual en la app y en la web.
+  // Nota fijada: zoom con dos dedos o Ctrl + rueda, de 85% a 250% (dos toques o doble clic: al máximo y de vuelta a normal), como en un
+  // PDF: se agranda todo tal como se ve (sin acomodar los renglones de nuevo, que en un desplegable dejaba una columna
+  // angosta) y se recorre con el dedo a los lados y hacia abajo. El punto entre los dedos (o el tocado) se queda en su
+  // lugar. Solo para leer: se va al editar, al cambiar de nota o al salir. Lo hace la app: igual en la app y en la web.
   useEffect(() => {
     const box = frame.current
     const content = box?.querySelector<HTMLElement>('.contenido')
     if (editable || !box || !content) return
-    let start: { d: number; z: number } | null = null
     let zoom = 1
-    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    let width = 0 // ancho de la nota sin zoom: se mantiene, así los renglones no cambian
+    const scroller = () => {
+      for (let p = box.parentElement; p; p = p.parentElement) {
+        const o = getComputedStyle(p).overflowY
+        if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p
+      }
+      return document.scrollingElement as HTMLElement
+    }
+    const set = (z: number, fx: number, fy: number) => {
+      z = Math.round(Math.min(2.5, Math.max(0.85, z)) * 100) / 100
+      if (z === zoom) return
+      const sc = scroller()
+      const scTop = sc === document.scrollingElement ? 0 : sc.getBoundingClientRect().top
+      const top = content.getBoundingClientRect().top - scTop + sc.scrollTop // dónde empieza la nota (no cambia con el zoom)
+      const bx = box.getBoundingClientRect().left
+      const cx = (box.scrollLeft + fx - bx) / zoom
+      const cy = (sc.scrollTop + fy - scTop - top) / zoom
+      if (zoom === 1) width = content.offsetWidth
+      zoom = z
+      const on = z !== 1
+      content.style.width = on ? `${width}px` : ''
+      content.style.zoom = on ? String(z) : ''
+      box.style.overflowX = on ? 'auto' : ''
+      box.scrollLeft = on ? cx * z - (fx - bx) : 0
+      sc.scrollTop = cy * z + top - (fy - scTop)
+    }
+    let start: { d: number; z: number } | null = null
     let p0 = { x: 0, y: 0 }
+    let moved = false
+    let last = { t: 0, x: 0, y: 0 }
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    let touched = 0 // el celular también avisa "doble clic" tras dos toques: ese ya lo atendió `up`
     const down = (e: TouchEvent) => {
+      touched = Date.now()
       if (e.touches.length === 1) { p0 = { x: e.touches[0].clientX, y: e.touches[0].clientY }; moved = false }
       if (e.touches.length === 2) { start = { d: dist(e.touches), z: zoom }; moved = true }
     }
@@ -605,13 +637,10 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       if (e.touches.length === 1 && Math.hypot(e.touches[0].clientX - p0.x, e.touches[0].clientY - p0.y) > 10) moved = true // deslizar no es un toque
       if (!start || e.touches.length !== 2) return
       e.preventDefault()
-      zoom = Math.min(2.5, Math.max(0.85, start.z * dist(e.touches) / start.d))
-      content.style.zoom = String(Math.round(zoom * 100) / 100)
+      const [a, b] = [e.touches[0], e.touches[1]]
+      set(start.z * dist(e.touches) / start.d, (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2)
     }
-    // Dos toques seguidos: al máximo; si ya hay zoom (más o menos), a normal.
-    let last = { t: 0, x: 0, y: 0 }
-    let moved = false
-    const set = (z: number) => { zoom = z; content.style.zoom = z === 1 ? '' : String(z) }
+    // Dos toques seguidos: al máximo en ese punto; si ya hay zoom (más o menos), a normal.
     const up = (e: TouchEvent) => {
       if (e.touches.length < 2) start = null
       if (e.touches.length || e.changedTouches.length !== 1 || moved) return
@@ -619,10 +648,23 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       const now = Date.now()
       if (now - last.t < 300 && Math.hypot(p.clientX - last.x, p.clientY - last.y) < 30) {
         e.preventDefault()
-        set(Math.abs(zoom - 1) < 0.01 ? 2.5 : 1)
+        set(zoom === 1 ? 2.5 : 1, p.clientX, p.clientY)
         last = { t: 0, x: 0, y: 0 }
       } else last = { t: now, x: p.clientX, y: p.clientY }
     }
+    // PC: Ctrl + rueda (o pellizcar en el touchpad, que llega igual) y doble clic, como en un PDF.
+    const wheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault() // si no, el navegador agranda toda la página
+      set(zoom * Math.exp(-e.deltaY * 0.002), e.clientX, e.clientY)
+    }
+    const dbl = (e: MouseEvent) => {
+      if (Date.now() - touched < 1000) return
+      window.getSelection()?.removeAllRanges() // el doble clic también marca una palabra
+      set(zoom === 1 ? 2.5 : 1, e.clientX, e.clientY)
+    }
+    box.addEventListener('wheel', wheel, { passive: false })
+    box.addEventListener('dblclick', dbl)
     box.style.touchAction = 'pan-x pan-y' // el navegador no hace su propio zoom de toda la página
     box.addEventListener('touchstart', down, { passive: true })
     box.addEventListener('touchmove', move, { passive: false })
@@ -633,8 +675,10 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       box.removeEventListener('touchmove', move)
       box.removeEventListener('touchend', up)
       box.removeEventListener('touchcancel', up)
-      box.style.touchAction = ''
-      content.style.zoom = ''
+      box.removeEventListener('wheel', wheel)
+      box.removeEventListener('dblclick', dbl)
+      box.style.touchAction = box.style.overflowX = ''
+      content.style.zoom = content.style.width = ''
     }
   }, [editable])
 
