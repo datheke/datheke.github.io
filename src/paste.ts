@@ -19,3 +19,27 @@ export function appFonts(html: string): string {
   }
   return doc.body.innerHTML
 }
+
+// Copia completa de lo último copiado en la app (casillas marcadas, separadores, desplegables, colores…). El teclado del
+// celular guarda solo el texto: al pegar, si el texto es el mismo, se usa esta copia y queda igual. Solo en este aparato.
+const COPY = 'datheke-copia'
+const MAX_COPY = 2_000_000 // fotos dentro de la nota (compartidas) pueden pesar: más grande no se guarda
+const bare = (s: string) => s.replace(/\s+/g, '')
+
+export function rememberCopy(html: string, text: string, store: Pick<Storage, 'setItem' | 'removeItem'> = localStorage) {
+  try {
+    if (!bare(text) || html.length > MAX_COPY) store.removeItem(COPY)
+    else store.setItem(COPY, JSON.stringify({ html, text: bare(text) }))
+  } catch { /* sin espacio o bloqueado: se pega solo el texto */ }
+}
+
+// La copia completa si `text` es lo mismo que se copió (sin contar espacios ni saltos, que el teclado puede cambiar).
+export function copiedHtml(text: string, store: Pick<Storage, 'getItem'> = localStorage): string | null {
+  try {
+    const saved: { html?: string; text?: string } = JSON.parse(store.getItem(COPY) ?? '{}')
+    return saved.html && saved.text && saved.text === bare(text) ? saved.html : null
+  } catch { return null }
+}
+
+// "Pegar sin formato": un renglón por línea, sin los renglones vacíos de más ni espacios sueltos al final.
+export const tidyText = (text: string) => text.replace(/\r\n?/g, '\n').split('\n').map(l => l.replace(/[ \t ]+$/, '')).filter(l => l.trim()).join('\n')
