@@ -183,10 +183,26 @@ export function cleanFormula(answer: string) {
 
 // Gemini (dictado o pedido) puede contestar que es una cuenta: así la app pone una calculadora en vez de escribir la frase.
 // Solo se manda el pedido o la voz; los renglones de la nota no van en este paso.
-export const CALC_HINT = '\nOtro caso: si es un pedido de CUENTA con los números que la persona ya tiene en la nota (sumar, restar, total, '
-  + '"cuánto es…", "cuánto me falta"), responde SOLO una línea: CUENTA: y luego "todo" si pide sumar todo, "marcados" o '
-  + '"sin marcar" si pide lo marcado o lo que falta, o si no el pedido en pocas palabras (ej.: CUENTA: seguro más luz). '
-  + 'Si dicta gastos o datos para anotar ("seguro 85, luz 25"), eso NO es una cuenta: escríbelos, uno por renglón.'
+export const CALC_HINT = '\nIMPORTANTE (esto va antes que los casos de arriba): la nota ya tiene una lista con números. Si lo que pide '
+  + 'es una CUENTA con esos números (sumar, restar, total, "suma X y Y", "cuánto es…", "cuánto me falta", "réstale…"), aunque '
+  + 'suene a lista o a tareas, NO escribas tareas: responde SOLO una línea: CUENTA: y luego "todo" si pide sumar todo, '
+  + '"marcados" o "sin marcar" si pide lo marcado o lo que falta, o si no el pedido en pocas palabras (ej.: CUENTA: médicos más viaje). '
+  + 'Solo si dicta gastos CON sus números para anotar ("seguro 85, luz 25") no es una cuenta: escríbelos, uno por renglón.'
+
+// La calculadora que ya está en la nota y tiene números: la última antes del cursor o, si no hay, la primera después.
+export function existingCalc(doc: Node, from: number): number | null {
+  let before: number | null = null
+  let after: number | null = null
+  doc.descendants((n, pos) => {
+    if (n.type.name !== 'calculadora') return
+    if (calcRows(doc, pos).length) {
+      if (pos < from) before = pos
+      else after ??= pos
+    }
+    return false
+  })
+  return before ?? after
+}
 
 export function calcRequest(answer: string): string | null {
   const m = answer.trim().match(/^CUENTA\s*:\s*([^\n]+)/i)

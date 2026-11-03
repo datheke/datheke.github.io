@@ -3,8 +3,8 @@ import { AudioLines, ClipboardPaste, ExternalLink, ShieldCheck, Sparkles, X } fr
 import { useEffect, useRef, useState } from 'react'
 import { desktop } from './auth.ts'
 import { OfflineError } from './drive.ts'
-import { calcRequest, CALC_HINT, calcRows, cleanFormula, evaluate, formulaPrompt } from './calc.ts'
-import { insertCalc, rowsAt, setCalcFormula } from './Calculator.ts'
+import { calcRequest, CALC_HINT, calcRows, cleanFormula, existingCalc, evaluate, formulaPrompt } from './calc.ts'
+import { belowCalc, insertCalc, rowsAt, setCalcFormula } from './Calculator.ts'
 import { ask, askAudio, askFormula, checkKey, encodeWav, KEY_URL, sensitive, TASKS } from './gemini.ts'
 
 // Panel de Gemini bajo la barra de formato. "ia": tareas sobre la nota (o lo seleccionado) y pedidos libres.
@@ -14,7 +14,9 @@ import { ask, askAudio, askFormula, checkKey, encodeWav, KEY_URL, sensitive, TAS
 export type Mode = 'ia' | 'voz'
 export type Privacy = 'nota' | 'libreta' | null
 type Sel = { from: number; to: number; empty: boolean }
-type Choice = { label: string; from: number; to: number; calc?: string } // from === to: se inserta ahí; calc: pone una calculadora con esa cuenta
+// from === to: se inserta ahí. calc: pone esa cuenta en una calculadora (nueva en `from`, o la que ya está en `from` si existing).
+type Choice = { label: string; from: number; to: number; calc?: string; existing?: boolean }
+type CalcSpot = { at: number; existing: boolean; cursor: number }
 type Phase = { at: 'menu' } | { at: 'grabando' } | { at: 'pensando'; what: string }
   | { at: 'aviso'; hits: string[]; go: () => void }
   | { at: 'listo'; html: string; choices: Choice[]; retry: () => void }
@@ -101,17 +103,24 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
   const sel = (): Sel => { const { from, to, empty } = editor.state.selection; return { from, to, empty } }
 
   // ¿Hay números cerca del cursor? Entonces Gemini puede contestar "es una cuenta" y se ofrece la calculadora.
-  const calcHere = (from: number) => editor.isEditable && rowsAt(editor.state, from).length > 0
+  // Si ahí no hay números encima, se usa la calculadora que ya esté en la nota.
+  function calcHere(from: number): CalcSpot | undefined {
+    if (!editor.isEditable) return
+    if (rowsAt(editor.state, from).length) return { at: from, existing: false, cursor: from }
+    const at = existingCalc(editor.state.doc, from)
+    return at === null ? undefined : { at, existing: true, cursor: from }
+  }
 
-  async function run(what: string, job: () => Promise<string>, choices: Choice[], retry: () => void, calcAt?: number) {
+  async function run(what: string, job: () => Promise<string>, choices: Choice[], retry: () => void, calcAt?: CalcSpot) {
     setError('')
     setPhase({ at: 'pensando', what })
     try {
       let html = await job()
       const words = calcAt === undefined ? null : calcRequest(textOf(html))
       if (words !== null && calcAt !== undefined) {
-        html = `<p>Es una cuenta: <strong>${words.replace(/[<>&]/g, '')}</strong>. Va en una calculadora debajo de tu lista; la cuenta la hace la app.</p>`
-        choices = [{ label: 'Poner calculadora', from: calcAt, to: calcAt, calc: words }, { label: 'Poner como texto', from: calcAt, to: calcAt, calc: '' }]
+        html = `<p>Es una cuenta: <strong>${words.replace(/[<>&]/g, '')}</strong>. ${calcAt.existing ? 'Va en la calculadora de tu lista' : 'Va en una calculadora debajo de tu lista'}; la cuenta la hace la app.</p>`
+        choices = [{ label: calcAt.existing ? 'Poner en la calculadora' : 'Poner calculadora', from: calcAt.at, to: calcAt.at, calc: words, existing: calcAt.existing },
+          { label: 'Poner como texto', from: calcAt.cursor, to: calcAt.cursor, calc: '' }]
       }
       if (live.current) setPhase({ at: 'listo', html, choices, retry })
     } catch (e) {
@@ -145,7 +154,7 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
     const withSelection = !s.empty && !privacy
     const html = withSelection ? getHTMLFromFragment(editor.state.doc.slice(s.from, s.to).content, editor.schema) : ''
     const choices = placements(editor, s, withSelection ? 'replace' : 'add', false)
-    const calcAt = !withSelection && calcHere(s.from) ? s.from : undefined
+    const calcAt = withSelection ? undefined : calcHere(s.from)
     const go = () => run('Gemini está pensando…', () => ask(calcAt === undefined ? text : text + CALC_HINT, html, geminiKey), choices, () => doRequest(text), calcAt)
     if (withSelection) guard(html, go)
     else go()
@@ -166,7 +175,7 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
         recorder.current = null
         if (cancelled.current) { if (live.current) setPhase({ at: 'menu' }); return }
         const blob = new Blob(chunks, { type: rec.mimeType })
-        const calcAt = s.empty && calcHere(s.from) ? s.from : undefined
+        const calcAt = s.empty ? calcHere(s.from) : undefined
         run('Gemini está escribiendo lo que dijiste…', async () => askAudio(await toBase64(await toWav(blob)), geminiKey, calcAt === undefined ? '' : CALC_HINT),
           placements(editor, s, 'replace', false), () => setPhase({ at: 'menu' }), calcAt)
       }
@@ -208,7 +217,12 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
       editor.chain().focus().insertContentAt(Math.min(c.from, editor.state.doc.content.size), `<p>${words.replace(/[<>&]/g, '')}</p>`).run()
       return onClose()
     }
-    const pos = insertCalc(editor, Math.min(c.from, editor.state.doc.content.size), words)
+    let pos: number
+    if (c.existing && editor.state.doc.nodeAt(c.from)?.type.name === 'calculadora') {
+      pos = c.from
+      setCalcFormula(editor, pos, words)
+      belowCalc(editor, pos) // se ve la calculadora y el cursor queda debajo (no seleccionada: un borrar no se la lleva)
+    } else pos = insertCalc(editor, Math.min(c.from, editor.state.doc.content.size), words)
     const n = editor.state.doc.nodeAt(pos)
     if (!n || !n.attrs.error || privacy) return onClose()
     const labels = calcRows(editor.state.doc, pos)
