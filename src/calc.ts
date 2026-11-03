@@ -1,0 +1,146 @@
+import type { Node } from '@tiptap/pm/model'
+import { fold } from './search.ts'
+
+// Calculadora de la nota: toma los números de los renglones de arriba (A, B, C…) y hace la cuenta que se escriba.
+export type Row = { letter: string; label: string; value: number; checked: boolean | null; at: number }
+export type Result = { value: number } | { error: string }
+
+// Un número escrito como en Ecuador o en inglés: "1.000" y "1,000" son mil; "2,5" y "2.5" son dos y medio; "1.000,50".
+export function toNumber(s: string): number | null {
+  const neg = s.startsWith('-')
+  let t = s.replace(/^-/, '')
+  if (!/^\d[\d.,]*$/.test(t) || /[.,]$/.test(t)) return null
+  const last = Math.max(t.lastIndexOf('.'), t.lastIndexOf(','))
+  if (last >= 0) {
+    const mixed = t.includes('.') && t.includes(',')
+    const repeated = t.split(t[last]).length > 2
+    const thousands = !mixed && (repeated || t.length - last - 1 === 3)
+    t = thousands ? t.replace(/[.,]/g, '') : t.slice(0, last).replace(/[.,]/g, '') + '.' + t.slice(last + 1)
+  }
+  const n = Number(t)
+  return Number.isFinite(n) ? (neg ? -n : n) : null
+}
+
+// El último número del renglón es su valor; lo de antes es el nombre ("Pago tarjeta: 120"). El "-" cuenta como
+// negativo solo pegado al número ("Devolución: -20"), no en "Médicos - 90".
+export function numberIn(text: string): { label: string; value: number } | null {
+  const all = [...text.matchAll(/(?:^|(?<=[\s:=$(]))-(?=\d)|\d[\d.,]*/g)]
+  let m = all.at(-1)
+  if (!m) return null
+  let raw = m[0].replace(/[.,]+$/, '')
+  let start = m.index
+  const prev = all.at(-2)
+  if (m[0] === '-') return null
+  if (prev?.[0] === '-' && prev.index + 1 === m.index) { raw = '-' + raw; start = prev.index }
+  const value = toNumber(raw)
+  if (value === null) return null
+  const label = text.slice(0, start).replace(/[\s:=$\-–]+$/, '').trim()
+  return { label, value }
+}
+
+export const letterOf = (i: number): string => (i >= 26 ? letterOf(Math.floor(i / 26) - 1) : '') + String.fromCharCode(65 + (i % 26))
+
+export const LISTS = ['bulletList', 'orderedList', 'taskList']
+
+// Los renglones que lee la calculadora que está en `pos`: la lista justo encima (sin contar renglones vacíos) o, si no
+// hay lista, los párrafos seguidos de encima. Los que no tienen número no llevan letra.
+export function calcRows(doc: Node, pos: number): Row[] {
+  const $pos = doc.resolve(pos)
+  const parent = $pos.parent
+  let index = $pos.index() - 1
+  let at = pos
+  const step = () => { at -= parent.child(index).nodeSize; index-- }
+  while (index >= 0 && parent.child(index).type.name === 'paragraph' && !parent.child(index).textContent.trim()) step()
+  const lines: { text: string; checked: boolean | null; at: number }[] = []
+  if (index >= 0 && LISTS.includes(parent.child(index).type.name)) {
+    const list = parent.child(index)
+    let itemAt = at - list.nodeSize + 1
+    list.forEach(item => {
+      const first = item.firstChild
+      if (first?.isTextblock) lines.push({ text: first.textContent, checked: item.type.name === 'taskItem' ? !!item.attrs.checked : null, at: itemAt + 2 })
+      itemAt += item.nodeSize
+    })
+  } else {
+    while (index >= 0 && parent.child(index).type.name === 'paragraph' && parent.child(index).textContent.trim()) {
+      step()
+      lines.unshift({ text: parent.child(index + 1).textContent, checked: null, at: at + 1 })
+    }
+  }
+  const rows: Row[] = []
+  for (const line of lines) {
+    const found = numberIn(line.text)
+    if (found) rows.push({ ...found, letter: letterOf(rows.length), checked: line.checked, at: line.at })
+  }
+  return rows
+}
+
+const sum = (rows: Row[]) => rows.reduce((s, r) => s + r.value, 0)
+const WORDS: Record<string, (rows: Row[]) => number> = {
+  todo: sum, total: sum,
+  marcados: rows => sum(rows.filter(r => r.checked)), marcado: rows => sum(rows.filter(r => r.checked)),
+  'sin marcar': rows => sum(rows.filter(r => r.checked === false)), pendientes: rows => sum(rows.filter(r => r.checked === false)),
+}
+const name = (s: string) => fold(s).replace(/\s+/g, ' ').trim()
+
+class CalcError extends Error {}
+
+// Cuenta con + - * / × ÷ y paréntesis. Cada parte puede ser una letra (A), un nombre (Seguro), un número o
+// todo / marcados / sin marcar. Vacía = todo.
+export function evaluate(formula: string, rows: Row[]): Result {
+  const tokens = formula.split(/([+\-*/×÷()])/).map(t => t.trim()).filter(Boolean)
+  if (!tokens.length) return { value: round(sum(rows)) }
+  let i = 0
+  const operand = (t: string): number => {
+    const word = WORDS[name(t)]
+    if (word) return word(rows)
+    const byLetter = rows.find(r => r.letter === t.toUpperCase())
+    if (byLetter) return byLetter.value
+    const n = toNumber(t)
+    if (n !== null) return n
+    const named = rows.filter(r => name(r.label) === name(t))
+    if (named.length > 1) throw new CalcError(`Hay ${named.length} renglones "${t}": usa sus letras`)
+    if (!named.length) throw new CalcError(`No encuentro "${t}"`)
+    return named[0].value
+  }
+  const factor = (): number => {
+    const t = tokens[i++]
+    if (t === undefined) throw new CalcError('Falta un número al final')
+    if (t === '-') return -factor()
+    if (t === '+') return factor()
+    if (t === '(') {
+      const v = expr()
+      if (tokens[i++] !== ')') throw new CalcError('Falta cerrar un paréntesis')
+      return v
+    }
+    if ('*/×÷)'.includes(t)) throw new CalcError(`Sobra "${t}"`)
+    return operand(t)
+  }
+  const term = (): number => {
+    let v = factor()
+    while (['*', '/', '×', '÷'].includes(tokens[i])) {
+      const op = tokens[i++]
+      const b = factor()
+      if ((op === '/' || op === '÷') && b === 0) throw new CalcError('No se puede dividir para cero')
+      v = op === '/' || op === '÷' ? v / b : v * b
+    }
+    return v
+  }
+  const expr = (): number => {
+    let v = term()
+    while (tokens[i] === '+' || tokens[i] === '-') v = tokens[i++] === '+' ? v + term() : v - term()
+    return v
+  }
+  try {
+    const value = expr()
+    if (i < tokens.length) throw new CalcError(`Sobra "${tokens[i]}"`)
+    return { value: round(value) }
+  } catch (e) {
+    if (e instanceof CalcError) return { error: e.message }
+    throw e
+  }
+}
+
+// Sin errores de coma flotante (0,1 + 0,2 = 0,3) y con máximo 2 decimales.
+const round = (n: number) => Math.round(n * 100) / 100 + 0
+
+export const showNumber = (n: number) => n.toLocaleString('es-EC', { maximumFractionDigits: 2 })
