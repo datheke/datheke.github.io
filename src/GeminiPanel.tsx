@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { desktop } from './auth.ts'
 import { OfflineError } from './drive.ts'
 import { calcRequest, CALC_HINT, calcRows, cleanFormula, existingCalc, evaluate, formulaPrompt } from './calc.ts'
-import { belowCalc, insertCalc, rowsAt, setCalcFormula } from './Calculator.ts'
+import { belowCalc, calcSensitive, insertCalc, rowsAt, setCalcFormula } from './Calculator.ts'
 import { ask, askAudio, askFormula, checkKey, encodeWav, KEY_URL, sensitive, TASKS } from './gemini.ts'
 
 // Panel de Gemini bajo la barra de formato. "ia": tareas sobre la nota (o lo seleccionado) y pedidos libres.
@@ -235,7 +235,7 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
       if (live.current) onClose()
     }
     // Para armar la cuenta van los nombres de la lista: con palabras delicadas ("tarjeta") se pregunta antes.
-    const hits = sensitive(words + ' ' + labels.map(r => r.label).join(' '))
+    const hits = calcSensitive(words, labels.map(r => r.label))
     if (hits.length) setPhase({ at: 'aviso', hits, go })
     else go()
   }
