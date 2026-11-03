@@ -35,6 +35,7 @@ h1.titulo{font-size:2em;margin:8px 0 12px;line-height:1.2}
 .nota div[data-type="callout"]::before{content:attr(data-emoji);position:absolute;left:12px;top:10px}
 .nota div[data-type="callout"][data-emoji="⚠️"]{background:#fef3c7}
 .nota div[data-type="callout"][data-emoji="❗"]{background:#fee2e2}
+.nota div[data-type="calculadora"]{border:1px solid #e5e7eb;border-radius:10px;background:#f7f7f5;padding:8px 12px;margin:8px 0;font-weight:600}
 .nota details{border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;margin:8px 0}
 .nota summary{cursor:pointer}
 .nota summary[data-level="1"]{font-size:1.8em;font-weight:700}.nota summary[data-level="2"]{font-size:1.45em;font-weight:700}

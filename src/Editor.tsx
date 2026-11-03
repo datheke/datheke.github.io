@@ -19,6 +19,7 @@ import {
   Sparkles, Strikethrough, Table, TextAlignCenter, TextAlignEnd, TextAlignJustify, TextAlignStart, Trash2, Underline, Undo2, X,
 } from 'lucide-react'
 import { useEffect, useImperativeHandle, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type Ref } from 'react'
+import { Calculator, insertCalc } from './Calculator.ts'
 import { exitDetails, moveBlock, movableDepth, moveTo } from './blocks.ts'
 import GeminiPanel, { type Privacy } from './GeminiPanel.tsx'
 import { imageDataUrl, imageUrl, pickImage, uploadImage } from './images.ts'
@@ -453,6 +454,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     { label: 'Importante ❗', run: (e, r) => e.chain().focus().deleteRange(r).wrapIn('callout', { emoji: '❗' }).run() },
     { label: 'Desplegable', run: (e, r) => e.chain().focus().deleteRange(r).setDetails().run() },
     { label: 'Cita', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
+    { label: 'Calculadora 🧮', run: (e, r) => { e.chain().focus().deleteRange(r).run(); insertCalc(e) } },
     { label: 'Separador', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
     { label: 'Recordatorio 🔔', inline: true, run: (e, r) => { e.chain().focus().deleteRange(r).run(); newReminder(e) } },
     { label: 'Enlace a otra nota (@)', inline: true, run: (e, r) => e.chain().focus().deleteRange(r).insertContent('@').run() },
@@ -460,7 +462,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
 
   const editor = useEditor({
     extensions: [
-      StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true, onReadOnlyChecked: () => true }), TableKit, DriveImage, Callout,
+      StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true, onReadOnlyChecked: () => true }), TableKit, DriveImage, Callout, Calculator,
       Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), Summary, DetailsContent,
       TextAlign.configure({ types: BLOCKS }), ParagraphFormat, MoveBlocks, OpenDetails, FindWords,
       // eslint-disable-next-line react-hooks/refs
