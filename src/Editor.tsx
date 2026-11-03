@@ -7,7 +7,8 @@ import TextAlign from '@tiptap/extension-text-align'
 import { TextStyleKit } from '@tiptap/extension-text-style'
 import { Placeholder } from '@tiptap/extensions'
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
-import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
+import { Fragment, Slice, type Mark } from '@tiptap/pm/model'
 import { EditorContent, Extension, mergeAttributes, Node, ReactRenderer, useEditor, useEditorState, type ChainedCommands, type Editor as TiptapEditor } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
 import Suggestion, { type SuggestionProps } from '@tiptap/suggestion'
@@ -24,7 +25,7 @@ import { exitDetails, moveBlock, movableDepth, moveTo } from './blocks.ts'
 import GeminiPanel, { type Privacy } from './GeminiPanel.tsx'
 import { imageDataUrl, imageUrl, pickImage, uploadImage } from './images.ts'
 import { appFont, FONTS } from './fonts.ts'
-import { appFonts, isFromApp } from './paste.ts'
+import { appFonts, copiedHtml, isFromApp, rememberCopy, tidyText } from './paste.ts'
 import { closedDetails, findInDoc, fold, searchWords } from './search.ts'
 import { runSlash, slashAllowed, type Command } from './slash.ts'
 import { wordAt } from './word.ts'
@@ -380,6 +381,23 @@ const MoveBlocks = Extension.create({
   },
 })
 
+// La misma marca (tamaño 14) en todo el texto de lo pegado.
+function withMark(slice: Slice, mark: Mark): Slice {
+  const map = (f: Fragment): Fragment => {
+    const out: import('@tiptap/pm/model').Node[] = []
+    f.forEach(n => out.push(n.isText ? n.mark(mark.addToSet(n.marks)) : n.copy(map(n.content))))
+    return Fragment.from(out)
+  }
+  return new Slice(map(slice.content), slice.openStart, slice.openEnd)
+}
+
+// Copia completa de lo seleccionado (como la arma el editor para el portapapeles, con data-pm-slice).
+function remember(view: EditorView) {
+  if (view.state.selection.empty) return
+  const { dom, text } = view.serializeForClipboard(view.state.selection.content())
+  rememberCopy(dom.innerHTML, text)
+}
+
 type Props = {
   content: string
   onChange: (html: string) => void
@@ -410,8 +428,44 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   const [initial] = useState(() => appFonts(content))
   const [uploading, setUploading] = useState(0)
   // Lo último que se pegó (dónde quedó y el original), para "Mantener formato original"; se olvida con el siguiente cambio.
-  const pasting = useRef<{ from: number; html: string } | null>(null)
-  const [pasted, setPasted] = useState<{ from: number; to: number; html: string } | null>(null)
+  // kind: 'otro' = de otro lado, entró solo el texto (se puede volver al original); 'app' = copiado en Datheke, entró tal cual
+  // (se puede pegar sin formato).
+  // start: dónde empieza lo pegado (si el cursor estaba en un renglón vacío, el bloque pegado lo reemplaza).
+  type Pasting = { from: number; start: number; html: string; text: string; kind: 'otro' | 'app' }
+  const pasting = useRef<Pasting | null>(null)
+  const [pasted, setPasted] = useState<(Pasting & { to: number }) | null>(null)
+  const plainPaste = useRef(false) // lo que se pega ahora es solo texto: va en tamaño 14
+  const inPaste = useRef(false) // pasteText/pasteHTML vuelven a pasar por handlePaste
+
+  // Pegar: lo copiado en la app entra tal cual (aunque el teclado del celular haya guardado solo el texto); lo de otro lado,
+  // solo el texto en tamaño 14 y sin renglones vacíos de más. false: que el editor lo pegue como siempre.
+  function smartPaste(view: EditorView, text: string, html: string, event?: ClipboardEvent): boolean {
+    const { from, $from } = view.state.selection
+    const start = $from.parent.isTextblock && !$from.parent.content.size && $from.depth > 0 ? $from.before() : from
+    const own = copiedHtml(text) ?? (html && isFromApp(html) ? html : null)
+    inPaste.current = true
+    try {
+      if (own) {
+        pasting.current = { from, start, html: own, text, kind: 'app' }
+        view.pasteHTML(own, event)
+      } else {
+        if (!text) return false
+        pasting.current = html ? { from, start, html, text, kind: 'otro' } : null
+        plainPaste.current = true
+        view.pasteText(tidyText(text), event)
+      }
+      return true
+    } finally {
+      inPaste.current = false
+      plainPaste.current = false
+    }
+  }
+  async function pasteButton(editor: TiptapEditor) {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text && !editor.isDestroyed) { editor.commands.focus(); smartPaste(editor.view, text, '') }
+    } catch { latest.current.onError(new Error('No pude leer lo copiado: mantén presionado en la nota y elige Pegar.')) }
+  }
 
   async function addImages(editor: TiptapEditor, files: File[]) {
     for (const file of files) {
@@ -504,13 +558,27 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       // De otro lado entra solo el texto, con el formato de la nota; el original queda para "Mantener formato original".
       // Lo copiado de la app, y lo que no trae texto (una foto de una página), va como viene.
       handlePaste: (view, event) => {
-        const html = event.clipboardData?.getData('text/html')
-        const text = event.clipboardData?.getData('text/plain')
-        if (pasting.current || !html || !text || isFromApp(html)) return false // pasting: la vuelta de pasteText
-        pasting.current = { from: view.state.selection.from, html }
-        view.pasteText(text, event)
-        pasting.current = null
-        return true
+        if (inPaste.current) return false // la vuelta de pasteText / pasteHTML
+        const html = event.clipboardData?.getData('text/html') ?? ''
+        const text = event.clipboardData?.getData('text/plain') ?? ''
+        if (!text && !html) return false // una foto: la sube onFiles
+        if (!text) return false
+        return smartPaste(view, text, html, event)
+      },
+      // Lo pegado como solo texto va en tamaño 14 (lo de otro lado no trae el formato de la nota).
+      transformPasted: (slice: Slice, view: EditorView): Slice => plainPaste.current ? withMark(slice, view.state.schema.marks.textStyle.create({ fontSize: '14px' })) : slice,
+      handleDOMEvents: {
+        // Al copiar o cortar se guarda la copia completa para pegarla igual (el teclado del celular guarda solo el texto).
+        copy: view => { remember(view); return false },
+        cut: view => { remember(view); return false },
+        // Pegar desde la barra del teclado (Gboard) no avisa que es un pegado: llega como texto escrito de varias líneas.
+        beforeinput: (view, e) => {
+          const ev = e as InputEvent
+          const data = ev.inputType === 'insertReplacementText' ? ev.dataTransfer?.getData('text/plain') ?? '' : ev.inputType === 'insertText' ? ev.data ?? '' : ''
+          if (!ev.cancelable || !(data.includes('\n') || (data.length > 1 && copiedHtml(data)))) return false
+          ev.preventDefault()
+          return smartPaste(view, data, '')
+        },
       },
     },
     onUpdate: ({ editor, transaction }) => {
@@ -526,6 +594,38 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
 
   // false: cambiar entre fijada y editable no es un cambio de la nota (si no, se marcaba para subir al abrirla).
   useEffect(() => { if (editor.isEditable !== editable) editor.setEditable(editable, false) }, [editor, editable])
+
+  // Nota fijada en el celular: zoom con dos dedos, de 85% a 200%. Solo para leer: se va al editar, al cambiar de nota o al salir
+  // (el editor se vuelve a crear). Lo hace la app, así funciona igual en la app y en la web.
+  useEffect(() => {
+    const box = frame.current
+    const content = box?.querySelector<HTMLElement>('.contenido')
+    if (editable || !box || !content) return
+    let start: { d: number; z: number } | null = null
+    let zoom = 1
+    const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    const down = (e: TouchEvent) => { if (e.touches.length === 2) start = { d: dist(e.touches), z: zoom } }
+    const move = (e: TouchEvent) => {
+      if (!start || e.touches.length !== 2) return
+      e.preventDefault()
+      zoom = Math.min(2, Math.max(0.85, start.z * dist(e.touches) / start.d))
+      content.style.zoom = String(Math.round(zoom * 100) / 100)
+    }
+    const up = (e: TouchEvent) => { if (e.touches.length < 2) start = null }
+    box.style.touchAction = 'pan-x pan-y' // el navegador no hace su propio zoom de toda la página
+    box.addEventListener('touchstart', down, { passive: true })
+    box.addEventListener('touchmove', move, { passive: false })
+    box.addEventListener('touchend', up)
+    box.addEventListener('touchcancel', up)
+    return () => {
+      box.removeEventListener('touchstart', down)
+      box.removeEventListener('touchmove', move)
+      box.removeEventListener('touchend', up)
+      box.removeEventListener('touchcancel', up)
+      box.style.touchAction = ''
+      content.style.zoom = ''
+    }
+  }, [editable])
 
   // Al salir el teclado del celular la parte visible se achica: el cursor vuelve a quedar a la vista.
   useEffect(() => {
@@ -733,16 +833,30 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   return <>
     {(editable || find !== null) && <div className="barra-fija">
       {find !== null && <FindBar value={find} at={found[0]} total={found[1]} onChange={onFind} onStep={stepFound} onClose={() => onFind(null)} />}
-      {editable && <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} onReminder={() => newReminder(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey}
+      {editable && <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} onReminder={() => newReminder(editor)} onPaste={() => pasteButton(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey}
         privacy={privacy} onPrivate={onPrivate} />}
       {pasted && <div className="pegado" role="status">
-        <ClipboardPaste size={16} aria-hidden="true" /> Se pegó solo el texto, con el formato de la nota.
+        <ClipboardPaste size={16} aria-hidden="true" /> {pasted.kind === 'app' ? 'Se pegó tal cual.' : 'Se pegó solo el texto, con el formato de la nota.'}
         <button type="button" className="principal" onMouseDown={e => e.preventDefault()} onClick={() => {
-          // Se vuelve a pegar el original encima, con el pegado del editor: sigue en el renglón como un pegado normal.
-          editor.chain().focus().setTextSelection({ from: pasted.from, to: pasted.to }).run()
-          editor.view.pasteHTML(appFonts(pasted.html))
+          // Se vuelve a pegar encima, con el pegado del editor: sigue en el renglón como un pegado normal.
+          inPaste.current = true
+          try {
+            if (pasted.kind === 'app') {
+              // Lo pegado (casillas, separadores…) se cambia por un renglón vacío y ahí va solo el texto.
+              const { state, view } = editor
+              const to = Math.min(pasted.to, state.doc.content.size)
+              const tr = state.tr.replaceWith(pasted.start, to, state.schema.nodes.paragraph.create())
+              view.dispatch(tr.setSelection(TextSelection.near(tr.doc.resolve(pasted.start + 1))))
+              view.focus()
+              plainPaste.current = true
+              view.pasteText(tidyText(pasted.text))
+            } else {
+              editor.chain().focus().setTextSelection({ from: pasted.from, to: pasted.to }).run()
+              editor.view.pasteHTML(appFonts(pasted.html))
+            }
+          } finally { inPaste.current = false; plainPaste.current = false }
           setPasted(null)
-        }}>Mantener formato original</button>
+        }}>{pasted.kind === 'app' ? 'Pegar sin formato' : 'Mantener formato original'}</button>
         <button type="button" className="btn-icono" aria-label="Cerrar" onClick={() => setPasted(null)}>✕</button>
       </div>}
     </div>}
@@ -788,8 +902,8 @@ function Btn({ label, onClick, active, disabled, children }: {
     className={active ? 'activo' : undefined} onMouseDown={e => e.preventDefault()} onClick={onClick}>{children}</button>
 }
 
-function Toolbar({ editor, uploading, onPhoto, onReminder, geminiKey, onGeminiKey, privacy, onPrivate }: {
-  editor: TiptapEditor; uploading: boolean; onPhoto: () => void; onReminder: () => void; geminiKey: string; onGeminiKey: (key: string) => void
+function Toolbar({ editor, uploading, onPhoto, onReminder, onPaste, geminiKey, onGeminiKey, privacy, onPrivate }: {
+  editor: TiptapEditor; uploading: boolean; onPhoto: () => void; onReminder: () => void; onPaste: () => void; geminiKey: string; onGeminiKey: (key: string) => void
   privacy: Privacy; onPrivate: () => void
 }) {
   const [panel, setPanel] = useState<'emojis' | 'text' | 'highlight' | 'ia' | 'voz' | null>(null)
@@ -861,6 +975,7 @@ function Toolbar({ editor, uploading, onPhoto, onReminder, geminiKey, onGeminiKe
       </Btn>
       <Btn label="Dictar a Gemini" active={panel === 'voz'} onClick={() => toggle('voz')}><AudioLines size={18} className="chispa" /></Btn>
       <Btn label="Recordatorio en esta línea" onClick={onReminder}><Bell size={18} /></Btn>
+      <Btn label="Pegar (lo copiado en Datheke va tal cual)" onClick={onPaste}><ClipboardPaste size={18} /></Btn>
       <select aria-label="Estilo de párrafo" value={s.block} onChange={e => {
         const level = Number(e.target.value) as 0 | 1 | 2 | 3
         const { from, to, $from, $to } = editor.state.selection
