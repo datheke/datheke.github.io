@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Schema } from '@tiptap/pm/model'
 import { EditorState } from '@tiptap/pm/state'
-import { addRow, calcRequest, calcRows, existingCalc, cleanFormula, evaluate, formulaPrompt, letterOf, looksLikeRow, numberIn, showNumber, toNumber, type Row } from './calc.ts'
+import { addRow, calcRequest, calcRows, existingCalc, solve, wordsToFormula, cleanFormula, evaluate, formulaPrompt, letterOf, looksLikeRow, numberIn, showNumber, toNumber, type Row } from './calc.ts'
 
 const schema = new Schema({
   nodes: {
@@ -188,4 +188,23 @@ test('la calculadora que ya está en la nota: la de antes del cursor, si no la d
   assert.equal(existingCalc(doc, calcs[1]), calcs[0])
   assert.equal(existingCalc(doc, 0), calcs[0])
   assert.equal(existingCalc(schema.node('doc', null, [p('hola')]), 1), null)
+})
+
+test('cuentas con palabras que la app entiende sola (sin Gemini)', () => {
+  assert.equal(wordsToFormula('médico más viaje', rows), 'G + D')
+  assert.equal(wordsToFormula('Suma médicos y viaje', rows), 'G + D')
+  assert.equal(wordsToFormula('suma seguro y pasaporte y réstale la luz', rows), 'A + B - H')
+  assert.equal(wordsToFormula('todo menos el viaje', rows), 'todo - D')
+  assert.equal(wordsToFormula('¿Cuánto es seguro más dientes?', rows), 'A + I')
+  assert.equal(wordsToFormula('suma todo lo de mi lista', rows), 'todo')
+  assert.equal(wordsToFormula('pago tarjeta más luz', rows), null) // hay dos "Pago tarjeta"
+  assert.equal(wordsToFormula('gasolina más luz', rows), null)
+  assert.equal(wordsToFormula('Seguro: 85', rows), null)
+  assert.equal(wordsToFormula('agua más 5', rows), 'J + 5')
+})
+
+test('solve: la cuenta escrita o lo entendido de las palabras', () => {
+  assert.deepEqual(solve('A + B', rows), { value: 175 })
+  assert.deepEqual(solve('médico más viaje', rows), { value: 1090, understood: 'G + D' })
+  assert.ok('error' in solve('gasolina', rows))
 })

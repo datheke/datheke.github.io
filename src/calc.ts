@@ -208,3 +208,47 @@ export function calcRequest(answer: string): string | null {
   const m = answer.trim().match(/^CUENTA\s*:\s*([^\n]+)/i)
   return m ? m[1].replace(/[.`"]+$/, '').trim() || null : null
 }
+
+// Cuentas dichas con palabras que la app entiende sola, sin Gemini ni internet: "médico más viaje", "suma seguro y luz",
+// "todo menos el viaje", "seguro y pasaporte y réstale la luz". Cada nombre se busca en la lista sin tildes ni plurales
+// ("médico" = "Médicos"). null si algo no se entiende o un nombre se repite: ahí recién se pregunta a Gemini.
+const FILLER = /\b(cuanto|es|son|suma(r|me|le)?|calcula(r|me)?|dame|el|la|los|las|lo|de|del|mi|mis|en|que|total de|gastos?|pagos? de|lista|nota|esto|cosas)\b/g
+const stem = (w: string) => w.replace(/(es|s)$/, '')
+export function wordsToFormula(text: string, rows: Row[]): string | null {
+  let t = ` ${fold(text).replace(/[¿?¡!.,;]/g, ' ')} `
+  if (/[*/×÷()=]/.test(t)) return null
+  t = t.replace(/\b(y\s+)?(restale|restar|resta|menos|quitale|quita|sin)\b/g, ' - ').replace(/\b(y|mas|sumale|con|\+)\b/g, ' + ')
+  const parts = t.split(/([+-])/).map(p => p.trim())
+  let out = ''
+  let any = false
+  for (const part of parts) {
+    if (part === '+' || part === '-') { out += ` ${part} `; continue }
+    const words = part.replace(FILLER, ' ').replace(/\s+/g, ' ').trim()
+    if (!words) continue
+    let term: string | undefined
+    if (/^(todo|todos|toda|total)$/.test(words)) term = 'todo'
+    else if (WORDS[words]) term = words
+    else if (/^\d[\d.,]*$/.test(words)) term = words
+    else {
+      const key = words.split(' ').map(stem).join(' ')
+      const hits = rows.filter(r => {
+        const label = name(r.label).split(' ').map(stem).join(' ')
+        return !!label && (label === key || label.split(' ').includes(key) || (key.length >= 4 && label.startsWith(key)))
+      })
+      if (hits.length === 1) term = hits[0].letter
+    }
+    if (!term) return null
+    out += term
+    any = true
+  }
+  const formula = out.replace(/^\s*\+\s*/, '').replace(/\s+/g, ' ').trim()
+  return any && !('error' in evaluate(formula, rows)) ? formula : null
+}
+
+// La cuenta escrita o, si no es una cuenta, lo que la app entendió de las palabras.
+export function solve(formula: string, rows: Row[]): Result & { understood?: string } {
+  const r = evaluate(formula, rows)
+  if (!('error' in r)) return r
+  const w = wordsToFormula(formula, rows)
+  return w ? { ...evaluate(w, rows), understood: w } : r
+}
