@@ -587,7 +587,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   // false: cambiar entre fijada y editable no es un cambio de la nota (si no, se marcaba para subir al abrirla).
   useEffect(() => { if (editor.isEditable !== editable) editor.setEditable(editable, false) }, [editor, editable])
 
-  // Nota fijada en el celular: zoom con dos dedos, de 85% a 250% (dos toques: al máximo y de vuelta a normal), como en un
+  // Nota fijada: zoom con dos dedos o Ctrl + rueda, de 85% a 250% (dos toques o doble clic: al máximo y de vuelta a normal), como en un
   // PDF: se agranda todo tal como se ve (sin acomodar los renglones de nuevo, que en un desplegable dejaba una columna
   // angosta) y se recorre con el dedo a los lados y hacia abajo. El punto entre los dedos (o el tocado) se queda en su
   // lugar. Solo para leer: se va al editar, al cambiar de nota o al salir. Lo hace la app: igual en la app y en la web.
@@ -627,7 +627,9 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     let moved = false
     let last = { t: 0, x: 0, y: 0 }
     const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY)
+    let touched = 0 // el celular también avisa "doble clic" tras dos toques: ese ya lo atendió `up`
     const down = (e: TouchEvent) => {
+      touched = Date.now()
       if (e.touches.length === 1) { p0 = { x: e.touches[0].clientX, y: e.touches[0].clientY }; moved = false }
       if (e.touches.length === 2) { start = { d: dist(e.touches), z: zoom }; moved = true }
     }
@@ -650,6 +652,19 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
         last = { t: 0, x: 0, y: 0 }
       } else last = { t: now, x: p.clientX, y: p.clientY }
     }
+    // PC: Ctrl + rueda (o pellizcar en el touchpad, que llega igual) y doble clic, como en un PDF.
+    const wheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return
+      e.preventDefault() // si no, el navegador agranda toda la página
+      set(zoom * Math.exp(-e.deltaY * 0.002), e.clientX, e.clientY)
+    }
+    const dbl = (e: MouseEvent) => {
+      if (Date.now() - touched < 1000) return
+      window.getSelection()?.removeAllRanges() // el doble clic también marca una palabra
+      set(zoom === 1 ? 2.5 : 1, e.clientX, e.clientY)
+    }
+    box.addEventListener('wheel', wheel, { passive: false })
+    box.addEventListener('dblclick', dbl)
     box.style.touchAction = 'pan-x pan-y' // el navegador no hace su propio zoom de toda la página
     box.addEventListener('touchstart', down, { passive: true })
     box.addEventListener('touchmove', move, { passive: false })
@@ -660,6 +675,8 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       box.removeEventListener('touchmove', move)
       box.removeEventListener('touchend', up)
       box.removeEventListener('touchcancel', up)
+      box.removeEventListener('wheel', wheel)
+      box.removeEventListener('dblclick', dbl)
       box.style.touchAction = box.style.overflowX = ''
       content.style.zoom = content.style.width = ''
     }
