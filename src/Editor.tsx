@@ -595,7 +595,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   // false: cambiar entre fijada y editable no es un cambio de la nota (si no, se marcaba para subir al abrirla).
   useEffect(() => { if (editor.isEditable !== editable) editor.setEditable(editable, false) }, [editor, editable])
 
-  // Nota fijada en el celular: zoom con dos dedos, de 85% a 200%. Solo para leer: se va al editar, al cambiar de nota o al salir
+  // Nota fijada en el celular: zoom con dos dedos, de 85% a 250%. Solo para leer: se va al editar, al cambiar de nota o al salir
   // (el editor se vuelve a crear). Lo hace la app, así funciona igual en la app y en la web.
   useEffect(() => {
     const box = frame.current
@@ -608,7 +608,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     const move = (e: TouchEvent) => {
       if (!start || e.touches.length !== 2) return
       e.preventDefault()
-      zoom = Math.min(2, Math.max(0.85, start.z * dist(e.touches) / start.d))
+      zoom = Math.min(2.5, Math.max(0.85, start.z * dist(e.touches) / start.d))
       content.style.zoom = String(Math.round(zoom * 100) / 100)
     }
     const up = (e: TouchEvent) => { if (e.touches.length < 2) start = null }
