@@ -106,8 +106,8 @@ export const askFormula = (prompt: string, key: string) =>
   generate([{ text: prompt }], key, 'Eres la calculadora de una app de notas. Respondes solo con una cuenta, en una línea.')
 
 // Dictado: el audio (WAV) va a Gemini, que lo escribe ya ordenado.
-export const askAudio = (wavBase64: string, key: string) =>
-  generate([{ text: DICTATION }, { inlineData: { mimeType: 'audio/wav', data: wavBase64 } }], key)
+export const askAudio = (wavBase64: string, key: string, extra = '') =>
+  generate([{ text: DICTATION + extra }, { inlineData: { mimeType: 'audio/wav', data: wavBase64 } }], key)
 
 // WAV mono de 16 bits: lo lee Gemini en todos lados (lo que graba cada navegador, webm o mp4, no siempre).
 export function encodeWav(samples: Float32Array, rate: number): Uint8Array {

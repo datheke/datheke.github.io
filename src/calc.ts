@@ -180,3 +180,15 @@ export function cleanFormula(answer: string) {
   const f = line.replace(/^(cuenta|f[oó]rmula)\s*:\s*/i, '').replace(/^=\s*/, '').replace(/\s*=.*$/, '').replace(/[`.]+$/, '').trim()
   return /^no$/i.test(f) ? '' : f
 }
+
+// Gemini (dictado o pedido) puede contestar que es una cuenta: así la app pone una calculadora en vez de escribir la frase.
+// Solo se manda el pedido o la voz; los renglones de la nota no van en este paso.
+export const CALC_HINT = '\nOtro caso: si es un pedido de CUENTA con los números que la persona ya tiene en la nota (sumar, restar, total, '
+  + '"cuánto es…", "cuánto me falta"), responde SOLO una línea: CUENTA: y luego "todo" si pide sumar todo, "marcados" o '
+  + '"sin marcar" si pide lo marcado o lo que falta, o si no el pedido en pocas palabras (ej.: CUENTA: seguro más luz). '
+  + 'Si dicta gastos o datos para anotar ("seguro 85, luz 25"), eso NO es una cuenta: escríbelos, uno por renglón.'
+
+export function calcRequest(answer: string): string | null {
+  const m = answer.trim().match(/^CUENTA\s*:\s*([^\n]+)/i)
+  return m ? m[1].replace(/[.`"]+$/, '').trim() || null : null
+}

@@ -3,7 +3,9 @@ import { AudioLines, ClipboardPaste, ExternalLink, ShieldCheck, Sparkles, X } fr
 import { useEffect, useRef, useState } from 'react'
 import { desktop } from './auth.ts'
 import { OfflineError } from './drive.ts'
-import { ask, askAudio, checkKey, encodeWav, KEY_URL, sensitive, TASKS } from './gemini.ts'
+import { calcRequest, CALC_HINT, calcRows, cleanFormula, evaluate, formulaPrompt } from './calc.ts'
+import { insertCalc, rowsAt, setCalcFormula } from './Calculator.ts'
+import { ask, askAudio, askFormula, checkKey, encodeWav, KEY_URL, sensitive, TASKS } from './gemini.ts'
 
 // Panel de Gemini bajo la barra de formato. "ia": tareas sobre la nota (o lo seleccionado) y pedidos libres.
 // "voz": se graba lo dictado y Gemini lo escribe ordenado (o cumple lo pedido). Nada llega a la nota sin aceptarlo.
@@ -12,7 +14,7 @@ import { ask, askAudio, checkKey, encodeWav, KEY_URL, sensitive, TASKS } from '.
 export type Mode = 'ia' | 'voz'
 export type Privacy = 'nota' | 'libreta' | null
 type Sel = { from: number; to: number; empty: boolean }
-type Choice = { label: string; from: number; to: number } // from === to: se inserta ahí
+type Choice = { label: string; from: number; to: number; calc?: string } // from === to: se inserta ahí; calc: pone una calculadora con esa cuenta
 type Phase = { at: 'menu' } | { at: 'grabando' } | { at: 'pensando'; what: string }
   | { at: 'aviso'; hits: string[]; go: () => void }
   | { at: 'listo'; html: string; choices: Choice[]; retry: () => void }
@@ -98,11 +100,19 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
   const selected = !editor.state.selection.empty
   const sel = (): Sel => { const { from, to, empty } = editor.state.selection; return { from, to, empty } }
 
-  async function run(what: string, job: () => Promise<string>, choices: Choice[], retry: () => void) {
+  // ¿Hay números cerca del cursor? Entonces Gemini puede contestar "es una cuenta" y se ofrece la calculadora.
+  const calcHere = (from: number) => editor.isEditable && rowsAt(editor.state, from).length > 0
+
+  async function run(what: string, job: () => Promise<string>, choices: Choice[], retry: () => void, calcAt?: number) {
     setError('')
     setPhase({ at: 'pensando', what })
     try {
-      const html = await job()
+      let html = await job()
+      const words = calcAt === undefined ? null : calcRequest(textOf(html))
+      if (words !== null && calcAt !== undefined) {
+        html = `<p>Es una cuenta: <strong>${words.replace(/[<>&]/g, '')}</strong>. Va en una calculadora debajo de tu lista; la cuenta la hace la app.</p>`
+        choices = [{ label: 'Poner calculadora', from: calcAt, to: calcAt, calc: words }, { label: 'Poner como texto', from: calcAt, to: calcAt, calc: '' }]
+      }
       if (live.current) setPhase({ at: 'listo', html, choices, retry })
     } catch (e) {
       if (!live.current) return
@@ -135,7 +145,8 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
     const withSelection = !s.empty && !privacy
     const html = withSelection ? getHTMLFromFragment(editor.state.doc.slice(s.from, s.to).content, editor.schema) : ''
     const choices = placements(editor, s, withSelection ? 'replace' : 'add', false)
-    const go = () => run('Gemini está pensando…', () => ask(text, html, geminiKey), choices, () => doRequest(text))
+    const calcAt = !withSelection && calcHere(s.from) ? s.from : undefined
+    const go = () => run('Gemini está pensando…', () => ask(calcAt === undefined ? text : text + CALC_HINT, html, geminiKey), choices, () => doRequest(text), calcAt)
     if (withSelection) guard(html, go)
     else go()
   }
@@ -155,8 +166,9 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
         recorder.current = null
         if (cancelled.current) { if (live.current) setPhase({ at: 'menu' }); return }
         const blob = new Blob(chunks, { type: rec.mimeType })
-        run('Gemini está escribiendo lo que dijiste…', async () => askAudio(await toBase64(await toWav(blob)), geminiKey),
-          placements(editor, s, 'replace', false), () => setPhase({ at: 'menu' }))
+        const calcAt = s.empty && calcHere(s.from) ? s.from : undefined
+        run('Gemini está escribiendo lo que dijiste…', async () => askAudio(await toBase64(await toWav(blob)), geminiKey, calcAt === undefined ? '' : CALC_HINT),
+          placements(editor, s, 'replace', false), () => setPhase({ at: 'menu' }), calcAt)
       }
       recorder.current = rec
       rec.start()
@@ -178,11 +190,40 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
   // Si la nota cambió mientras Gemini pensaba (otro aparato), las posiciones se ajustan al largo actual.
   function apply(c: Choice) {
     if (phase.at !== 'listo') return
+    if (c.calc !== undefined) return placeCalc(c)
     const size = editor.state.doc.content.size
     const from = Math.min(c.from, size)
     const to = Math.min(c.to, size)
     editor.chain().focus().insertContentAt(from === to ? from : { from, to }, phase.html).run()
     onClose()
+  }
+
+  // "Poner calculadora": va debajo de la lista con lo pedido. Si no es una cuenta directa ("todo"), Gemini la arma con
+  // los nombres y valores de la lista (no en notas privadas ni con palabras delicadas: ahí se pide desde la calculadora).
+  // "Poner como texto" (calc vacío): la frase tal cual, donde estaba el cursor.
+  async function placeCalc(c: Choice) {
+    if (phase.at !== 'listo') return
+    const words = phase.choices[0].calc ?? ''
+    if (!c.calc) {
+      editor.chain().focus().insertContentAt(Math.min(c.from, editor.state.doc.content.size), `<p>${words.replace(/[<>&]/g, '')}</p>`).run()
+      return onClose()
+    }
+    const pos = insertCalc(editor, Math.min(c.from, editor.state.doc.content.size), words)
+    const n = editor.state.doc.nodeAt(pos)
+    if (!n || !n.attrs.error || privacy) return onClose()
+    const labels = calcRows(editor.state.doc, pos)
+    const go = async () => {
+      setPhase({ at: 'pensando', what: 'Gemini está armando la cuenta…' })
+      try {
+        const formula = cleanFormula(await askFormula(formulaPrompt(words, labels), geminiKey))
+        if (formula && !('error' in evaluate(formula, labels))) setCalcFormula(editor, pos, formula)
+      } catch { /* queda lo pedido en la calculadora, que ofrece "Pedir a Gemini" */ }
+      if (live.current) onClose()
+    }
+    // Para armar la cuenta van los nombres de la lista: con palabras delicadas ("tarjeta") se pregunta antes.
+    const hits = sensitive(words + ' ' + labels.map(r => r.label).join(' '))
+    if (hits.length) setPhase({ at: 'aviso', hits, go })
+    else go()
   }
 
   async function saveKey(key: string) {
