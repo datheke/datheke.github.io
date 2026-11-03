@@ -2,15 +2,19 @@ import type { Node as PMNode } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection, type EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { mergeAttributes, Node, type Editor } from '@tiptap/react'
-import { addRow, calcRows, cleanFormula, evaluate, formulaPrompt, LISTS, looksLikeRow, showNumber } from './calc.ts'
+import { addRow, calcRows, cleanFormula, evaluate, formulaPrompt, LISTS, looksLikeRow, showNumber, solve } from './calc.ts'
 import { askFormula, GeminiError, sensitive } from './gemini.ts'
+
+// Para armar una cuenta solo van nombres de gastos y montos chicos: "tarjeta" sola ("Pago tarjeta") no avisa; un número
+// largo de tarjeta, claves o cuentas bancarias sí.
+export const calcSensitive = (request: string, labels: string[]) => sensitive(request + ' ' + labels.join(' ')).filter(h => h !== 'tarjeta')
 
 // Bloque "Calculadora": suma (o la cuenta que se escriba) los números de los renglones de encima. El resultado se
 // guarda en la nota, así se ve también en la copia de Drive, al imprimir y para Gemini.
 const attr = (name: string) => ({ default: '', parseHTML: (el: HTMLElement) => el.getAttribute(`data-${name}`) ?? '', renderHTML: (a: Record<string, string>) => a[name] ? { [`data-${name}`]: a[name] } : {} })
 
 function compute(doc: PMNode, pos: number, formula: string) {
-  const r = evaluate(formula, calcRows(doc, pos))
+  const r = solve(formula, calcRows(doc, pos))
   return 'error' in r ? { resultado: '', error: r.error } : { resultado: showNumber(r.value), error: '' }
 }
 
@@ -194,7 +198,7 @@ export const Calculator = Node.create<{ gemini: () => { key: string; private: bo
         const request = input.value.trim()
         const rows = rowsNow()
         if (!key || hidden || !request || !rows.length) return
-        const risky = sensitive(request + ' ' + rows.map(r => r.label).join(' '))
+        const risky = calcSensitive(request, rows.map(r => r.label))
         if (risky.length && warned !== request) {
           warned = request
           note = `Lo que se envía a Gemini tiene: ${risky.join(', ')}. Toca otra vez "Pedir a Gemini" para enviarlo igual.`
@@ -262,6 +266,8 @@ export const Calculator = Node.create<{ gemini: () => { key: string; private: bo
         else if (words) text = `${now.error}. Si es un pedido con palabras, toca "Pedir a Gemini".`
         if (!rows.length && !isRow && editable) text = 'Cómo se usa: 1) Escribe tu lista ARRIBA de este cuadro, un gasto por renglón (Seguro: 85). '
           + 'También puedes escribir el gasto aquí y tocar "Agregar a la lista". 2) Aquí sale la suma; para otra cuenta escribe, por ejemplo, A + B.'
+        const understood = !now.error && solve(formula, rows).understood
+        if (understood && !note) text = `Entendí: ${understood}`
         if (note) text = note
         help.textContent = text
         help.classList.toggle('error', !!now.error && !isRow && !note.startsWith('Gemini entendió'))
