@@ -487,3 +487,21 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .recibir-web { width: 100%; text-align: left; border-radius: 10px; background: #e8f0fe; padding: 10px 14px; font-size: 14px; }
 .recibir-web p { margin: 0 0 4px; }
 .recibir-web ol { margin: 0 0 10px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+
+/* Calculadora (Calculator.ts) */
+.tiptap .calc { margin: 8px 0; padding: 8px 10px; border: 1px solid var(--borde); border-radius: 10px; background: var(--lista); font-family: inherit; }
+.tiptap .calc.ProseMirror-selectednode { outline: 2px solid var(--acento); }
+.calc-fila { display: flex; align-items: center; gap: 8px; }
+.calc-fila input { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 6px 8px; border: 1px solid var(--borde); border-radius: 8px; background: var(--fondo); color: var(--texto); }
+.calc-fila input:read-only { border-color: transparent; background: transparent; }
+.calc-res { font-weight: 700; font-size: 1.15em; white-space: nowrap; color: var(--acento); }
+.calc-quitar { border: none; padding: 4px 8px; color: var(--suave); font-size: 18px; line-height: 1; }
+.calc-botones { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.calc-botones:not(:has(button:not([hidden]))) { display: none; }
+.calc-botones button { padding: 3px 10px; border-radius: 999px; font-size: 13px; color: var(--texto); }
+.calc-botones button.activo { background: var(--acento); border-color: var(--acento); color: #fff; }
+.calc-ayuda { margin: 6px 0 0; font-size: 13px; color: var(--suave); }
+.calc-ayuda:empty { display: none; }
+.calc-ayuda.error { color: #b91c1c; }
+.tiptap .calc-letra { display: inline-block; min-width: 1.4em; margin-right: 6px; padding: 0 4px; border-radius: 4px; background: #e0f2e9; color: #1f5135;
+  font: 600 11px/1.6 system-ui, sans-serif; text-align: center; vertical-align: middle; user-select: none; pointer-events: none; }
