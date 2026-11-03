@@ -1,5 +1,5 @@
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection, type EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { mergeAttributes, Node, type Editor } from '@tiptap/react'
 import { addRow, calcRows, cleanFormula, evaluate, formulaPrompt, LISTS, looksLikeRow, showNumber } from './calc.ts'
@@ -43,12 +43,12 @@ export function belowCalc(editor: Editor, pos: number) {
   editor.view.focus()
 }
 
-// Desde "/": en un renglón vacío lo reemplaza; dentro de una lista va debajo de la lista entera (el renglón vacío que
-// dejó "/" se quita), así lee toda la lista; si no, va debajo del renglón.
-export function insertCalc(editor: Editor) {
-  const { $from } = editor.state.selection
-  const calc = editor.schema.nodes.calculadora.create()
-  const tr = editor.state.tr
+// Dónde va una calculadora puesta desde el cursor en `from`: en un renglón vacío lo reemplaza; dentro de una lista va
+// debajo de la lista entera (el renglón vacío que dejó "/" se quita), así lee toda la lista; si no, va debajo del renglón.
+export function calcSpot(state: EditorState, from: number, formula = '') {
+  const $from = state.doc.resolve(Math.min(from, state.doc.content.size))
+  const calc = state.schema.nodes.calculadora.create({ formula })
+  const tr = state.tr
   const empty = $from.parent.type.name === 'paragraph' && !$from.parent.content.size
   let list = 0
   for (let d = 1; d <= $from.depth && !list; d++) if (LISTS.includes($from.node(d).type.name)) list = d
@@ -58,6 +58,9 @@ export function insertCalc(editor: Editor) {
     if (empty && $from.index(item) === 0 && $from.node(item).childCount === 1 && $from.node(item - 1).childCount > 1) tr.delete($from.before(item), $from.after(item))
     at = tr.mapping.map($from.after(list))
     tr.insert(at, calc)
+  } else if ($from.depth === 0) {
+    at = $from.pos
+    tr.insert(at, calc)
   } else if (empty) {
     at = $from.before()
     tr.replaceWith(at, $from.after(), calc)
@@ -65,8 +68,23 @@ export function insertCalc(editor: Editor) {
     at = $from.after()
     tr.insert(at, calc)
   }
+  return { tr, at }
+}
+
+// ¿Una calculadora puesta en `from` tendría números que sumar? (para que Gemini ofrezca la calculadora)
+export const rowsAt = (state: EditorState, from: number) => { const { tr, at } = calcSpot(state, from); return calcRows(tr.doc, at) }
+
+export function insertCalc(editor: Editor, from = editor.state.selection.from, formula = '') {
+  const { tr, at } = calcSpot(editor.state, from, formula)
   editor.view.dispatch(tr)
   belowCalc(editor, at)
+  return at
+}
+
+export function setCalcFormula(editor: Editor, pos: number, formula: string) {
+  const n = editor.state.doc.nodeAt(pos)
+  if (n?.type.name !== 'calculadora') return
+  editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...n.attrs, formula, ...compute(editor.state.doc, pos, formula) }))
 }
 
 const button = (label: string, title = label) => {

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Schema } from '@tiptap/pm/model'
 import { EditorState } from '@tiptap/pm/state'
-import { addRow, calcRows, cleanFormula, evaluate, formulaPrompt, letterOf, looksLikeRow, numberIn, showNumber, toNumber, type Row } from './calc.ts'
+import { addRow, calcRequest, calcRows, cleanFormula, evaluate, formulaPrompt, letterOf, looksLikeRow, numberIn, showNumber, toNumber, type Row } from './calc.ts'
 
 const schema = new Schema({
   nodes: {
@@ -170,4 +170,12 @@ test('pedido a Gemini con las letras y su respuesta limpia', () => {
   assert.equal(cleanFormula('= A + B.'), 'A + B')
   assert.equal(cleanFormula('NO'), '')
   assert.equal(value(cleanFormula('Cuenta: (A + B) - H = 150')), 150)
+})
+
+test('respuesta de Gemini que es una cuenta (y la que no)', () => {
+  assert.equal(calcRequest('CUENTA: todo'), 'todo')
+  assert.equal(calcRequest('cuenta: seguro más luz.'), 'seguro más luz')
+  assert.equal(calcRequest('  CUENTA:   sin marcar\n'), 'sin marcar')
+  assert.equal(calcRequest('Seguro: 85\nLuz: 25'), null)
+  assert.equal(calcRequest('Comprar pan. CUENTA: todo'), null)
 })
