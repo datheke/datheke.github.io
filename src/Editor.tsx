@@ -273,6 +273,13 @@ const ParagraphFormat = Extension.create({
         parseHTML: el => el.style.lineHeight || null,
         renderHTML: a => a.lineHeight ? { style: `line-height: ${a.lineHeight}` } : {},
       },
+      // "Línea al lado": una raya desde el final del texto hasta el borde del renglón (hola ─────). No pasa al renglón nuevo.
+      line: {
+        default: false,
+        keepOnSplit: false,
+        parseHTML: el => el.hasAttribute('data-linea'),
+        renderHTML: a => a.line ? { 'data-linea': '' } : {},
+      },
       indent: {
         default: 0,
         parseHTML: el => Math.min(MAX_INDENT, Number(el.getAttribute('data-indent')) || 0),
@@ -492,9 +499,14 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     { label: 'Recuadro 💡', run: (e, r) => e.chain().focus().deleteRange(r).wrapIn('callout', { emoji: '💡' }).run() },
     { label: 'Advertencia ⚠️', run: (e, r) => e.chain().focus().deleteRange(r).wrapIn('callout', { emoji: '⚠️' }).run() },
     { label: 'Importante ❗', run: (e, r) => e.chain().focus().deleteRange(r).wrapIn('callout', { emoji: '❗' }).run() },
-    { label: 'Desplegable', run: (e, r) => e.chain().focus().deleteRange(r).setDetails().run() },
+    { label: 'Desplegable', takesLine: true, run: (e, r) => e.chain().focus().deleteRange(r).setDetails().run() },
     { label: 'Cita', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
     { label: 'Calculadora 🧮', run: (e, r) => { e.chain().focus().deleteRange(r).run(); insertCalc(e) } },
+    { label: 'Línea al lado ───', inline: true, run: (e, r) => {
+      e.chain().focus().deleteRange(r).run()
+      const block = e.state.selection.$from.parent
+      if (BLOCKS.includes(block.type.name)) e.commands.updateAttributes(block.type.name, { line: !block.attrs.line })
+    } },
     { label: 'Separador', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
     { label: 'Recordatorio 🔔', inline: true, run: (e, r) => { e.chain().focus().deleteRange(r).run(); newReminder(e) } },
     { label: 'Enlace a otra nota (@)', inline: true, run: (e, r) => e.chain().focus().deleteRange(r).insertContent('@').run() },
