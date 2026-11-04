@@ -378,7 +378,10 @@ export default function App() {
   function protect(n: DriveFile) {
     if (activeShare(n)) return setKeyDialog({ mode: 'comun', noteId: n.id })
     const go = () => store.patch(n.id, { props: { protegida: 'true' } })
-    if (!verifier) setKeyDialog({ mode: 'crear', then: go })
+    // Sin otras notas con tu clave (también en el basurero), la clave guardada ya no protege nada: se crea una nueva, la que
+    // quieras. Si no, te pediría la de unas notas que ya no existen.
+    const others = files.some(f => f.id !== n.id && isLocked(f) && !commonKey(f))
+    if (!verifier || !others) setKeyDialog({ mode: 'crear', then: go })
     else if (!vault.unlocked()) setKeyDialog({ mode: 'abrir', then: go, protecting: true })
     else { go(); setToast('Listo: protegida con tu clave de notas (la misma de tus otras notas con clave).') }
   }
