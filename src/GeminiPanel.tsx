@@ -1,5 +1,5 @@
 import { getHTMLFromFragment, type Editor as TiptapEditor } from '@tiptap/react'
-import { AudioLines, ClipboardPaste, ExternalLink, ShieldCheck, Sparkles, X } from 'lucide-react'
+import { AudioLines, ExternalLink, ShieldCheck, Sparkles, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { desktop } from './auth.ts'
 import { OfflineError } from './drive.ts'
@@ -252,14 +252,6 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
     } catch (e) { setError(geminiMessage(e)) } finally { setChecking(false) }
   }
 
-  async function pasteKey() {
-    try {
-      const text = (await navigator.clipboard.readText()).trim()
-      if (text) { setDraft(text); saveKey(text) }
-      else setError('No hay nada copiado. Copia la clave en la página de Google y vuelve a tocar Pegar.')
-    } catch { setError('No pude leer lo copiado: pega la clave en el recuadro (mantén presionado → Pegar).') }
-  }
-
   const close = <button type="button" className="btn-icono" aria-label="Cerrar" title="Cerrar" onClick={onClose}><X size={16} /></button>
   const title = mode === 'voz' ? <><AudioLines size={16} aria-hidden="true" /> Dictar a Gemini</> : <><Sparkles size={16} aria-hidden="true" /> Gemini</>
 
@@ -270,10 +262,10 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
       <ol>
         <li><button type="button" className="principal" onClick={openKeyPage}><ExternalLink size={16} /> Abrir Google</button> y entra con tu cuenta.</li>
         <li>Toca <strong>Crear clave de API</strong> (Create API key) y cópiala.</li>
-        <li>Vuelve aquí y toca <button type="button" onClick={pasteKey} disabled={checking}><ClipboardPaste size={16} /> Pegar</button></li>
+        <li>Vuelve aquí, pégala abajo y toca <strong>Vincular</strong>.</li>
       </ol>
       <div className="gemini-fila">
-        <input value={draft} onChange={e => setDraft(e.target.value)} placeholder="…o pega la clave aquí" aria-label="Clave de Gemini"
+        <input value={draft} onChange={e => setDraft(e.target.value)} placeholder="Pega la clave aquí" aria-label="Clave de Gemini"
           autoComplete="off" spellCheck={false} />
         <button type="button" className="principal" disabled={!draft.trim() || checking} onClick={() => saveKey(draft)}>
           {checking ? 'Revisando…' : 'Vincular'}
