@@ -56,15 +56,13 @@ export function Unlock({ verifier, onOpen, onForgot, compact, common, protecting
   return (
     <form className={compact ? 'caja' : 'caja caja-grande'} onSubmit={e => { e.preventDefault(); submit() }}>
       <LockKeyhole size={36} className="caja-icono" aria-hidden="true" />
-      <p><strong>{common ? 'Nota compartida con clave común' : protecting ? 'Proteger con tu clave de notas' : 'Nota con clave'}</strong></p>
+      <p><strong>{common ? 'Nota compartida con clave común' : protecting ? 'Proteger con tu clave' : 'Nota con clave'}</strong></p>
       {common && <p className="caja-nota">Se abre con la clave que pusieron para esta nota (la misma para todos los que la tienen).</p>}
-      {!common && <p className="caja-nota">{protecting
-        ? 'Ya tienes notas protegidas: escribe la misma clave que usas para ellas. Es una sola clave para todas tus notas.'
-        : 'Es tu clave de notas: la misma para todas tus notas protegidas.'}</p>}
+      {!common && <p className="caja-nota">{protecting ? 'Usa la misma clave de tus otras notas.' : 'La misma clave para todas tus notas.'}</p>}
       <div className="caja-fila">
         <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={common ? 'Clave de esta nota' : 'Tu clave de notas'}
           aria-label={common ? 'Clave de esta nota' : 'Clave de notas'} autoComplete="current-password" autoFocus={!print} />
-        <button type="submit" className="principal" disabled={!password || busy}>{busy ? 'Abriendo…' : 'Abrir'}</button>
+        <button type="submit" className="principal" disabled={!password || busy}>{busy ? 'Abriendo…' : protecting ? 'Proteger' : 'Abrir'}</button>
       </div>
       {print && <button type="button" onClick={withPrint}><Fingerprint size={16} /> Usar huella</button>}
       {canPrint && !print && <p className="caja-nota"><Fingerprint size={14} aria-hidden="true" /> Escribe tu clave una vez y podrás activar la huella.</p>}
