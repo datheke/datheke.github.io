@@ -348,7 +348,7 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 @media (min-width: 701px) { .aviso-version { left: auto; right: 16px; } }
 
 /* Recordatorios (Reminders.tsx): quién avisa, en la tarjeta de la cuenta, y la ventana que lo explica. */
-.cuenta-recordar { padding: 12px 0; border-top: 1px solid var(--borde); }
+.cuenta-recordar { background: var(--lista); }
 .cuenta-recordar .cuenta-nota { margin: 8px 0 0; }
 .recordar-modo p { margin: 0 0 6px; display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .segmento { display: flex; padding: 3px; gap: 3px; border-radius: 10px; background: var(--lista); border: 1px solid var(--borde); }
@@ -515,3 +515,12 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .cuenta-apps .cuenta-direccion { padding-left: 8px; border-color: var(--borde); }
 .cuenta-apps .cuenta-direccion span { color: var(--texto); user-select: none; }
 .cuenta-apps .enlace { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.cuenta-plegable { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; cursor: pointer; }
+.cuenta-plegable.abierto { cursor: default; }
+.cuenta-cabeza { display: flex; align-items: center; gap: 6px; width: 100%; padding: 0; border: none; background: none; color: inherit; font: inherit; font-size: 14px; text-align: left; }
+.cuenta-cabeza small { color: var(--suave); font-weight: 400; }
+.cuenta-cabeza .flecha { margin-left: auto; flex-shrink: 0; color: var(--suave); transition: transform .15s; }
+.cuenta-plegable.abierto .flecha { transform: rotate(180deg); }
+.cuenta-cuerpo { display: flex; flex-direction: column; gap: 6px; }
+.cuenta-cabeza strong { white-space: nowrap; }
+.cuenta-cabeza small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
