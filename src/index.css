@@ -507,3 +507,11 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
   font: 600 11px/1.6 system-ui, sans-serif; text-align: center; vertical-align: middle; user-select: none; pointer-events: none; }
 .calc-botones button.calc-accion { border-color: var(--acento); color: var(--acento); font-weight: 600; }
 .calc-botones button:disabled { opacity: .6; }
+.cuenta-version { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; font-size: 13px; }
+.cuenta-version small { display: inline-flex; align-items: center; gap: 4px; color: var(--acento); }
+.cuenta-apps { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; background: var(--lista); }
+.cuenta-apps p { margin: 0; display: flex; align-items: center; gap: 6px; }
+.cuenta-apps p small, .cuenta-apps .cuenta-direccion small { color: var(--suave); font-weight: 400; }
+.cuenta-apps .cuenta-direccion { padding-left: 8px; border-color: var(--borde); }
+.cuenta-apps .cuenta-direccion span { color: var(--texto); user-select: none; }
+.cuenta-apps .enlace { align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
