@@ -123,8 +123,15 @@ export default function App() {
   const [writing, setWriting] = useState(false)
   // Ventana de la caja fuerte: crear la clave, abrirla antes de proteger una nota, o la clave nueva tras "olvidé la clave".
   // comun: clave común de una nota compartida (noteId). salt: de qué clave es la huella que se ofrece.
-  const [keyDialog, setKeyDialog] = useState<{ mode: 'crear' | 'abrir' | 'nueva' | 'huella' | 'comun' | 'cambiar' | 'cambiar-comun'; then?: () => void; noteId?: string; salt?: string; protecting?: boolean } | null>(null)
-  const vaultVersion = useSyncExternalStore(vault.subscribe, vault.version) // cambia al abrir o cerrar una llave
+  const [keyDialog, setKeyDialog] = useState<{ mode: 'crear' | 'abrir' | 'nueva' | 'huella' | 'comun' | 'cambiar' | 'cambiar-comun' | 'quitar'; then?: () => void; noteId?: string; salt?: string; protecting?: boolean } | null>(null)
+  const vaultVersion = useSyncExternalStore(vault.subscribe, vault.version)
+  // Al salir de una nota con clave (a la lista o a otra nota) la clave se cierra: al volver se pide otra vez (o la huella).
+  const lastNote = useRef<string | null>(null)
+  useEffect(() => {
+    const prev = lastNote.current
+    lastNote.current = noteId
+    if (prev && prev !== noteId && s.files[prev]?.appProperties?.protegida === 'true' && vault.any()) store.closeVault()
+  }, [noteId]) // eslint-disable-line react-hooks/exhaustive-deps // cambia al abrir o cerrar una llave
   // Respaldo semanal (backup.ts): estado del último intento en este aparato.
   const [backup, setBackup] = useState<{ busy?: boolean; msg?: string; needsLogin?: boolean }>({})
   const backingUp = useRef(false)
@@ -394,9 +401,9 @@ export default function App() {
 
   function unprotect(n: DriveFile) {
     const fileId = activeShare(n)
-    if (!confirm(`¿Quitar la clave a "${n.name || UNTITLED}"? Se podrá ver sin clave en este y tus otros aparatos${fileId ? ', y también para las personas con quienes la compartes' : ''}.`)) return
     store.patch(n.id, { props: { protegida: null, clave_comun: null } })
     if (fileId) shared.setProps(fileId, { clave: null }).catch(fail)
+    setToast(`Listo: "${n.name || UNTITLED}" ya no tiene clave${fileId ? ' (tampoco para las personas con quienes la compartes)' : ''}.`)
   }
 
   // Cambiar clave (la tuya o la común de una compartida): todo lo abierto se cifra con la nueva y la huella se vuelve a ofrecer.
@@ -1343,7 +1350,7 @@ export default function App() {
             <MoreMenu items={[
               ...(withKey ? [
                 // Quitar la clave solo con la nota abierta (con la clave o la huella): cerrada, cualquiera con el aparato podría.
-                ...(isClosed(note) ? [] : [{ label: 'Quitar clave', icon: <KeyRound size={16} />, onClick: () => unprotect(note) }]),
+                ...(isClosed(note) ? [] : [{ label: 'Quitar clave', icon: <KeyRound size={16} />, onClick: () => setKeyDialog({ mode: 'quitar', noteId: note.id }) }]),
                 { label: commonKey(note) ? 'Cambiar la clave común' : 'Cambiar clave', icon: <KeyRound size={16} />,
                   onClick: () => setKeyDialog(commonKey(note) ? { mode: 'cambiar-comun', noteId: note.id } : { mode: 'cambiar' }) },
               ] : [{ label: activeShare(note) ? 'Poner clave común' : 'Proteger con clave', icon: <LockKeyhole size={16} />, onClick: () => protect(note) }]),
@@ -1490,8 +1497,21 @@ export default function App() {
             ? <ChangeKey common={keyDialog.mode === 'cambiar-comun'} onCancel={() => setKeyDialog(null)} prepare={() => store.openVault()}
               verifier={keyDialog.mode === 'cambiar-comun' ? commonKey(keyDialog.noteId ? s.files[keyDialog.noteId] : undefined) : verifier}
               onChanged={(v, old) => changedKey(v, old, keyDialog.mode === 'cambiar-comun' ? keyDialog.noteId : undefined)} />
+            : keyDialog.mode === 'quitar' && keyDialog.noteId && s.files[keyDialog.noteId]
+            // Quitar la clave pide siempre la clave (o la huella), aunque la nota esté abierta.
+            ? <Unlock compact purpose="quitar" common={!!commonKey(s.files[keyDialog.noteId])}
+              verifier={commonKey(s.files[keyDialog.noteId]) || verifier} onForgot={() => {
+                const n = keyDialog.noteId ? s.files[keyDialog.noteId] : undefined
+                setKeyDialog(null)
+                if (n && commonKey(n)) forgotCommonKey(n)
+                else forgotKey()
+              }} onOpen={() => {
+                const n = keyDialog.noteId ? s.files[keyDialog.noteId] : undefined
+                setKeyDialog(null)
+                if (n) unprotect(n)
+              }} />
             : keyDialog.mode === 'abrir'
-            ? <Unlock compact protecting={keyDialog.protecting} verifier={verifier} onForgot={() => { setKeyDialog(null); forgotKey() }} onOpen={async offer => {
+            ? <Unlock compact purpose={keyDialog.protecting ? 'proteger' : undefined} verifier={verifier} onForgot={() => { setKeyDialog(null); forgotKey() }} onOpen={async offer => {
               await store.openVault()
               if (offer) setKeyDialog({ mode: 'huella', then: keyDialog.then })
               else { setKeyDialog(null); keyDialog.then?.() }
