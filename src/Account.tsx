@@ -1,8 +1,9 @@
-import { ArrowUpCircle, Check, Copy, ExternalLink, Globe, LogOut, X } from 'lucide-react'
+import { ArrowUpCircle, Check, CheckCircle2, Copy, Download, ExternalLink, Globe, LogOut, Monitor, Smartphone, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { desktop } from './auth.ts'
 import { useBack } from './back.ts'
-import { getUpdate, type Update } from './update.ts'
+import { DOWNLOADS, getUpdate, latestDownloads, openLink, type Downloads, type Update } from './update.ts'
+import { newer } from './version.ts'
 import { ReminderModeRow, type ReminderMode } from './Reminders.tsx'
 
 declare const __VERSION__: string // vite.config.ts
@@ -14,10 +15,7 @@ const WEB_LABEL = 'datheke.github.io'
 const android = desktop && /android/i.test(navigator.userAgent)
 const platform = android ? 'App de Android' : desktop ? 'App de Windows' : 'Versión web'
 
-async function openWeb() {
-  if (desktop) (await import('@tauri-apps/plugin-opener')).openUrl(WEB)
-  else window.open(WEB, '_blank', 'noopener')
-}
+const openWeb = () => openLink(WEB)
 
 // update: hay una versión más nueva (update.ts). Se nota con un puntito en el avatar y una línea en la tarjeta.
 export function Account({ email, onLogout, update, mode, calendarHere, onPickMode, onConnect }: {
@@ -26,8 +24,12 @@ export function Account({ email, onLogout, update, mode, calendarHere, onPickMod
 }) {
   // Dónde se dibuja la tarjeta: flota sobre todo (la barra lateral la cortaría), debajo del botón y dentro de la pantalla.
   const [open, setOpen] = useState<{ left: number; top: number } | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState('') // qué enlace se acaba de copiar
+  const [downloads, setDownloads] = useState<Downloads | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+
+  // Al abrir la tarjeta se miran los enlaces de la última versión (para descargar o copiar).
+  useEffect(() => { if (open) latestDownloads().then(setDownloads) }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -43,13 +45,18 @@ export function Account({ email, onLogout, update, mode, calendarHere, onPickMod
   const close = () => setOpen(null)
   useBack(!!open, close)
 
-  async function copy() {
+  async function copy(what: string, url: string) {
     try {
-      await navigator.clipboard.writeText(WEB)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch { /* sin portapapeles: la dirección está a la vista */ }
+      await navigator.clipboard.writeText(url)
+      setCopied(what)
+      setTimeout(() => setCopied(''), 2000)
+    } catch { /* sin portapapeles: se puede abrir el enlace */ }
   }
+  const upToDate = !update && downloads && !newer(downloads.version, __VERSION__)
+  const apps = [
+    { id: 'android', label: 'Android', file: '.apk', Icon: Smartphone, url: downloads?.android ?? DOWNLOADS },
+    { id: 'windows', label: 'Windows', file: '.exe', Icon: Monitor, url: downloads?.windows ?? DOWNLOADS },
+  ]
 
   return (
     <div className="cuenta" ref={ref}>
@@ -69,6 +76,10 @@ export function Account({ email, onLogout, update, mode, calendarHere, onPickMod
             <strong>{email}</strong>
           </div>
         </div>
+        <div className="cuenta-version">
+          <span>Versión instalada <strong>{__VERSION__}</strong> · {platform}</span>
+          {upToDate && <small><CheckCircle2 size={14} aria-hidden="true" /> Es la más reciente</small>}
+        </div>
         {update && <div className="cuenta-nueva">
           <ArrowUpCircle size={16} aria-hidden="true" />
           <span>Versión <strong>{update.version}</strong> disponible</span>
@@ -79,12 +90,25 @@ export function Account({ email, onLogout, update, mode, calendarHere, onPickMod
           <p className="cuenta-nota">Desde cualquier navegador (PC, Mac, iPhone), con tu misma cuenta de Google:</p>
           <div className="cuenta-direccion">
             <span>{WEB_LABEL}</span>
-            <button onClick={copy} title="Copiar la dirección" aria-label="Copiar la dirección">
-              {copied ? <Check size={15} /> : <Copy size={15} />}
+            <button onClick={() => copy('web', WEB)} title="Copiar la dirección" aria-label="Copiar la dirección">
+              {copied === 'web' ? <Check size={15} /> : <Copy size={15} />}
             </button>
             {desktop && <button onClick={openWeb} title="Abrir en el navegador" aria-label="Abrir en el navegador"><ExternalLink size={15} /></button>}
           </div>
-          {copied && <small className="cuenta-copiado" role="status">¡Dirección copiada!</small>}
+          {copied === 'web' && <small className="cuenta-copiado" role="status">¡Dirección copiada!</small>}
+        </div>
+        <div className="cuenta-apps">
+          <p><Download size={15} aria-hidden="true" /> <strong>Apps para instalar</strong>{downloads && <small> · versión {downloads.version}</small>}</p>
+          {apps.map(({ id, label, file, Icon, url }) => <div key={id} className="cuenta-direccion">
+            <Icon size={15} aria-hidden="true" />
+            <span>{label} <small>({file})</small></span>
+            <button onClick={() => copy(id, url)} title={`Copiar el enlace de ${label}`} aria-label={`Copiar el enlace de ${label}`}>
+              {copied === id ? <Check size={15} /> : <Copy size={15} />}
+            </button>
+            <button onClick={() => openLink(url)} title={`Descargar para ${label}`} aria-label={`Descargar para ${label}`}><Download size={15} /></button>
+          </div>)}
+          {(copied === 'android' || copied === 'windows') && <small className="cuenta-copiado" role="status">¡Enlace copiado! Ábrelo en el otro aparato para descargar.</small>}
+          <button className="enlace" onClick={() => openLink(DOWNLOADS)}>Página de descargas <ExternalLink size={12} aria-hidden="true" /></button>
         </div>
         <div className="cuenta-recordar">
           <ReminderModeRow mode={mode} onPick={m => { close(); onPickMode(m) }} />
@@ -93,7 +117,7 @@ export function Account({ email, onLogout, update, mode, calendarHere, onPickMod
             <button className="enlace" onClick={() => { close(); onConnect() }}>Conectar aquí</button></p>}
         </div>
         <div className="cuenta-pie">
-          <small>Datheke {__VERSION__} · {platform}</small>
+          <small>Datheke {__VERSION__}</small>
           <button onClick={() => { close(); onLogout() }}><LogOut size={14} /> Salir</button>
         </div>
       </div>}
