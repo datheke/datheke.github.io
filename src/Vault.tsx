@@ -10,8 +10,9 @@ import * as vault from './vault.ts'
 // onOpen(true): se abrió con la clave y este teléfono puede usar huella pero aún no la tiene: App ofrece activarla
 // en su propia ventana (esta pantalla desaparece apenas se abre la caja).
 // common: clave común de una nota compartida (la misma para todos los que la tienen).
-export function Unlock({ verifier, onOpen, onForgot, compact, common }: {
-  verifier: string; onOpen: (offerPrint: boolean) => void; onForgot: () => void; compact?: boolean; common?: boolean
+// protecting: se abre para proteger otra nota: se aclara que es la misma clave de siempre, no una nueva.
+export function Unlock({ verifier, onOpen, onForgot, compact, common, protecting }: {
+  verifier: string; onOpen: (offerPrint: boolean) => void; onForgot: () => void; compact?: boolean; common?: boolean; protecting?: boolean
 }) {
   const salt = common ? vault.saltOf(verifier) : undefined
   const [password, setPassword] = useState('')
@@ -55,12 +56,13 @@ export function Unlock({ verifier, onOpen, onForgot, compact, common }: {
   return (
     <form className={compact ? 'caja' : 'caja caja-grande'} onSubmit={e => { e.preventDefault(); submit() }}>
       <LockKeyhole size={36} className="caja-icono" aria-hidden="true" />
-      <p><strong>{common ? 'Nota compartida con clave común' : 'Nota con clave'}</strong></p>
+      <p><strong>{common ? 'Nota compartida con clave común' : protecting ? 'Proteger con tu clave' : 'Nota con clave'}</strong></p>
       {common && <p className="caja-nota">Se abre con la clave que pusieron para esta nota (la misma para todos los que la tienen).</p>}
+      {!common && <p className="caja-nota">{protecting ? 'Usa la misma clave de tus otras notas.' : 'La misma clave para todas tus notas.'}</p>}
       <div className="caja-fila">
         <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder={common ? 'Clave de esta nota' : 'Tu clave de notas'}
           aria-label={common ? 'Clave de esta nota' : 'Clave de notas'} autoComplete="current-password" autoFocus={!print} />
-        <button type="submit" className="principal" disabled={!password || busy}>{busy ? 'Abriendo…' : 'Abrir'}</button>
+        <button type="submit" className="principal" disabled={!password || busy}>{busy ? 'Abriendo…' : protecting ? 'Proteger' : 'Abrir'}</button>
       </div>
       {print && <button type="button" onClick={withPrint}><Fingerprint size={16} /> Usar huella</button>}
       {canPrint && !print && <p className="caja-nota"><Fingerprint size={14} aria-hidden="true" /> Escribe tu clave una vez y podrás activar la huella.</p>}

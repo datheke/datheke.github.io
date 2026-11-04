@@ -524,3 +524,7 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .cuenta-cuerpo { display: flex; flex-direction: column; gap: 6px; }
 .cuenta-cabeza strong { white-space: nowrap; }
 .cuenta-cabeza small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* "Línea al lado" (data-linea): la raya llena lo que queda del último renglón del texto. */
+.tiptap [data-linea] { overflow: hidden; }
+.tiptap [data-linea]::after { content: ''; display: inline-block; width: 100%; margin-right: -100%; margin-left: .5em; vertical-align: middle; border-top: 1px solid currentColor; opacity: .4; }
