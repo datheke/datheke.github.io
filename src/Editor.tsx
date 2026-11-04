@@ -452,12 +452,6 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
       inPaste.current = plainPaste.current = false
     }
   }
-  async function pasteButton(editor: TiptapEditor) {
-    try {
-      const text = await navigator.clipboard.readText()
-      if (text && !editor.isDestroyed) { editor.commands.focus(); smartPaste(editor.view, text, '') }
-    } catch { latest.current.onError(new Error('No pude leer lo copiado: mantén presionado en la nota y elige Pegar.')) }
-  }
 
   async function addImages(editor: TiptapEditor, files: File[]) {
     for (const file of files) {
@@ -888,7 +882,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
   return <>
     {(editable || find !== null) && <div className="barra-fija">
       {find !== null && <FindBar value={find} at={found[0]} total={found[1]} onChange={onFind} onStep={stepFound} onClose={() => onFind(null)} />}
-      {editable && <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} onReminder={() => newReminder(editor)} onPaste={() => pasteButton(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey}
+      {editable && <Toolbar editor={editor} uploading={uploading > 0} onPhoto={() => addPhoto(editor)} onReminder={() => newReminder(editor)} geminiKey={geminiKey} onGeminiKey={onGeminiKey}
         privacy={privacy} onPrivate={onPrivate} />}
       {pasted && <div className="pegado" role="status">
         <ClipboardPaste size={16} aria-hidden="true" /> Se pegó sin formato.
@@ -951,8 +945,8 @@ function Btn({ label, onClick, active, disabled, children }: {
     className={active ? 'activo' : undefined} onMouseDown={e => e.preventDefault()} onClick={onClick}>{children}</button>
 }
 
-function Toolbar({ editor, uploading, onPhoto, onReminder, onPaste, geminiKey, onGeminiKey, privacy, onPrivate }: {
-  editor: TiptapEditor; uploading: boolean; onPhoto: () => void; onReminder: () => void; onPaste: () => void; geminiKey: string; onGeminiKey: (key: string) => void
+function Toolbar({ editor, uploading, onPhoto, onReminder, geminiKey, onGeminiKey, privacy, onPrivate }: {
+  editor: TiptapEditor; uploading: boolean; onPhoto: () => void; onReminder: () => void; geminiKey: string; onGeminiKey: (key: string) => void
   privacy: Privacy; onPrivate: () => void
 }) {
   const [panel, setPanel] = useState<'emojis' | 'text' | 'highlight' | 'ia' | 'voz' | null>(null)
@@ -1024,7 +1018,6 @@ function Toolbar({ editor, uploading, onPhoto, onReminder, onPaste, geminiKey, o
       </Btn>
       <Btn label="Dictar a Gemini" active={panel === 'voz'} onClick={() => toggle('voz')}><AudioLines size={18} className="chispa" /></Btn>
       <Btn label="Recordatorio en esta línea" onClick={onReminder}><Bell size={18} /></Btn>
-      <Btn label="Pegar" onClick={onPaste}><ClipboardPaste size={18} /></Btn>
       <select aria-label="Estilo de párrafo" value={s.block} onChange={e => {
         const level = Number(e.target.value) as 0 | 1 | 2 | 3
         const { from, to, $from, $to } = editor.state.selection
