@@ -10,8 +10,8 @@
 
 ## Qué falta
 1. ✅ Línea al lado ("Línea al lado ───" en el menú `/`) — hecho.
-2. ✅ `hola /desplegable`: hola pasa a ser el título — hecho.
-3. Mostrárselo a David. Con su "sube": versión 0.17.4 (ya numerada) con todo junto (también lo de Gemini) y armar Android y Windows.
+2. ❌ `hola /desplegable` con título: hecho y luego quitado por pedido de David (no le sirve). El desplegable queda como antes.
+3. Mostrárselo a David. Con su "sube": versión 0.17.4 (ya numerada) con la Línea al lado y lo de Gemini y armar Android y Windows.
 
 David decidió dejar las actualizaciones como están ("hasta nuevo aviso"): no tocar.
 
