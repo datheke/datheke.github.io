@@ -14,13 +14,11 @@
   secciones plegables.
 
 ## Qué falta
-- Nada pendiente. David decidió dejar las actualizaciones como están ("hasta nuevo aviso"): no tocar.
+- David decidió dejar las actualizaciones como están ("hasta nuevo aviso"): no tocar.
+- Por decidir con David (sin código escrito): línea al lado del texto (`hola ─────`) y que `hola /desplegable` use "hola" como título.
 
 ## Pendiente para la PC
-- Nada obligatorio. Si quieres, probar en la PC: zoom con Ctrl + rueda en una nota fijada y la tarjeta de la cuenta.
+- Sin pendientes.
 
 ## Aprendizajes para pasar a la fuente única
-- Desde la nube no se puede subir directo a `main`: se publica con un pull request y se une con "merge" (no "rebase", que deja choques falsos en el siguiente).
-- En Datheke, después de cada "sube" David espera también las apps: lanzar `desktop.yml` para Android y Windows y avisar con los enlaces cuando terminen.
-- Pegar desde la barra del teclado del celular (Gboard) no dispara el evento de pegar: llega como texto escrito y solo trae el texto, sin formato.
-- La app de Android (Tauri) no tiene permiso para leer el portapapeles con un botón: pegar siempre por el menú del sistema.
+- Ninguno.

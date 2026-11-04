@@ -11,6 +11,7 @@ Las reglas generales están en `~/.claude/CLAUDE.md`; aquí solo lo de este proy
 - GitHub: org `datheke`, se sube con la cuenta `david3gallegos3work-gif` (va en la URL del remote). Google Cloud: ver la sección `notas-david` de `.cuentas.json`.
 - ⚠️ Aquí "sube" TAMBIÉN publica: cada push a main publica la web en GitHub Pages (`pages.yml`). No usa Vercel ni Supabase.
 - Las apps de escritorio y Android se compilan solo en GitHub Actions (`desktop.yml`, manual); no hay Rust instalado en la PC.
+- Después de cada "sube" con cambios en la app, lanza `desktop.yml` para Android y Windows y avisa con los enlaces al terminar.
 
 ## Código
 - Para la parte Rust/Tauri (`src-tauri/`) usa las skills `rust-patterns` y `rust-testing`, y los agentes de Rust de este proyecto.
