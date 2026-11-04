@@ -499,7 +499,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     { label: 'Recuadro 💡', run: (e, r) => e.chain().focus().deleteRange(r).wrapIn('callout', { emoji: '💡' }).run() },
     { label: 'Advertencia ⚠️', run: (e, r) => e.chain().focus().deleteRange(r).wrapIn('callout', { emoji: '⚠️' }).run() },
     { label: 'Importante ❗', run: (e, r) => e.chain().focus().deleteRange(r).wrapIn('callout', { emoji: '❗' }).run() },
-    { label: 'Desplegable', takesLine: true, run: (e, r) => e.chain().focus().deleteRange(r).setDetails().run() },
+    { label: 'Desplegable', run: (e, r) => e.chain().focus().deleteRange(r).setDetails().run() },
     { label: 'Cita', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
     { label: 'Calculadora 🧮', run: (e, r) => { e.chain().focus().deleteRange(r).run(); insertCalc(e) } },
     { label: 'Línea al lado ───', inline: true, run: (e, r) => {
