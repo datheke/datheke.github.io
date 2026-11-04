@@ -54,7 +54,6 @@ const firstTab = (): keyof typeof CALENDAR => device === 'pc' ? 'windows' : devi
 export function ReminderModeRow({ mode, onPick }: { mode: ReminderMode; onPick: (m: ReminderMode) => void }) {
   return (
     <div className="recordar-modo">
-      <p><BellRing size={15} aria-hidden="true" /> <strong>Recordatorios</strong> · avisar con:</p>
       <div className="segmento" role="radiogroup" aria-label="Quién avisa los recordatorios">
         <button role="radio" aria-checked={mode === 'datheke'} className={mode === 'datheke' ? 'activo' : undefined} onClick={() => onPick('datheke')}>Datheke</button>
         <button role="radio" aria-checked={mode === 'calendar'} className={mode === 'calendar' ? 'activo' : undefined} onClick={() => onPick('calendar')}>Google Calendar</button>

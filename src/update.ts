@@ -32,3 +32,23 @@ export async function getUpdate(u: Update) {
   if (desktop) (await import('@tauri-apps/plugin-opener')).openUrl(u.url)
   else window.open(u.url, '_blank', 'noopener')
 }
+
+// Página de descargas de GitHub (siempre la última versión) y los enlaces directos al .apk y al .exe de la última, para
+// la tarjeta de la cuenta. Si GitHub no responde, los dos llevan a la página.
+export const DOWNLOADS = 'https://github.com/datheke/datheke.github.io/releases/latest'
+export type Downloads = { version: string; android: string; windows: string }
+export async function latestDownloads(): Promise<Downloads | null> {
+  try {
+    const res = await fetch(LATEST, { headers: { Accept: 'application/vnd.github+json' } })
+    if (!res.ok) return null
+    const r: { tag_name: string; assets: { name: string; browser_download_url: string }[] } = await res.json()
+    const file = (ext: string) => r.assets.find(a => a.name.endsWith(ext))?.browser_download_url ?? DOWNLOADS
+    return { version: r.tag_name.replace(/^v/, ''), android: file('.apk'), windows: file('.exe') }
+  } catch { return null }
+}
+
+// Abre un enlace afuera: en las apps, en el navegador del aparato (o descarga el archivo).
+export async function openLink(url: string) {
+  if (desktop) (await import('@tauri-apps/plugin-opener')).openUrl(url)
+  else window.open(url, '_blank', 'noopener')
+}
