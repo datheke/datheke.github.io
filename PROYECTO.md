@@ -56,7 +56,7 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 - Las fotos no se duplican entre versiones.
 
 ## Protección contra borrado
-- Borrar notas/libretas o vaciar el basurero exige clave/PIN.
+- Decidido por David (noviembre de 2026): solo las notas con clave piden clave. Una nota con clave no se puede borrar hasta quitarle la clave, y quitarla pide la clave o la huella. Las demás notas y el basurero solo piden confirmar. Una libreta con notas no se deja borrar; vacía, solo pide confirmar.
 - Si una nota desaparece de la nube sin pasar por la clave, la app la restaura desde la copia local.
 - PIN opcional para abrir la app en el celular.
 - (No es posible poner clave dentro de Drive/Dropbox; se compensa con la carpeta oculta.)
@@ -100,13 +100,13 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 8. Notas compartidas con otros Gmail (ver y editar).
 
 ## Estado (5 de noviembre de 2026, versión 0.17.7)
-Revisado buscando en el código, no probando cada función en la app.
+Revisado contra el menú `/`, los botones de la app, todo el historial de versiones y palabras parecidas; no probando cada función en un aparato.
 
 | Etapa | Ya está | Falta |
 |---|---|---|
 | 1 a 3 | Todo | Nada |
-| 4 | Windows y Android | Mac |
+| 4 | Windows y Android | Mac. Por comprobar en el celular: la carpeta visible en Android |
 | 5 | Íconos y Gemini | Dibujos a mano y botón "Enviar a IA". Por decidir: si el diseño ya está lo bastante pulido |
-| 6 | Basurero de 30 días, clave de notas con huella y respaldo semanal | Dropbox con doble nube, versiones anteriores de una nota, clave o PIN para borrar notas o libretas y vaciar el basurero (hoy solo pide confirmar), PIN para abrir la app. A medias: una nota que desaparece de la nube solo se rescata si tenía cambios sin subir |
+| 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal y protección al borrar (ver "Protección contra borrado") | Dropbox con doble nube, versiones anteriores de una nota, PIN para abrir la app y limpiar de Drive las fotos que ya no usa ninguna nota. A medias: una nota que desaparece de la nube solo se rescata si tenía cambios sin subir |
 | 7 | Nada | Kanban, calendario dentro de la app y tablas con filtros y orden |
-| 8 | En parte: notas compartidas por correo con clave común | Combinar los cambios cuando dos personas editan la misma nota |
+| 8 | En parte: notas compartidas por correo con clave común | Opción "solo ver" (hoy todos pueden editar), combinar los cambios cuando dos personas editan la misma nota y versiones para recuperar lo que otro borre |
