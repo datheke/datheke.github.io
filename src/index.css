@@ -530,5 +530,4 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .tiptap [data-linea]::after { content: ''; display: inline-block; width: 100%; margin-right: -100%; margin-left: .5em; vertical-align: middle; border-top: 1px solid currentColor; opacity: .4; }
 /* Candado de la ventana de la clave: mantenerlo presionado muestra "¿Olvidaste la clave?" (sin menú del teléfono). */
 .caja-candado { display: inline-flex; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
-.cuenta-olvido { background: var(--lista); }
-.cuenta-pasos { margin: 0; padding-left: 20px; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
+.cuenta-olvido { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--borde); font-size: 11px; color: var(--suave); }
