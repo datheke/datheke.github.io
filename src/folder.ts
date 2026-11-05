@@ -39,6 +39,12 @@ export function plan({ files, texts }: Pick<store.State, 'files' | 'texts'>) {
   return out
 }
 
+// Fotos de la carpeta que ya no muestra ninguna nota de ahí (nota que ahora tiene clave, borrada o sin esa foto).
+export function stalePhotos(names: string[], want: ReturnType<typeof plan>) {
+  const keep = new Set([...want.values()].flatMap(n => n.images))
+  return names.filter(n => /^[\w-]+\.jpg$/.test(n) && !keep.has(n.slice(0, -4)))
+}
+
 // Android: el $DOCUMENT de Tauri es la carpeta privada de la app (Android/data/…, escondida); se escribe en la de verdad.
 // shortcut: ruta del usuario principal y Android 11 o más nuevo; en uno más viejo falla sin frenar la app, como antes.
 const android = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent)
@@ -94,6 +100,9 @@ async function mirror() {
       written.set(id, note.path)
       if (photosOk) lastHtml.set(id, note.html)
     }
+    const photos = `${root}/fotos`
+    if (await fs.exists(photos, opt))
+      for (const name of stalePhotos((await fs.readDir(photos, opt)).map(e => e.name), want)) await fs.remove(`${photos}/${name}`, opt).catch(() => {})
     await fs.writeTextFile(manifest, JSON.stringify(Object.fromEntries(written)), opt)
   } catch (e) {
     console.error('No se pudo actualizar la carpeta Documentos/Datheke', e) // la copia visible nunca debe frenar la app
