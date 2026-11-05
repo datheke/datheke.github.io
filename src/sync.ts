@@ -53,21 +53,32 @@ export const isProtected = (id: string) => state.files[id]?.appProperties?.prote
 const keySalt = (id: string) => vault.saltOf(state.files[id]?.appProperties?.clave_comun)
 const canSeal = (id: string) => vault.hasKey(keySalt(id))
 let sealed: Record<string, vault.Sealed> = {}
+// Fotos de cada nota con clave (solo sus números, nada del texto): la limpieza de fotos sabe cuáles usa con la caja cerrada.
+let refs: Record<string, string[]> = {}
+function dropRefs(id: string) {
+  if (!refs[id]) return
+  delete refs[id]
+  db.del(`refs:${id}`)
+}
 
 async function storeText(id: string, t: Snapshot) {
   if (!isProtected(id)) {
     delete sealed[id]
+    dropRefs(id)
     return db.set(`text:${id}`, t)
   }
   if (!canSeal(id)) return // nunca en claro; enforce la quita de memoria y se vuelve a bajar al abrir
   const s = await vault.seal(t, keySalt(id))
   sealed[id] = s
+  refs[id] = photoRefs(t.text)
+  db.set(`refs:${id}`, refs[id])
   return db.set(`text:${id}`, s)
 }
 
 // Copia local que ya no sirve (no se puede cifrar ahora, o cifrada con otra clave): se borra y se baja de nuevo de Drive.
 function dropLocal(id: string) {
   delete sealed[id]
+  dropRefs(id)
   db.del(`text:${id}`)
   update({ texts: without(state.texts, id), base: without(state.base, id), revs: { ...state.revs, [id]: (state.revs[id] ?? 0) + 1 } })
 }
@@ -159,6 +170,7 @@ function forget(id: string) {
     pending: without(state.pending, id), conflicts: without(state.conflicts, id),
   })
   delete sealed[id]
+  dropRefs(id)
   db.del(`text:${id}`)
 }
 
@@ -172,6 +184,7 @@ export async function start(email: string) {
   db.setAccount(email)
   const saved = await db.get<Saved>('meta')
   sealed = {}
+  refs = Object.fromEntries(await db.entries<string[]>('refs:'))
   const texts: Record<string, Snapshot> = {}
   for (const [id, v] of await db.entries<Snapshot | vault.Sealed>('text:')) {
     if (vault.isSealed(v)) sealed[id] = v
@@ -348,13 +361,15 @@ export async function addImage(blob: Blob): Promise<string> {
 const PHOTO_WAIT = 86400_000 // un día (decisión de David)
 // Cualquier mención "drive:ID" cuenta como uso: más amplio que src="drive:…", a propósito.
 const photoRefs = (html: string) => [...html.matchAll(/drive:([\w-]+)/g)].map(m => m[1])
-export function photoPlan(s: Pick<State, 'files' | 'texts' | 'base' | 'pending' | 'conflicts'>, now: number) {
+export function photoPlan(s: Pick<State, 'files' | 'texts' | 'base' | 'pending' | 'conflicts'> & { refs?: Record<string, string[]> }, now: number) {
   const files = Object.values(s.files)
   const notes = files.filter(f => f.appProperties?.kind === 'note')
-  if (notes.some(f => !s.texts[f.id] || (!s.pending[f.id]?.content && s.base[f.id] !== f.modifiedTime))) return null
+  // De una nota con clave cerrada sirven los números de foto anotados (refs), si su copia está al día con Drive.
+  const photosOf = (id: string) => s.texts[id] ? photoRefs(s.texts[id].text) : s.refs?.[id]
+  if (notes.some(f => !photosOf(f.id) || (!s.pending[f.id]?.content && s.base[f.id] !== f.modifiedTime))) return null
   const used = new Set(files.map(f => f.appProperties?.cover).filter(Boolean))
-  for (const html of [...notes.map(f => s.texts[f.id].text), ...Object.values(s.conflicts).map(c => c.text)])
-    for (const ref of photoRefs(html)) used.add(ref)
+  for (const f of notes) for (const ref of photosOf(f.id) ?? []) used.add(ref)
+  for (const c of Object.values(s.conflicts)) for (const ref of photoRefs(c.text)) used.add(ref)
   const plan = { mark: [] as string[], unmark: [] as string[], remove: [] as string[] }
   for (const f of files) {
     if (f.appProperties?.kind !== 'image' || s.pending[f.id]?.create) continue
@@ -370,7 +385,7 @@ let cleaned = 0 // la limpieza corre al sincronizar, como mucho una vez por hora
 const PHOTO_BATCH = 30 // de a pocas por vuelta: cientos de cambios juntos frenan la subida y el guardado en el celular
 // false: no se pudo decidir, o quedan más para la siguiente vuelta.
 export function cleanPhotos(now = Date.now()) {
-  const plan = photoPlan(state, now)
+  const plan = photoPlan({ ...state, refs }, now)
   if (!plan) return false
   let left = PHOTO_BATCH
   for (const id of plan.unmark) if (left-- > 0) patch(id, { props: { sin_uso: null } })

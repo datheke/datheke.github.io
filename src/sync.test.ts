@@ -213,6 +213,30 @@ test('nota que sale del basurero para siempre: sus fotos se van con ella, salvo 
   assert.equal(drive.files.get('p5')!.appProperties?.sin_uso ?? null, null)
 })
 
+test('nota con clave cerrada: la limpieza usa los números de foto que anotó el aparato, sin abrir la clave ni guardar texto', async () => {
+  const vault = await import('./vault.ts')
+  const db = await import('./db.ts')
+  const drive = fakeDrive()
+  const foto = (id: string) => drive.files.set(id, { id, name: 'foto.jpg', modifiedTime: drive.tick(), mimeType: 'image/jpeg', appProperties: { kind: 'image' }, body: 'JPG' })
+  drive.note('n1', 'Cédula', '<p>número 1234</p><img src="drive:p7">')
+  foto('p7')
+  foto('p8')
+  await store.start('cajafotos@test')
+  await store.sync()
+  await vault.create('clave-larga-2')
+  store.patch('n1', { props: { protegida: 'true' } })
+  await store.sync()
+  await new Promise(r => setTimeout(r, 50))
+  store.closeVault()
+  assert.equal(store.getState().texts.n1, undefined) // cerrada: su texto no está en memoria
+  assert.deepEqual(await db.get('refs:n1'), ['p7']) // solo el número de la foto
+  assert.doesNotMatch(JSON.stringify(await db.get('refs:n1')), /1234/)
+  store.cleanPhotos(Date.now())
+  await store.sync()
+  assert.equal(drive.files.get('p7')!.appProperties?.sin_uso, undefined) // la usa la nota con clave
+  assert.ok(drive.files.get('p8')!.appProperties?.sin_uso, 'la que nadie usa sí se marca')
+})
+
 test('fotos: se procesan de a 30 por vuelta y lo que falta sigue en la siguiente', async () => {
   const drive = fakeDrive()
   drive.note('n1', 'Sin fotos', '<p>x</p>')

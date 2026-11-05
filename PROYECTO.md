@@ -51,7 +51,7 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 ## Versiones y basurero
 - Notas activas = siempre la última versión (se pisa la anterior).
 - Decidido por David (noviembre de 2026): una sola versión anterior por nota, para recuperar lo que se borre sin querer. Es cómo estaba la nota antes de la última vez que se empezó a cambiar; se reemplaza en la siguiente edición (otro día o tras 10 minutos sin tocarla). En el menú de la nota: "Ver versión anterior" y "Restaurar". Fijar no crea versiones. Las fotos no se guardan por la versión anterior (decisión de David): pasado un día, restaurarla recupera solo el texto, quita de la copia las fotos que ya se borraron y avisa "Las fotos de esta versión ya se borraron; se recuperó solo el texto".
-- Fotos sin uso (hecho, noviembre de 2026): la foto que ya no usa ninguna nota (contando portadas, basurero, plantillas y conflictos) se marca y al día siguiente se borra de Drive y del aparato (decisión de David: un día, no 30). Si vuelve a usarse ese día, se desmarca. Deshacer funciona solo mientras la nota sigue abierta; si trae de vuelta una foto que ya se borró, en su lugar sale el aviso de que solo se recupera el texto. Las fotos de una nota que sale del basurero para siempre se van con ella (ya esperaron ahí), salvo las que usa otra nota. Si falta el texto de alguna nota (por ejemplo, notas con clave cerradas), no se decide nada.
+- Fotos sin uso (hecho, noviembre de 2026): la foto que ya no usa ninguna nota (contando portadas, basurero, plantillas y conflictos) se marca y al día siguiente se borra de Drive y del aparato (decisión de David: un día, no 30). Si vuelve a usarse ese día, se desmarca. Deshacer funciona solo mientras la nota sigue abierta; si trae de vuelta una foto que ya se borró, en su lugar sale el aviso de que solo se recupera el texto. Las fotos de una nota que sale del basurero para siempre se van con ella (ya esperaron ahí), salvo las que usa otra nota. De una nota con clave cerrada usa los números de foto que el aparato anotó al guardarla (sin nada del texto); si de alguna nota no sabe qué fotos tiene o su copia está atrasada, no decide nada. En las notas compartidas las fotos van dentro de la nota, así que no dejan archivos sueltos.
 - Borrado automático del basurero a los 30 días.
 - Las fotos no se duplican entre versiones.
 
@@ -99,15 +99,15 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 7. Kanban, calendario y tablas inteligentes.
 8. Notas compartidas con otros Gmail (ver y editar).
 
-## Estado (5 de noviembre de 2026, versión 0.17.7)
+## Estado (5 de noviembre de 2026, versión 0.17.8)
 Revisado contra el menú `/`, los botones de la app, todo el historial de versiones y palabras parecidas; no probando cada función en un aparato.
 
 | Etapa | Ya está | Falta (David dijo que sí) | Por decidir |
 |---|---|---|---|
 | 1 a 3 | Todo | Nada | Nada |
-| 4 | Windows y Android. Carpeta visible en Android: se escribía en la carpeta privada de la app (escondida); arreglado para que vaya a Documentos/Datheke (falta publicarlo y probarlo en el celular, Android 11 o más nuevo) | Mac | Nada |
+| 4 | Windows y Android. Carpeta visible en Android: se escribía en la carpeta privada de la app (escondida); arreglado en la 0.17.8 para que vaya a Documentos/Datheke (falta probarlo en el celular, Android 11 o más nuevo) | Mac | Nada |
 | 5 | Íconos y Gemini | Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini). Diseño nuevo (ver abajo) | Nada |
-| 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal, protección al borrar (ver "Protección contra borrado") y limpieza de fotos sin uso (programada; falta publicarla y probarla en el celular) | Una versión anterior por nota (ver "Versiones y basurero") | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
+| 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal, protección al borrar (ver "Protección contra borrado") y limpieza de fotos sin uso (0.17.8; falta probarla en el celular) | Una versión anterior por nota (ver "Versiones y basurero") | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
 | 7 | Nada | Calendario dentro de la app, Kanban y tablas con filtros y orden, unidos a los recordatorios | Nada |
 | 8 | Notas compartidas por correo (todos pueden editar) y clave común | Elegir "puede editar" o "solo ver", y poder cambiarlo o quitarlo después. Combinar los cambios cuando dos personas editan la misma nota a la vez | Nada |
 | Ideas nuevas | — | Dispositivos, con un apartado para celular perdido o robado. Importar notas de Evernote. Preferencias: libreta para notas nuevas, letra por defecto y modo oscuro | Etiquetas (recomendado: no por ahora) |
