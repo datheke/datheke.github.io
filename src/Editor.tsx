@@ -199,7 +199,8 @@ const DriveImage = Image.extend({
   addNodeView: () => ({ node }) => {
     const img = document.createElement('img')
     const src = String(node.attrs.src ?? '')
-    if (src.startsWith('drive:')) imageUrl(src.slice(6)).then(url => { img.src = url }, () => { img.alt = 'No se pudo cargar la foto' })
+    if (src.startsWith('drive:')) imageUrl(src.slice(6)).then(url => { img.src = url },
+      () => { img.alt = 'No se pudo cargar la foto. Si la quitaste de la nota hace más de un día, ya se borró: Deshacer solo recupera el texto.' })
     else img.src = src
     return { dom: img }
   },

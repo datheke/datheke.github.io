@@ -343,9 +343,9 @@ export async function addImage(blob: Blob): Promise<string> {
   return create({ kind: 'image' }, 'foto.jpg', undefined, blob.type, id)
 }
 
-// Fotos que ya no usa ninguna nota: se marcan "sin_uso" en Drive (lo ven todos los aparatos) y a los 30 días se borran.
-// Si vuelven a usarse (deshacer, otro aparato) se desmarcan. Sin el texto al día de todas las notas no se decide nada.
-const PHOTO_DAYS = 30
+// Fotos que ya no usa ninguna nota: se marcan "sin_uso" en Drive (lo ven todos los aparatos) y al día siguiente se borran.
+// Si vuelven a usarse ese día (deshacer, otro aparato) se desmarcan. Sin el texto al día de todas las notas no se decide nada.
+const PHOTO_WAIT = 86400_000 // un día (decisión de David)
 // Cualquier mención "drive:ID" cuenta como uso: más amplio que src="drive:…", a propósito.
 const photoRefs = (html: string) => [...html.matchAll(/drive:([\w-]+)/g)].map(m => m[1])
 export function photoPlan(s: Pick<State, 'files' | 'texts' | 'base' | 'pending' | 'conflicts'>, now: number) {
@@ -361,7 +361,7 @@ export function photoPlan(s: Pick<State, 'files' | 'texts' | 'base' | 'pending' 
     const since = f.appProperties?.sin_uso
     if (used.has(f.id)) { if (since) plan.unmark.push(f.id) }
     else if (!since) plan.mark.push(f.id)
-    else if (now - Date.parse(since) >= PHOTO_DAYS * 86400_000) plan.remove.push(f.id)
+    else if (now - Date.parse(since) >= PHOTO_WAIT) plan.remove.push(f.id)
   }
   return plan
 }

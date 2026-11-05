@@ -127,10 +127,11 @@ const plan = (files: ReturnType<typeof img>[], texts: Record<string, string>, ex
   pending: {}, conflicts: {}, ...extra,
 }, NOW)
 
-test('fotos sin uso: se marcan, se borran a los 30 días y se desmarcan si vuelven a usarse', () => {
-  const p = plan([nota('n1'), img('usada'), img('nueva'), img('vieja', { sin_uso: ago(31) }), img('reciente', { sin_uso: ago(5) }), img('volvio', { sin_uso: ago(40) }), img('rara', { sin_uso: 'no-es-fecha' })],
+test('fotos sin uso: se marcan, se borran al día siguiente y se desmarcan si vuelven a usarse', () => {
+  const p = plan([nota('n1'), img('usada'), img('nueva'), img('vieja', { sin_uso: ago(31) }), img('ayer', { sin_uso: ago(1.1) }), img('hoy', { sin_uso: ago(0.2) }),
+    img('volvio', { sin_uso: ago(40) }), img('rara', { sin_uso: 'no-es-fecha' })],
     { n1: '<p>x</p><img src="drive:usada"><img src="drive:volvio">' })
-  assert.deepEqual(p, { mark: ['nueva'], unmark: ['volvio'], remove: ['vieja'] })
+  assert.deepEqual(p, { mark: ['nueva'], unmark: ['volvio'], remove: ['vieja', 'ayer'] })
 })
 
 test('fotos que cuentan como usadas: portada, nota del basurero, la otra versión de un conflicto; la recién puesta espera', () => {
@@ -147,7 +148,7 @@ test('fotos: si falta el texto de una nota (caja cerrada, aún bajando) o no est
   assert.deepEqual(plan([nota('n1'), img('x')], { n1: '<p>a</p>' }, { base: { n1: 't0' }, pending: { n1: { content: true } } }), { mark: ['x'], unmark: [], remove: [] })
 })
 
-test('foto quitada de la nota: se marca en Drive y a los 30 días se borra de Drive y del aparato', async () => {
+test('foto quitada de la nota: se marca en Drive y al día siguiente se borra de Drive y del aparato', async () => {
   const db = await import('./db.ts')
   const drive = fakeDrive()
   drive.note('n1', 'Recibo', '<p>pago</p><img src="drive:p1">')
@@ -163,7 +164,10 @@ test('foto quitada de la nota: se marca en Drive y a los 30 días se borra de Dr
   store.cleanPhotos(Date.now())
   await store.sync()
   assert.ok(drive.files.get('p1')!.appProperties?.sin_uso, 'queda marcada sin uso')
-  store.cleanPhotos(Date.now() + 31 * DAY)
+  store.cleanPhotos(Date.now() + 0.5 * DAY)
+  await store.sync()
+  assert.equal(drive.files.has('p1'), true) // el mismo día todavía se puede deshacer
+  store.cleanPhotos(Date.now() + 1.1 * DAY)
   await store.sync()
   assert.equal(drive.files.has('p1'), false)
   assert.equal(await db.get('img:p1'), undefined)
