@@ -41,7 +41,7 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 - Notas en formato abierto (HTML/JSON); fotos como imágenes normales comprimidas (~150–350 KB).
 - Capa de almacenamiento intercambiable (adaptadores): Google Drive, Dropbox.
 
-## Doble nube con desborde
+## Doble nube con desborde (descartado por David, noviembre de 2026)
 - Conectar Drive y Dropbox una sola vez.
 - El usuario elige cuál se llena primero (recomendado: Drive → Dropbox).
 - Al llegar ~95% avisar y guardar lo nuevo en la segunda.
@@ -50,15 +50,14 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 
 ## Versiones y basurero
 - Notas activas = siempre la última versión (se pisa la anterior).
-- Se guarda versión al cerrar la nota o tras unos minutos sin editar (no por cada tecla).
-- Versiones anteriores van al basurero con nombre: "Nota X – modificada el DD/MM/AAAA, HH:MM".
+- Decidido por David (noviembre de 2026): una sola versión anterior por nota, para recuperar lo que se borre sin querer. Es cómo estaba la nota antes de la última vez que se empezó a cambiar; se reemplaza en la siguiente edición (otro día o tras 10 minutos sin tocarla). En el menú de la nota: "Ver versión anterior" y "Restaurar". Fijar no crea versiones.
 - Borrado automático del basurero a los 30 días.
 - Las fotos no se duplican entre versiones.
 
 ## Protección contra borrado
 - Decidido por David (noviembre de 2026): solo las notas con clave piden clave. Una nota con clave no se puede borrar hasta quitarle la clave, y quitarla pide la clave o la huella. Las demás notas y el basurero solo piden confirmar. Una libreta con notas no se deja borrar; vacía, solo pide confirmar.
 - Si una nota desaparece de la nube sin pasar por la clave, la app la restaura desde la copia local.
-- PIN opcional para abrir la app en el celular.
+- PIN para abrir la app: descartado por David (noviembre de 2026).
 - (No es posible poner clave dentro de Drive/Dropbox; se compensa con la carpeta oculta.)
 
 ## Respaldo visible
@@ -106,8 +105,19 @@ Revisado contra el menú `/`, los botones de la app, todo el historial de versio
 |---|---|---|---|
 | 1 a 3 | Todo | Nada | Nada |
 | 4 | Windows y Android | Mac. Carpeta visible en Android: David la buscó en Documentos y no aparece | Nada |
-| 5 | Íconos y Gemini | Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini) | Ajustes, menú "Más" y barra de edición agrupados como Evernote (propuesta del 5 nov) |
-| 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal y protección al borrar (ver "Protección contra borrado") | Limpiar de Drive las fotos que ya no usa ninguna nota. Una versión anterior por nota, solo para recuperar lo que se borre sin querer | Qué cuenta como versión. Dropbox con doble nube. PIN para abrir la app. Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
-| 7 | Nada | Calendario dentro de la app | Kanban y tablas con filtros y orden |
-| 8 | Notas compartidas por correo (todos pueden editar) y clave común | Elegir "puede editar" o "solo ver", y poder cambiarlo o quitarlo después | Combinar los cambios cuando dos personas editan la misma nota a la vez |
-| Ideas nuevas | — | — | Dispositivos (dónde está abierta la cuenta), importar notas de Evernote, etiquetas, vista "Compartido conmigo", modo oscuro |
+| 5 | Íconos y Gemini | Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini). Diseño nuevo (ver abajo) | Nada |
+| 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal y protección al borrar (ver "Protección contra borrado") | Limpiar de Drive las fotos que ya no usa ninguna nota. Una versión anterior por nota (ver "Versiones y basurero") | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
+| 7 | Nada | Calendario dentro de la app, Kanban y tablas con filtros y orden, unidos a los recordatorios | Nada |
+| 8 | Notas compartidas por correo (todos pueden editar) y clave común | Elegir "puede editar" o "solo ver", y poder cambiarlo o quitarlo después. Combinar los cambios cuando dos personas editan la misma nota a la vez | Nada |
+| Ideas nuevas | — | Dispositivos, con un apartado para celular perdido o robado. Importar notas de Evernote. Preferencias: libreta para notas nuevas, letra por defecto y modo oscuro | Etiquetas (recomendado: no por ahora) |
+
+Descartado por David (noviembre de 2026): Dropbox con doble nube y PIN para abrir la app.
+
+Orden aprobado: fotos → carpeta de Android → "solo ver"/"puede editar" → versión anterior → diseño nuevo → lo demás. Cada cosa en su propia versión, probada en el celular.
+
+## Diseño nuevo (aprobado por David el 5 de noviembre de 2026)
+- Barra lateral con menú "Más": Basurero, Calendario, Plantillas, Libretas, Recordatorios y Compartido conmigo. Sin Archivos ni Espacios.
+- Ventana de Ajustes con buscador y estas secciones: Inicio de sesión y seguridad, Dispositivos, IA y aplicaciones conectadas, Recordatorios, Importar, Respaldo, Apps y versión, Preferencias. Sin Adjuntos.
+- Barra de edición: a la vista lo de siempre; "Insertar ▾" y "Más ▾" con su nombre escrito y un buscador adentro.
+- Ícono y portada: por decidir (propuesta: arriba del título, como hoy, y también en el menú ⋯ de la nota).
+- Antes de cambiar nada: inventario de todo lo que la app tiene hoy (cada botón, menú, opción del `/` y ajuste) con el lugar donde queda en el diseño nuevo. No se publica si algo del inventario no tiene lugar.
