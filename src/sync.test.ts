@@ -128,7 +128,7 @@ const plan = (files: ReturnType<typeof img>[], texts: Record<string, string>, ex
 }, NOW)
 
 test('fotos sin uso: se marcan, se borran a los 30 días y se desmarcan si vuelven a usarse', () => {
-  const p = plan([nota('n1'), img('usada'), img('nueva'), img('vieja', { sin_uso: ago(31) }), img('reciente', { sin_uso: ago(5) }), img('volvio', { sin_uso: ago(40) })],
+  const p = plan([nota('n1'), img('usada'), img('nueva'), img('vieja', { sin_uso: ago(31) }), img('reciente', { sin_uso: ago(5) }), img('volvio', { sin_uso: ago(40) }), img('rara', { sin_uso: 'no-es-fecha' })],
     { n1: '<p>x</p><img src="drive:usada"><img src="drive:volvio">' })
   assert.deepEqual(p, { mark: ['nueva'], unmark: ['volvio'], remove: ['vieja'] })
 })
@@ -167,6 +167,41 @@ test('foto quitada de la nota: se marca en Drive y a los 30 días se borra de Dr
   await store.sync()
   assert.equal(drive.files.has('p1'), false)
   assert.equal(await db.get('img:p1'), undefined)
+})
+
+test('foto borrada en otro aparato: su copia local se queda si una nota de aquí la volvió a usar sin internet', async () => {
+  const db = await import('./db.ts')
+  const drive = fakeDrive()
+  const foto = (id: string) => drive.files.set(id, { id, name: 'foto.jpg', modifiedTime: drive.tick(), mimeType: 'image/jpeg', appProperties: { kind: 'image' }, body: 'JPG' })
+  drive.note('n1', 'Recibo', '<p>pago</p>')
+  foto('p2')
+  foto('p3')
+  await store.start('rescate@test')
+  await store.sync()
+  await db.set('img:p2', 'JPG')
+  await db.set('img:p3', 'JPG')
+  drive.setOnline(false)
+  store.edit('n1', { text: '<p>pago</p><img src="drive:p2">' }) // la vuelve a usar sin internet
+  drive.files.delete('p2') // otro aparato borró las dos
+  drive.files.delete('p3')
+  drive.setOnline(true)
+  await store.sync()
+  assert.equal(await db.get('img:p2'), 'JPG') // la nota la muestra: no se pierde aquí
+  assert.equal(await db.get('img:p3'), undefined) // nadie la usa: se libera el espacio
+})
+
+test('fotos: se procesan de a 30 por vuelta y lo que falta sigue en la siguiente', async () => {
+  const drive = fakeDrive()
+  drive.note('n1', 'Sin fotos', '<p>x</p>')
+  for (let i = 0; i < 35; i++) drive.files.set(`q${i}`, { id: `q${i}`, name: 'foto.jpg', modifiedTime: drive.tick(), mimeType: 'image/jpeg', appProperties: { kind: 'image' }, body: '' })
+  await store.start('lote@test')
+  await store.sync()
+  const marked = () => Object.values(store.getState().files).filter(f => f.appProperties?.sin_uso).length
+  assert.equal(store.cleanPhotos(Date.now()), false)
+  assert.equal(marked(), 30)
+  assert.equal(store.cleanPhotos(Date.now()), true)
+  assert.equal(marked(), 35)
+  await store.sync()
 })
 
 test('nota con clave: en el aparato va cifrada, con la caja cerrada no está en memoria ni se baja, y Drive queda sin cifrar', async () => {

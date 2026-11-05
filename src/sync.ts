@@ -160,7 +160,6 @@ function forget(id: string) {
   })
   delete sealed[id]
   db.del(`text:${id}`)
-  db.del(`img:${id}`)
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -225,6 +224,8 @@ async function pull() {
     if (files[id]) continue
     const t = state.texts[id]
     if (state.pending[id]?.content && t) create(old[id].appProperties ?? {}, t.title, t.text, 'text/html')
+    // Foto borrada en otro aparato: su copia local se borra, salvo que una nota de aquí la nombre (la volvió a usar sin internet).
+    if (old[id].appProperties?.kind === 'image' && !Object.values(state.texts).some(x => x.text.includes(`drive:${id}`))) db.del(`img:${id}`)
     forget(id)
   }
   persist()
@@ -360,13 +361,16 @@ export function photoPlan(s: Pick<State, 'files' | 'texts' | 'base' | 'pending' 
 }
 
 let cleaned = 0 // la limpieza corre al sincronizar, como mucho una vez por hora
+const PHOTO_BATCH = 30 // de a pocas por vuelta: cientos de cambios juntos frenan la subida y el guardado en el celular
+// false: no se pudo decidir, o quedan más para la siguiente vuelta.
 export function cleanPhotos(now = Date.now()) {
   const plan = photoPlan(state, now)
   if (!plan) return false
-  for (const id of plan.mark) patch(id, { props: { sin_uso: new Date(now).toISOString() } })
-  for (const id of plan.unmark) patch(id, { props: { sin_uso: null } })
-  for (const id of plan.remove) remove(id)
-  return true
+  let left = PHOTO_BATCH
+  for (const id of plan.unmark) if (left-- > 0) patch(id, { props: { sin_uso: null } })
+  for (const id of plan.mark) if (left-- > 0) patch(id, { props: { sin_uso: new Date(now).toISOString() } })
+  for (const id of plan.remove) if (left-- > 0) { remove(id); db.del(`img:${id}`) }
+  return left >= 0
 }
 
 // Nota que todavía no se bajó a este dispositivo (se pide al abrirla).
