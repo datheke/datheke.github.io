@@ -1,4 +1,4 @@
-import { ArrowUpCircle, BellRing, Check, CheckCircle2, ChevronDown, Copy, Download, ExternalLink, Globe, LogOut, Monitor, Smartphone, X } from 'lucide-react'
+import { ArrowUpCircle, BellRing, Check, CheckCircle2, ChevronDown, Copy, KeyRound, Download, ExternalLink, Globe, LogOut, Monitor, Smartphone, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { desktop } from './auth.ts'
 import { useBack } from './back.ts'
@@ -128,6 +128,14 @@ export function Account({ email, onLogout, update, mode, calendarHere, onPickMod
           {mode === 'calendar' && !calendarHere && <p className="cuenta-nota">
             En este aparato aún no está conectado: lo que cambies aquí llega a Calendar cuando abras Datheke en un aparato conectado.{' '}
             <button className="enlace" onClick={() => { close(); onConnect() }}>Conectar aquí</button></p>}
+        </Fold>
+        <Fold className="cuenta-olvido" icon={<KeyRound size={15} aria-hidden="true" />} title="Si olvidas tu clave">
+          <ol className="cuenta-pasos">
+            <li>En la ventana que pide la clave, <strong>mantén presionado el candado</strong> 2 segundos: aparece «¿Olvidaste la clave?».</li>
+            <li>Tócalo y entra con tu cuenta de Google (así se comprueba que eres tú).</li>
+            <li>Pon una clave nueva o quítasela a tus notas. <strong>No se pierde ninguna nota.</strong></li>
+          </ol>
+          <p className="cuenta-nota">En una nota compartida aparece «¿Nadie recuerda la clave?»: le quita la clave común para todos.</p>
         </Fold>
         <div className="cuenta-pie">
           <small>Datheke {__VERSION__}</small>

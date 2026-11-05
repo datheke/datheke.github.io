@@ -1,6 +1,5 @@
 import {
-  Bell, Users, Check, CheckSquare, ChevronLeft, CircleCheck, Circle, X as XIcon, FolderInput, RotateCcw, FileDown, Send, ChevronRight, FilePlus, FileText, GripVertical, KeyRound, LayoutTemplate, Lock, LockKeyhole, Maximize2, Minimize2, Notebook,
-  PanelLeftClose, PanelLeftOpen, Pencil, Plus, RefreshCw, Search, Shield, ShieldCheck, ShieldOff, Trash2,
+  Bell, Check, CheckSquare, ChevronLeft, ChevronRight, Circle, CircleCheck, FileDown, FilePlus, FileText, FolderInput, GripVertical, KeyRound, LayoutTemplate, LockKeyhole, Maximize2, Minimize2, Notebook, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Shield, ShieldCheck, ShieldOff, Trash2, Users, X as XIcon,
 } from 'lucide-react'
 import { useDeferredValue, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { closeTop, useBack } from './back.ts'
@@ -1302,7 +1301,7 @@ export default function App() {
                   {!trashView && nextOf(n) && <span className={`tarjeta-recordatorio ${groupOf(nextOf(n)!.r)}`}>
                     <Bell size={12} aria-hidden="true" /> {isLocked(n) ? 'Recordatorio' : nextOf(n)!.label}: {chipText(nextOf(n)!.r)}</span>}
                   {trashView && <span className="resumen basurero-dias">Se elimina en {daysLeft(n)} días</span>}
-                  <small>{shareOf(n) && !shareOf(n)!.fin && !shareOf(n)!.estado && <Users size={12} aria-label="Compartida" />}{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Lock size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
+                  <small>{shareOf(n) && !shareOf(n)!.fin && !shareOf(n)!.estado && <Users size={12} aria-label="Compartida" />}{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Pin size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
                 </button>
                 {!selected && <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
                   onPointerDown={e => startSort(e, (from, to) => saveOrder(siblings(shownParent(n)), from, to))}><GripVertical size={16} /></button>}
@@ -1342,7 +1341,7 @@ export default function App() {
             {!trashed && <>
             <button className={locked ? 'fijar fijada' : 'fijar'} onClick={() => store.patch(note.id, { props: { locked: locked ? null : 'true' } })}
               title={locked ? 'Cambiar la nota' : 'Fijar: solo leer y copiar, sin cambios sin querer'}>
-              {locked ? <><Pencil size={16} /> Editar</> : <><Lock size={16} /> Fijar</>}
+              {locked ? <><Pencil size={16} /> Editar</> : <><Pin size={16} /> Fijar</>}
             </button>
             <button className="btn-icono" onClick={() => newNote('', '', note.id)} title="Nueva subnota" aria-label="Nueva subnota"><FilePlus size={18} /></button>
             {withKey && !isClosed(note) && <button className="btn-icono" onClick={() => store.closeVault()} title="Cerrar las notas con clave"
@@ -1371,7 +1370,7 @@ export default function App() {
             <button className="principal" onClick={() => restore(note)}>Restaurar</button>
             <button className="peligro" onClick={() => deleteForever(note)}>Eliminar para siempre</button>
           </div>
-            : locked && <p className="aviso-fijada">🔒 Nota fijada: puedes leerla, copiar y marcar casillas. Toca <strong>Editar</strong> para cambiarla.</p>}
+            : locked && <p className="aviso-fijada">📌 Nota fijada: puedes leerla, copiar y marcar casillas. Toca <strong>Editar</strong> para cambiarla.</p>}
           {sealedNote ? <div className="nota-scroll">
             <h1 className="titulo-cerrado">{note.name || UNTITLED}</h1>
             {commonKey(note) ? <Unlock key={commonKey(note)} common verifier={commonKey(note)} onForgot={() => forgotCommonKey(note)} onOpen={offer => {
