@@ -190,6 +190,25 @@ test('foto borrada en otro aparato: su copia local se queda si una nota de aquí
   assert.equal(await db.get('img:p3'), undefined) // nadie la usa: se libera el espacio
 })
 
+test('nota que sale del basurero para siempre: sus fotos se van con ella, salvo las que usa otra nota (una plantilla)', async () => {
+  const drive = fakeDrive()
+  const foto = (id: string) => drive.files.set(id, { id, name: 'foto.jpg', modifiedTime: drive.tick(), mimeType: 'image/jpeg', appProperties: { kind: 'image' }, body: 'JPG' })
+  drive.note('n1', 'Cotización', '<p>Sr. Pérez</p><img src="drive:p4"><img src="drive:p5">')
+  drive.files.get('n1')!.appProperties = { kind: 'note', borrada: new Date().toISOString(), cover: 'p6' }
+  drive.note('n2', 'Plantilla', '<img src="drive:p5">')
+  for (const id of ['p4', 'p5', 'p6']) foto(id)
+  await store.start('basurero@test')
+  await store.sync()
+  store.remove('n1') // vaciar el basurero, o pasaron sus 30 días
+  await store.sync()
+  store.cleanPhotos(Date.now())
+  await store.sync()
+  assert.equal(drive.files.has('p4'), false)
+  assert.equal(drive.files.has('p6'), false) // su portada también
+  assert.equal(drive.files.has('p5'), true) // la plantilla la usa
+  assert.equal(drive.files.get('p5')!.appProperties?.sin_uso ?? null, null)
+})
+
 test('fotos: se procesan de a 30 por vuelta y lo que falta sigue en la siguiente', async () => {
   const drive = fakeDrive()
   drive.note('n1', 'Sin fotos', '<p>x</p>')

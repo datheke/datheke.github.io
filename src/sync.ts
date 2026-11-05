@@ -324,10 +324,15 @@ export function patch(id: string, change: { name?: string; props?: Props }) {
   schedule(500)
 }
 
+// Nota que sale del basurero para siempre: sus fotos ya esperaron ahí y se van con ella (photoPlan no borra las que otra nota usa).
+const WAITED = '2000-01-01T00:00:00.000Z'
 export function remove(id: string) {
+  const f = state.files[id]
+  const photos = f?.appProperties?.borrada ? [...photoRefs(state.texts[id]?.text ?? ''), f.appProperties?.cover ?? ''] : []
   const inDrive = !state.pending[id]?.create
   forget(id)
   if (inDrive) update({ pending: { ...state.pending, [id]: { remove: true } } })
+  for (const p of photos) if (state.files[p]?.appProperties?.kind === 'image') patch(p, { props: { sin_uso: WAITED } })
   persist()
   schedule(500)
 }
@@ -341,14 +346,15 @@ export async function addImage(blob: Blob): Promise<string> {
 // Fotos que ya no usa ninguna nota: se marcan "sin_uso" en Drive (lo ven todos los aparatos) y a los 30 días se borran.
 // Si vuelven a usarse (deshacer, otro aparato) se desmarcan. Sin el texto al día de todas las notas no se decide nada.
 const PHOTO_DAYS = 30
+// Cualquier mención "drive:ID" cuenta como uso: más amplio que src="drive:…", a propósito.
+const photoRefs = (html: string) => [...html.matchAll(/drive:([\w-]+)/g)].map(m => m[1])
 export function photoPlan(s: Pick<State, 'files' | 'texts' | 'base' | 'pending' | 'conflicts'>, now: number) {
   const files = Object.values(s.files)
   const notes = files.filter(f => f.appProperties?.kind === 'note')
   if (notes.some(f => !s.texts[f.id] || (!s.pending[f.id]?.content && s.base[f.id] !== f.modifiedTime))) return null
   const used = new Set(files.map(f => f.appProperties?.cover).filter(Boolean))
-  // Cualquier mención "drive:ID" cuenta como uso: más amplio que src="drive:…", a propósito.
   for (const html of [...notes.map(f => s.texts[f.id].text), ...Object.values(s.conflicts).map(c => c.text)])
-    for (const m of html.matchAll(/drive:([\w-]+)/g)) used.add(m[1])
+    for (const ref of photoRefs(html)) used.add(ref)
   const plan = { mark: [] as string[], unmark: [] as string[], remove: [] as string[] }
   for (const f of files) {
     if (f.appProperties?.kind !== 'image' || s.pending[f.id]?.create) continue
