@@ -160,6 +160,7 @@ function forget(id: string) {
   })
   delete sealed[id]
   db.del(`text:${id}`)
+  db.del(`img:${id}`)
 }
 
 let timer: ReturnType<typeof setTimeout> | undefined
@@ -199,6 +200,7 @@ async function run() {
   try {
     await pull()
     await push()
+    if (Date.now() - cleaned > 3600_000 && cleanPhotos()) cleaned = Date.now()
     if (state.ids.length < 10) {
       update({ ids: [...state.ids, ...await generateIds(20)] })
       persist()
@@ -333,6 +335,38 @@ export async function addImage(blob: Blob): Promise<string> {
   const id = takeId()
   await db.set(`img:${id}`, blob)
   return create({ kind: 'image' }, 'foto.jpg', undefined, blob.type, id)
+}
+
+// Fotos que ya no usa ninguna nota: se marcan "sin_uso" en Drive (lo ven todos los aparatos) y a los 30 días se borran.
+// Si vuelven a usarse (deshacer, otro aparato) se desmarcan. Sin el texto al día de todas las notas no se decide nada.
+const PHOTO_DAYS = 30
+export function photoPlan(s: Pick<State, 'files' | 'texts' | 'base' | 'pending' | 'conflicts'>, now: number) {
+  const files = Object.values(s.files)
+  const notes = files.filter(f => f.appProperties?.kind === 'note')
+  if (notes.some(f => !s.texts[f.id] || (!s.pending[f.id]?.content && s.base[f.id] !== f.modifiedTime))) return null
+  const used = new Set(files.map(f => f.appProperties?.cover).filter(Boolean))
+  // Cualquier mención "drive:ID" cuenta como uso: más amplio que src="drive:…", a propósito.
+  for (const html of [...notes.map(f => s.texts[f.id].text), ...Object.values(s.conflicts).map(c => c.text)])
+    for (const m of html.matchAll(/drive:([\w-]+)/g)) used.add(m[1])
+  const plan = { mark: [] as string[], unmark: [] as string[], remove: [] as string[] }
+  for (const f of files) {
+    if (f.appProperties?.kind !== 'image' || s.pending[f.id]?.create) continue
+    const since = f.appProperties?.sin_uso
+    if (used.has(f.id)) { if (since) plan.unmark.push(f.id) }
+    else if (!since) plan.mark.push(f.id)
+    else if (now - Date.parse(since) >= PHOTO_DAYS * 86400_000) plan.remove.push(f.id)
+  }
+  return plan
+}
+
+let cleaned = 0 // la limpieza corre al sincronizar, como mucho una vez por hora
+export function cleanPhotos(now = Date.now()) {
+  const plan = photoPlan(state, now)
+  if (!plan) return false
+  for (const id of plan.mark) patch(id, { props: { sin_uso: new Date(now).toISOString() } })
+  for (const id of plan.unmark) patch(id, { props: { sin_uso: null } })
+  for (const id of plan.remove) remove(id)
+  return true
 }
 
 // Nota que todavía no se bajó a este dispositivo (se pide al abrirla).

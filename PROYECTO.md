@@ -50,7 +50,8 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 
 ## Versiones y basurero
 - Notas activas = siempre la última versión (se pisa la anterior).
-- Decidido por David (noviembre de 2026): una sola versión anterior por nota, para recuperar lo que se borre sin querer. Es cómo estaba la nota antes de la última vez que se empezó a cambiar; se reemplaza en la siguiente edición (otro día o tras 10 minutos sin tocarla). En el menú de la nota: "Ver versión anterior" y "Restaurar". Fijar no crea versiones.
+- Decidido por David (noviembre de 2026): una sola versión anterior por nota, para recuperar lo que se borre sin querer. Es cómo estaba la nota antes de la última vez que se empezó a cambiar; se reemplaza en la siguiente edición (otro día o tras 10 minutos sin tocarla). En el menú de la nota: "Ver versión anterior" y "Restaurar". Fijar no crea versiones. Las fotos de la versión anterior tienen que contar como usadas en la limpieza de fotos (`photoPlan` en `src/sync.ts`).
+- Fotos sin uso (hecho, noviembre de 2026): la foto que ya no usa ninguna nota (contando portadas, basurero, plantillas y conflictos) se marca y a los 30 días se borra de Drive y del aparato. Si vuelve a usarse, se desmarca. Si falta el texto de alguna nota (por ejemplo, notas con clave cerradas), no se decide nada.
 - Borrado automático del basurero a los 30 días.
 - Las fotos no se duplican entre versiones.
 
@@ -106,7 +107,7 @@ Revisado contra el menú `/`, los botones de la app, todo el historial de versio
 | 1 a 3 | Todo | Nada | Nada |
 | 4 | Windows y Android | Mac. Carpeta visible en Android: David la buscó en Documentos y no aparece | Nada |
 | 5 | Íconos y Gemini | Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini). Diseño nuevo (ver abajo) | Nada |
-| 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal y protección al borrar (ver "Protección contra borrado") | Limpiar de Drive las fotos que ya no usa ninguna nota. Una versión anterior por nota (ver "Versiones y basurero") | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
+| 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal, protección al borrar (ver "Protección contra borrado") y limpieza de fotos sin uso (programada; falta publicarla y probarla en el celular) | Una versión anterior por nota (ver "Versiones y basurero") | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
 | 7 | Nada | Calendario dentro de la app, Kanban y tablas con filtros y orden, unidos a los recordatorios | Nada |
 | 8 | Notas compartidas por correo (todos pueden editar) y clave común | Elegir "puede editar" o "solo ver", y poder cambiarlo o quitarlo después. Combinar los cambios cuando dos personas editan la misma nota a la vez | Nada |
 | Ideas nuevas | — | Dispositivos, con un apartado para celular perdido o robado. Importar notas de Evernote. Preferencias: libreta para notas nuevas, letra por defecto y modo oscuro | Etiquetas (recomendado: no por ahora) |

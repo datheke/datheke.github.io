@@ -19,7 +19,7 @@ async function compress(file: File, max = 1600, quality = 0.8): Promise<Blob> {
 }
 
 // La foto queda en el dispositivo al instante y se sube con lo demás (también sin internet).
-// shortcut: las fotos que se borran de una nota (o de una nota borrada) quedan en Drive; se limpian en la etapa 6 (basurero).
+// La que ya no usa ninguna nota se borra sola a los 30 días (cleanPhotos en sync.ts).
 export async function uploadImage(file: File): Promise<string> {
   return addImage(await compress(file))
 }

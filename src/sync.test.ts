@@ -114,6 +114,61 @@ test('borrar sin internet: no reaparece al leer Drive y se borra de Drive al vol
   assert.deepEqual(store.getState().pending, {})
 })
 
+const DAY = 86400_000
+const NOW = Date.parse('2026-11-05T12:00:00Z')
+const ago = (days: number) => new Date(NOW - days * DAY).toISOString()
+const img = (id: string, extra: Record<string, string> = {}) => ({ id, name: 'foto.jpg', modifiedTime: 't', appProperties: { kind: 'image', ...extra } })
+const nota = (id: string, extra: Record<string, string> = {}) => ({ id, name: id, modifiedTime: 't1', appProperties: { kind: 'note', ...extra } })
+type Plan = Parameters<typeof store.photoPlan>[0]
+const plan = (files: ReturnType<typeof img>[], texts: Record<string, string>, extra: Partial<Plan> = {}) => store.photoPlan({
+  files: Object.fromEntries(files.map(f => [f.id, f])),
+  texts: Object.fromEntries(Object.entries(texts).map(([id, text]) => [id, { title: id, text }])),
+  base: Object.fromEntries(files.filter(f => f.appProperties.kind === 'note').map(f => [f.id, f.modifiedTime])),
+  pending: {}, conflicts: {}, ...extra,
+}, NOW)
+
+test('fotos sin uso: se marcan, se borran a los 30 días y se desmarcan si vuelven a usarse', () => {
+  const p = plan([nota('n1'), img('usada'), img('nueva'), img('vieja', { sin_uso: ago(31) }), img('reciente', { sin_uso: ago(5) }), img('volvio', { sin_uso: ago(40) })],
+    { n1: '<p>x</p><img src="drive:usada"><img src="drive:volvio">' })
+  assert.deepEqual(p, { mark: ['nueva'], unmark: ['volvio'], remove: ['vieja'] })
+})
+
+test('fotos que cuentan como usadas: portada, nota del basurero, la otra versión de un conflicto; la recién puesta espera', () => {
+  const p = plan([nota('n1', { cover: 'portada' }), nota('n2', { borrada: ago(3) }), img('portada'), img('del-basurero'), img('del-conflicto'), img('recien')],
+    { n1: '<p>a</p>', n2: '<img src="drive:del-basurero">' },
+    { conflicts: { n1: { title: 'n1', text: '<img src="drive:del-conflicto">', modifiedTime: 't2' } }, pending: { recien: { create: true } } })
+  assert.deepEqual(p, { mark: [], unmark: [], remove: [] })
+})
+
+test('fotos: si falta el texto de una nota (caja cerrada, aún bajando) o no está al día, no se decide nada', () => {
+  assert.equal(plan([nota('n1'), nota('cerrada', { protegida: 'true' }), img('x', { sin_uso: ago(60) })], { n1: '<p>a</p>' }), null)
+  assert.equal(plan([nota('n1'), img('x')], { n1: '<p>a</p>' }, { base: { n1: 't0' } }), null) // en Drive hay una más nueva sin bajar
+  // la de aquí es la más nueva (cambios sin subir): sí se decide
+  assert.deepEqual(plan([nota('n1'), img('x')], { n1: '<p>a</p>' }, { base: { n1: 't0' }, pending: { n1: { content: true } } }), { mark: ['x'], unmark: [], remove: [] })
+})
+
+test('foto quitada de la nota: se marca en Drive y a los 30 días se borra de Drive y del aparato', async () => {
+  const db = await import('./db.ts')
+  const drive = fakeDrive()
+  drive.note('n1', 'Recibo', '<p>pago</p><img src="drive:p1">')
+  drive.files.set('p1', { id: 'p1', name: 'foto.jpg', modifiedTime: drive.tick(), mimeType: 'image/jpeg', appProperties: { kind: 'image' }, body: 'JPG' })
+  await store.start('fotos@test')
+  await store.sync()
+  await db.set('img:p1', 'JPG')
+  store.cleanPhotos(Date.now())
+  await store.sync()
+  assert.equal(drive.files.get('p1')!.appProperties?.sin_uso, undefined) // en uso: no se toca
+  store.edit('n1', { text: '<p>pago</p>' })
+  await store.sync()
+  store.cleanPhotos(Date.now())
+  await store.sync()
+  assert.ok(drive.files.get('p1')!.appProperties?.sin_uso, 'queda marcada sin uso')
+  store.cleanPhotos(Date.now() + 31 * DAY)
+  await store.sync()
+  assert.equal(drive.files.has('p1'), false)
+  assert.equal(await db.get('img:p1'), undefined)
+})
+
 test('nota con clave: en el aparato va cifrada, con la caja cerrada no está en memoria ni se baja, y Drive queda sin cifrar', async () => {
   const vault = await import('./vault.ts')
   const db = await import('./db.ts')
