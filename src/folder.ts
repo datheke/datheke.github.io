@@ -39,6 +39,12 @@ export function plan({ files, texts }: Pick<store.State, 'files' | 'texts'>) {
   return out
 }
 
+// Android: el $DOCUMENT de Tauri es la carpeta privada de la app (Android/data/…, escondida); se escribe en la de verdad.
+// shortcut: ruta del usuario principal y Android 11 o más nuevo; en uno más viejo falla sin frenar la app, como antes.
+const android = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent)
+const ANDROID_DOCS = '/storage/emulated/0/Documents'
+let oldCopyGone = false
+
 let root = ''
 let written = new Map<string, string>() // nota → archivo que escribió la app (se guarda en .datheke.json)
 const lastHtml = new Map<string, string>()
@@ -47,7 +53,7 @@ let busy = false
 let again = false
 
 export function startFolder(email: string) {
-  root = `Datheke/${safeName(email)}`
+  root = `${android ? `${ANDROID_DOCS}/` : ''}Datheke/${safeName(email)}`
   mirror()
   return store.subscribe(() => { clearTimeout(timer); timer = setTimeout(mirror, 2000) })
 }
@@ -57,7 +63,9 @@ async function mirror() {
   busy = true
   try {
     const fs = await import('@tauri-apps/plugin-fs')
-    const opt = { baseDir: fs.BaseDirectory.Document }
+    const opt = android ? {} : { baseDir: fs.BaseDirectory.Document }
+    // La copia que quedaba escondida en Android: nadie la veía y ocupaba espacio doble.
+    if (android && !oldCopyGone) { oldCopyGone = true; await fs.remove('Datheke', { baseDir: fs.BaseDirectory.Document, recursive: true }).catch(() => {}) }
     const manifest = `${root}/.datheke.json`
     // Si alguien borró la carpeta, se vuelve a escribir entera.
     if (!await fs.exists(root, opt)) { written.clear(); lastHtml.clear() }

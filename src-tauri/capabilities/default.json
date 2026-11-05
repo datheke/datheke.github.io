@@ -21,6 +21,12 @@
           "path": "$DOCUMENT/Datheke/**"
         },
         {
+          "path": "/storage/emulated/0/Documents/Datheke"
+        },
+        {
+          "path": "/storage/emulated/0/Documents/Datheke/**"
+        },
+        {
           "path": "$APPCACHE"
         },
         {
