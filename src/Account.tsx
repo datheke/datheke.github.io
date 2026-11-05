@@ -128,6 +128,9 @@ export function Account({ email, onLogout, update, mode, calendarHere, onPickMod
           {mode === 'calendar' && !calendarHere && <p className="cuenta-nota">
             En este aparato aún no está conectado: lo que cambies aquí llega a Calendar cuando abras Datheke en un aparato conectado.{' '}
             <button className="enlace" onClick={() => { close(); onConnect() }}>Conectar aquí</button></p>}
+          {/* Escondido aquí a propósito: cómo recuperar la clave de notas. */}
+          <p className="cuenta-nota cuenta-olvido">¿Olvidaste tu clave de notas? En la ventana que la pide, mantén presionado el candado
+            2 segundos y toca «¿Olvidaste la clave?». Entras con tu cuenta de Google y pones una nueva; no se pierde ninguna nota.</p>
         </Fold>
         <div className="cuenta-pie">
           <small>Datheke {__VERSION__}</small>

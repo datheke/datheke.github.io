@@ -1,5 +1,5 @@
 import { Fingerprint, KeyRound, LockKeyhole } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { forgetPrint, openWithPrint, printAvailable, savedPrint, savePrint } from './print.ts'
 import * as vault from './vault.ts'
 
@@ -15,6 +15,11 @@ export function Unlock({ verifier, onOpen, onForgot, compact, common, purpose }:
   verifier: string; onOpen: (offerPrint: boolean) => void; onForgot: () => void; compact?: boolean; common?: boolean; purpose?: 'proteger' | 'quitar'
 }) {
   const protecting = purpose === 'proteger'
+  // "¿Olvidaste la clave?" no se ve: aparece al mantener presionado el candado 2 segundos (lo explica la tarjeta de la cuenta).
+  const [forgot, setForgot] = useState(false)
+  const hold = useRef(0)
+  const release = () => window.clearTimeout(hold.current)
+  useEffect(() => release, [])
   const salt = common ? vault.saltOf(verifier) : undefined
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -56,7 +61,10 @@ export function Unlock({ verifier, onOpen, onForgot, compact, common, purpose }:
 
   return (
     <form className={compact ? 'caja' : 'caja caja-grande'} onSubmit={e => { e.preventDefault(); submit() }}>
-      <LockKeyhole size={36} className="caja-icono" aria-hidden="true" />
+      <span className="caja-candado" onContextMenu={e => e.preventDefault()} onPointerUp={release} onPointerLeave={release} onPointerCancel={release}
+        onPointerDown={() => { release(); hold.current = window.setTimeout(() => setForgot(true), 2000) }}>
+        <LockKeyhole size={36} className="caja-icono" aria-hidden="true" />
+      </span>
       <p><strong>{purpose === 'quitar' ? 'Quitar la clave' : common ? 'Nota compartida con clave común' : protecting ? 'Proteger con tu clave' : 'Nota con clave'}</strong></p>
       {purpose === 'quitar' && <p className="caja-nota">Escribe la clave para quitársela a esta nota.</p>}
       {common && purpose !== 'quitar' && <p className="caja-nota">Se abre con la clave que pusieron para esta nota (la misma para todos los que la tienen).</p>}
@@ -69,7 +77,7 @@ export function Unlock({ verifier, onOpen, onForgot, compact, common, purpose }:
       {print && <button type="button" onClick={withPrint}><Fingerprint size={16} /> Usar huella</button>}
       {canPrint && !print && <p className="caja-nota"><Fingerprint size={14} aria-hidden="true" /> Escribe tu clave una vez y podrás activar la huella.</p>}
       {error && <p className="error">{error}</p>}
-      <button type="button" className="enlace" onClick={onForgot}>{common ? '¿Nadie recuerda la clave?' : '¿Olvidaste la clave?'}</button>
+      {forgot && <button type="button" className="enlace" onClick={onForgot}>{common ? '¿Nadie recuerda la clave?' : '¿Olvidaste la clave?'}</button>}
     </form>
   )
 }
