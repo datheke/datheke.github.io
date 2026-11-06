@@ -1,0 +1,250 @@
+Account.tsx · Abrir en el navegador
+Account.tsx · Android
+Account.tsx · App de Windows
+Account.tsx · Copiar la dirección
+Account.tsx · Datheke
+Account.tsx · Documentos
+Account.tsx · Documents
+Account.tsx · Entra también desde la web
+Account.tsx · Es la más reciente
+Account.tsx · Esta es la versión web
+Account.tsx · Google Calendar
+Account.tsx · Salir
+Account.tsx · Sesión iniciada como
+Account.tsx · Tu cuenta y la versión web
+Account.tsx · Versión
+Account.tsx · Versión web
+Account.tsx · Windows
+App.tsx · ¿Qué versión quieres conservar?
+App.tsx · ahora tiene una clave común
+App.tsx · Basurero
+App.tsx · Borrar
+App.tsx · Borrar la búsqueda
+App.tsx · Borrar libreta
+App.tsx · Borrar nota
+App.tsx · Buscar en esta nota
+App.tsx · Buscar en tus notas
+App.tsx · Cambiar clave
+App.tsx · Cambiar la clave común
+App.tsx · Cambiar la nota
+App.tsx · cambió de clave común
+App.tsx · cambio pendiente
+App.tsx · cambios pendientes
+App.tsx · Cancelar
+App.tsx · Cerrar las notas con clave
+App.tsx · Compartida
+App.tsx · Compartida: personas…
+App.tsx · Compartir con…
+App.tsx · Con clave
+App.tsx · Dar permiso
+App.tsx · Desde plantilla…
+App.tsx · Editar
+App.tsx · Eliminar
+App.tsx · Fijada
+App.tsx · Fijar
+App.tsx · Fijar: solo leer y copiar, sin cambios sin querer
+App.tsx · Guardar como plantilla
+App.tsx · Hacer ahora
+App.tsx · Hacer privada la libreta
+App.tsx · Hacer privada: sin Gemini
+App.tsx · Haciendo…
+App.tsx · La del otro dispositivo
+App.tsx · Las fotos de esta versión ya se borraron: al restaurar se recupera solo el texto.
+App.tsx · Libreta de la nota
+App.tsx · Marcar hecho
+App.tsx · Mostrar lista de notas
+App.tsx · Mover
+App.tsx · Mover a la libreta
+App.tsx · Mover a otra libreta
+App.tsx · Mover a…
+App.tsx · Ninguna
+App.tsx · Nota
+App.tsx · Nota fijada: toca Editar para moverla
+App.tsx · Nota recibida
+App.tsx · Nueva nota desde plantilla
+App.tsx · Nueva subnota
+App.tsx · Ocultar lista de notas
+App.tsx · p.hit ?
+App.tsx · Pantalla completa
+App.tsx · para cambiarla.
+App.tsx · Poner clave común
+App.tsx · Privada por su libreta
+App.tsx · Privada: sin Gemini
+App.tsx · Proteger con clave
+App.tsx · puede editar
+App.tsx · Quitar clave
+App.tsx · Quitar ícono
+App.tsx · Quitar portada
+App.tsx · Quitar privada a la libreta
+App.tsx · Reconectar
+App.tsx · Recordatorios
+App.tsx · Reintentar
+App.tsx · Renombrar libreta
+App.tsx · Restaurar
+App.tsx · Salir de pantalla completa
+App.tsx · Se abrió tu navegador: entra con Google ahí y luego vuelve a esta ventana.
+App.tsx · Seleccionar varias notas
+App.tsx · solo puede ver
+App.tsx · Terminar de seleccionar
+App.tsx · Todas
+App.tsx · Todas las notas
+App.tsx · Tus notas se guardan en tu propio Google Drive.
+App.tsx · Ver la versión del otro dispositivo
+App.tsx · Ver las libretas
+App.tsx · Ver versión anterior
+Editor.tsx · Advertencia ⚠️
+Editor.tsx · Agregar columna
+Editor.tsx · Agregar fila
+Editor.tsx · Anterior
+Editor.tsx · Arrastrar para mover
+Editor.tsx · Aumentar sangría
+Editor.tsx · Borrar columna
+Editor.tsx · Borrar fila
+Editor.tsx · Borrar tabla
+Editor.tsx · buscado actual
+Editor.tsx · Buscar en esta nota
+Editor.tsx · Calculadora 🧮
+Editor.tsx · Casillas
+Editor.tsx · Cita
+Editor.tsx · Color de letra
+Editor.tsx · Color de resaltado
+Editor.tsx · Cursiva
+Editor.tsx · Deshacer
+Editor.tsx · Desplegable
+Editor.tsx · Disminuir sangría
+Editor.tsx · Emoji
+Editor.tsx · Enlace
+Editor.tsx · Estilo de párrafo
+Editor.tsx · ev.clientY
+Editor.tsx · Foto
+Editor.tsx · Fuente
+Editor.tsx · Gemini con lo seleccionado
+Editor.tsx · Gemini: corregir, resumir, sacar tareas o pedir algo
+Editor.tsx · Importante ❗
+Editor.tsx · Insertar tabla
+Editor.tsx · Interlineado
+Editor.tsx · Línea al lado ───
+Editor.tsx · Lista
+Editor.tsx · Lista con viñetas
+Editor.tsx · Lista numerada
+Editor.tsx · Negrita
+Editor.tsx · Normal
+Editor.tsx · Pegar con formato
+Editor.tsx · Quitar formato
+Editor.tsx · Record
+Editor.tsx · Recordatorio 🔔
+Editor.tsx · Recuadro 💡
+Editor.tsx · Rehacer
+Editor.tsx · Resaltar
+Editor.tsx · Se pegó sin formato.
+Editor.tsx · Separador
+Editor.tsx · Siguiente
+Editor.tsx · Sin resultados
+Editor.tsx · Subrayado
+Editor.tsx · Tabla
+Editor.tsx · Tachado
+Editor.tsx · Tamaño de letra
+Editor.tsx · Título 1
+Editor.tsx · Título 2
+Editor.tsx · Título 3
+GeminiPanel.tsx · Agregar al final
+GeminiPanel.tsx · Agregar debajo
+GeminiPanel.tsx · Cancelar
+GeminiPanel.tsx · Clave de Gemini
+GeminiPanel.tsx · Crear clave de API
+GeminiPanel.tsx · Descartar
+GeminiPanel.tsx · Desvincular Gemini
+GeminiPanel.tsx · Dictar a Gemini
+GeminiPanel.tsx · Dictar otra vez
+GeminiPanel.tsx · donde está el cursor
+GeminiPanel.tsx · Ej.: escríbelo como correo formal
+GeminiPanel.tsx · Ej.: lista de compras para una parrillada de 10
+GeminiPanel.tsx · en lugar de lo seleccionado
+GeminiPanel.tsx · Enviar igual
+GeminiPanel.tsx · Es una cuenta:
+GeminiPanel.tsx · Esta libreta es privada
+GeminiPanel.tsx · Esta nota parece tener datos privados
+GeminiPanel.tsx · Gemini
+GeminiPanel.tsx · Marcarla privada
+GeminiPanel.tsx · Nota privada
+GeminiPanel.tsx · Otra vez
+GeminiPanel.tsx · Pega la clave aquí
+GeminiPanel.tsx · Pídele algo a Gemini
+GeminiPanel.tsx · Poner calculadora
+GeminiPanel.tsx · Poner como texto
+GeminiPanel.tsx · Poner donde está el cursor
+GeminiPanel.tsx · Poner en la calculadora
+GeminiPanel.tsx · Poner en la nota
+GeminiPanel.tsx · Reemplazar la nota
+GeminiPanel.tsx · Reemplazar lo seleccionado
+GeminiPanel.tsx · Revisando…
+GeminiPanel.tsx · Toca
+GeminiPanel.tsx · una sola vez y funciona en todos tus aparatos con esta cuenta.
+GeminiPanel.tsx · Va en la calculadora de tu lista
+GeminiPanel.tsx · Va en una calculadora debajo de tu lista
+GeminiPanel.tsx · Vincular
+GeminiPanel.tsx · Vuelve aquí, pégala abajo y toca
+GeminiPanel.tsx · y entra con tu cuenta.
+ReminderDialog.tsx · A todos
+ReminderDialog.tsx · Borrar todo el historial
+ReminderDialog.tsx · Hora
+ReminderDialog.tsx · Insistir hasta que lo marque
+ReminderDialog.tsx · Quitar
+ReminderDialog.tsx · Repetir
+ReminderDialog.tsx · Si no lo marcas hecho, vuelve a avisar cada día a la misma hora.
+ReminderDialog.tsx · Solo a mí
+ReminderDialog.tsx · Sonará
+Reminders.tsx · App de Android
+Reminders.tsx · Avanzado → Ir a Datheke
+Reminders.tsx · Cambiar tono del aviso
+Reminders.tsx · Cancelar
+Reminders.tsx · Conectar en este aparato
+Reminders.tsx · Conectar Google Calendar
+Reminders.tsx · Datheke
+Reminders.tsx · Datheke copia tus recordatorios a tu
+Reminders.tsx · Google Calendar
+Reminders.tsx · Lo pone Windows: Configuración → Sistema → Notificaciones → Datheke.
+Reminders.tsx · nunca hay dos avisos
+Reminders.tsx · Para que suene, haz esto una vez en cada aparato:
+Reminders.tsx · Recordatorio
+Reminders.tsx · Recordatorios con Datheke
+Reminders.tsx · Recordatorios con Google Calendar
+Reminders.tsx · suena la notificación de Datheke
+Reminders.tsx · y es Calendar quien avisa. Datheke ya no suena, así
+Share.tsx · Cancelar
+Share.tsx · datheke.github.io
+Share.tsx · desde el navegador, con tu misma cuenta de Google.
+Share.tsx · dueño
+Share.tsx · Entra a
+Share.tsx · Listo: aparece sola aquí en la app y en tus otros aparatos.
+Share.tsx · nombre@gmail.com
+Share.tsx · Nota recibida
+Share.tsx · Nota recibida → Compartida conmigo
+Share.tsx · puede editar
+Share.tsx · Puede editar
+Share.tsx · Quitársela:
+Share.tsx · se queda con la nota como está ahora, como nota suya. Ya no le llegan tus cambios.
+Share.tsx · solo para verla: no puedes cambiarla, y lo que cambie te llega a ti.
+Share.tsx · solo ver
+Share.tsx · Solo ver
+Share.tsx · Te mandaron una copia por WhatsApp, correo… Queda como nota tuya.
+Share.tsx · Toca
+Share.tsx · y elige la nota.
+Vault.tsx · Abrir
+Vault.tsx · Ahora no
+Vault.tsx · Cancelar
+Vault.tsx · Clave actual
+Vault.tsx · Clave de esta nota
+Vault.tsx · Clave de notas
+Vault.tsx · Clave nueva
+Vault.tsx · Continuar
+Vault.tsx · Crea tu clave de notas
+Vault.tsx · Escribe tu clave nueva
+Vault.tsx · Nota con clave
+Vault.tsx · Proteger con tu clave
+Vault.tsx · Quitar
+Vault.tsx · Repite la clave
+Vault.tsx · Repite la clave nueva
+Vault.tsx · Sí, usar huella
+Vault.tsx · Tu clave de notas
+Vault.tsx · Usar huella
