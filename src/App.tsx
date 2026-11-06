@@ -216,7 +216,7 @@ export default function App() {
   // Cambia (o quita) un recordatorio dentro del texto de su nota; el editor se vuelve a dibujar si está abierta.
   const changeReminder = (noteId: string, id: string, r: Reminder | null) => {
     const t = s.texts[noteId]
-    if (t) store.replaceText(noteId, updateIn(t.text, id, r))
+    if (t && !viewOnly(s.files[noteId])) store.replaceText(noteId, updateIn(t.text, id, r)) // solo para ver: no se cambia
   }
   const lastBackup = settings?.appProperties?.respaldo ?? ''
   // Quién avisa los recordatorios: Datheke o Google Calendar. Uno solo para toda la cuenta (en Ajustes): nunca suenan dos.
@@ -879,13 +879,16 @@ export default function App() {
         // Dueño: quien se salió con "solo ver" (Google no lo deja quitarse) dejó un aviso: se le quita y sale de la lista.
         if (sh.owner && Date.now() - (leftChecked.current.get(sh.id) ?? 0) > 5 * 60_000) {
           leftChecked.current.set(sh.id, Date.now())
-          const notices = await shared.leftNotices(sh.id).catch(() => [])
-          const gone = notices.length ? shared.whoLeft(notices, await shared.people(sh.id), email => sh.people.find(c => c.email === email)?.desde || undefined) : []
-          for (const p of gone) await shared.uninvite(sh.id, p.id)
-          if (gone.length) {
-            const out = new Set(gone.map(p => p.emailAddress?.toLowerCase()))
-            store.patch(n.id, { props: conProps(n, sh.people.filter(c => !out.has(c.email))) })
-            setToast(`${gone.map(p => p.displayName || p.emailAddress).join(', ')} salió de «${title || UNTITLED}».`)
+          const out: shared.Person[] = []
+          try { // si Google falla aquí, esta nota y las demás se siguen sincronizando; se vuelve a mirar en 5 minutos
+            const notices = await shared.leftNotices(sh.id)
+            const gone = notices.length ? shared.whoLeft(notices, await shared.people(sh.id), email => sh.people.find(c => c.email === email)?.desde || undefined) : []
+            for (const p of gone) { await shared.uninvite(sh.id, p.id); out.push(p) }
+          } catch (e) { console.error('Avisos de salida', e) }
+          if (out.length) { // los que sí se quitaron salen de la lista, aunque otro haya fallado
+            const emails = new Set(out.map(p => p.emailAddress?.toLowerCase()))
+            store.patch(n.id, { props: conProps(n, sh.people.filter(c => !emails.has(c.email))) })
+            setToast(`${out.map(p => p.displayName || p.emailAddress).join(', ')} salió de «${title || UNTITLED}».`)
           }
         }
         // Invitado: ¿puede editarla o solo verla? El dueño lo puede cambiar cuando quiera.
@@ -1380,7 +1383,7 @@ export default function App() {
             </button>
             <div className="ruta">
               <select value={note.appProperties?.notebook} onChange={e => moveNote(e.target.value)} disabled={locked}
-                aria-label="Libreta de la nota" title={locked ? 'Nota fijada: toca Editar para moverla' : 'Mover a otra libreta'}>
+                aria-label="Libreta de la nota" title={viewOnly(note) ? 'Solo para verla' : locked ? 'Nota fijada: toca Editar para moverla' : 'Mover a otra libreta'}>
                 {notebooks.map(nb => <option key={nb.id} value={nb.id}>{nb.name}</option>)}
               </select>
               <ChevronRight size={14} aria-hidden="true" />
@@ -1422,6 +1425,7 @@ export default function App() {
             <button className="principal" onClick={() => restore(note)}>Restaurar</button>
             <button className="peligro" onClick={() => deleteForever(note)}>Eliminar para siempre</button>
           </div>
+            : viewOnly(note) ? <p className="aviso-fijada">👁️ Solo para verla: puedes leerla y copiar, pero no cambiarla.</p>
             : locked && <p className="aviso-fijada">📌 Nota fijada: puedes leerla, copiar y marcar casillas. Toca <strong>Editar</strong> para cambiarla.</p>}
           {sealedNote ? <div className="nota-scroll">
             <h1 className="titulo-cerrado">{note.name || UNTITLED}</h1>
@@ -1477,7 +1481,7 @@ export default function App() {
                 notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked} checkable={!viewOnly(note)}
                 geminiKey={geminiKey} onGeminiKey={setGeminiKey}
                 privacy={privacy} onPrivate={() => setPrivate(note, true)}
-                onReminder={id => setRemDlg({ noteId: note.id, id, label: reminders.find(x => x.r.id === id)?.label ?? 'Recordatorio' })}
+                onReminder={id => { if (!viewOnly(note)) setRemDlg({ noteId: note.id, id, label: reminders.find(x => x.r.id === id)?.label ?? 'Recordatorio' }) }}
                 onNewReminder={(label, insert) => setRemDlg({ noteId: note.id, label, insert })}
                 focusReminder={focusRem} find={noteFind} onFind={setNoteFind} />
             </> : <p className="vacio">Cargando…</p>}
