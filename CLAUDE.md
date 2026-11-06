@@ -9,7 +9,7 @@ Las reglas generales están en `~/.claude/CLAUDE.md`; aquí solo lo de este proy
 - ⚠️ Este repositorio es PÚBLICO: nunca escribas aquí correos, claves ni datos privados.
 
 ## Cuentas y publicación (no mezclar con otros proyectos)
-- GitHub: org `datheke`, se sube con la cuenta `david3gallegos3work-gif` (va en la URL del remote). Google Cloud: ver la sección `notas-david` de `.cuentas.json`.
+- GitHub: org `datheke`, se sube con la cuenta `david3gallegos3work-gif` (va en la URL del remote). Google Cloud: datos en las cuentas privadas de David.
 - ⚠️ Aquí "sube" TAMBIÉN publica: cada push a main publica la web en GitHub Pages (`pages.yml`). No usa Vercel ni Supabase.
 - Las apps de escritorio y Android se compilan solo en GitHub Actions (`desktop.yml`, manual); no hay Rust instalado en la PC.
 - Después de cada "sube" con cambios en la app, lanza `desktop.yml` para Android y Windows y avisa con los enlaces al terminar.
