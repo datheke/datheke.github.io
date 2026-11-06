@@ -11,8 +11,8 @@
 
 ## Qué falta
 1. David prueba "Solo ver" con dos cuentas de Google (pasos en el chat del 6 nov: compartir como Solo ver, intentar cambiarla, cambiar a Puede editar, salirse y ver el aviso en el dueño).
-2. En curso en la PC (0.17.12): "Hacer ahora" no borra el respaldo viejo si el actual tiene menos de un día; carpeta única visible "Datheke – importante, no borrar" con Respaldos, Notas compartidas y LÉEME (se ordena sola en cada cuenta); aviso cuando se borra el archivo de una nota compartida.
-3. Llave de Android: confirmado el 6 nov que `datheke.jks` está en la bóveda (privada y al día en GitHub) y su contraseña en las claves de David. Falta que David borre `contrasena.txt` de Drive y renombre la carpeta "NO BORRAR – llave de Datheke Android".
+2. 0.17.12 publicada: "Hacer ahora" no borra el respaldo viejo; carpeta única visible "Datheke – importante, no borrar" con Respaldos, Notas compartidas y LÉEME (se ordena sola en cada cuenta); aviso cuando se borra el archivo de una nota compartida. David revisa en su Drive que las carpetas se hayan juntado bien.
+3. Llave de Android: confirmado el 6 nov que `datheke.jks` está en la bóveda (privada y al día en GitHub) y su contraseña en las claves de David. La carpeta de Drive se queda como está (decisión de David).
 
 ## Pendiente para el celular
 - Lo de "Qué falta" 1.

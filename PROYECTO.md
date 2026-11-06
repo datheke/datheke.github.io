@@ -107,7 +107,7 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 7. Kanban, calendario y tablas inteligentes.
 8. Notas compartidas con otros Gmail (ver y editar).
 
-## Estado (6 de noviembre de 2026, versión 0.17.11)
+## Estado (6 de noviembre de 2026, versión 0.17.12)
 Revisado contra el menú `/`, los botones de la app, todo el historial de versiones y palabras parecidas; no probando cada función en un aparato.
 
 | Etapa | Ya está | Falta (David dijo que sí) | Por decidir |
