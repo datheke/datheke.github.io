@@ -12,7 +12,7 @@ Gemini, nota recibida y conflicto (quedan igual, se abren desde donde diga abajo
 |---|---|
 | Tarjeta de la cuenta (avatar) con todo adentro | Avatar: correo, versión, **Ajustes**, **Salir** (lo demás pasa a Ajustes) |
 | + Nota, Todas las notas, Recordatorios | Igual |
-| Libretas (+, privada, renombrar, borrar, arrastrar) | Igual, a la vista |
+| Libretas (+, privada, renombrar, borrar, arrastrar) | Igual, a la vista, menos «Plantillas», que queda solo en **Más ▾** (decidido por David) |
 | Basurero | Dentro de **Más ▾** |
 | (no existe) | **Más ▾**: Plantillas, Compartido conmigo, Basurero (Calendario cuando exista) |
 | Respaldo en Drive: fecha · Hacer ahora / Dar permiso | Ajustes → Respaldo (y la fecha también en Más ▾) |

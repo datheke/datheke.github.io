@@ -169,6 +169,7 @@ export default function App() {
   const files = Object.values(s.files)
   const notebooks = files.filter(f => f.appProperties?.kind === 'notebook').sort(lastUnordered(byName))
   const templatesNb = notebooks.find(isTemplates)
+  const ownNotebooks = notebooks.filter(nb => nb !== templatesNb) // las de la barra lateral: Plantillas va en "Más"
   // Basurero: una nota borrada lleva la fecha en "borrada" y se elimina de verdad a los 30 días (ver efecto más abajo).
   const inTrash = (f?: DriveFile) => !!f?.appProperties?.borrada
   const allNotes = files.filter(f => f.appProperties?.kind === 'note' && !inTrash(f))
@@ -1327,7 +1328,7 @@ export default function App() {
             if (name) act(() => go(store.create({ kind: 'notebook' }, name)))
           }}><Plus size={16} /></button>
         </div>
-        {notebooks.map(nb => (
+        {ownNotebooks.map(nb => (
           <div key={nb.id} className={notebookId === nb.id ? 'item activo' : 'item'} data-grupo="libretas">
             <button className="item-nombre" title={nb.name} onClick={() => go(nb.id)}>
               <Notebook size={16} /><span>{nb.name}</span><small>{countOf(nb.id)}</small>
@@ -1346,7 +1347,7 @@ export default function App() {
               <button className="btn-icono" onClick={() => deleteNotebook(nb)} title="Borrar libreta" aria-label="Borrar libreta"><Trash2 size={14} /></button>
             </>}
             <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
-              onPointerDown={e => startSort(e, (from, to) => saveOrder(notebooks, from, to))}><GripVertical size={14} /></button>
+              onPointerDown={e => startSort(e, (from, to) => saveOrder(ownNotebooks, from, to))}><GripVertical size={14} /></button>
           </div>
         ))}
         <button className="seccion mas-boton" aria-expanded={moreOpen} onClick={() => {
