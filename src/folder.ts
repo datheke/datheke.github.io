@@ -51,6 +51,13 @@ const android = typeof navigator !== 'undefined' && /android/i.test(navigator.us
 const ANDROID_DOCS = '/storage/emulated/0/Documents'
 let oldCopyGone = false
 
+// Cómo salió la última copia ('' aún no, 'ok', o el error): se ve en la tarjeta de la cuenta, así un error no queda escondido.
+let result = ''
+const watchers = new Set<() => void>()
+export const folderResult = () => result
+export function onFolderResult(fn: () => void) { watchers.add(fn); return () => { watchers.delete(fn) } }
+const setResult = (r: string) => { if (r !== result) { result = r; watchers.forEach(fn => fn()) } }
+
 let root = ''
 let written = new Map<string, string>() // nota → archivo que escribió la app (se guarda en .datheke.json)
 const lastHtml = new Map<string, string>()
@@ -74,7 +81,11 @@ async function mirror() {
     if (android && !oldCopyGone) { oldCopyGone = true; await fs.remove('Datheke', { baseDir: fs.BaseDirectory.Document, recursive: true }).catch(() => {}) }
     const manifest = `${root}/.datheke.json`
     // Si alguien borró la carpeta, se vuelve a escribir entera.
-    if (!await fs.exists(root, opt)) { written.clear(); lastHtml.clear() }
+    if (!await fs.exists(root, opt)) {
+      written.clear()
+      lastHtml.clear()
+      await fs.mkdir(root, { ...opt, recursive: true })
+    }
     if (!written.size && await fs.exists(manifest, opt)) written = new Map(Object.entries(JSON.parse(await fs.readTextFile(manifest, opt))))
     const want = plan(store.getState())
     // Nota borrada o renombrada: se quita su archivo viejo (solo archivos que escribió la app) y la carpeta si quedó vacía.
@@ -104,8 +115,10 @@ async function mirror() {
     if (await fs.exists(photos, opt))
       for (const name of stalePhotos((await fs.readDir(photos, opt)).map(e => e.name), want)) await fs.remove(`${photos}/${name}`, opt).catch(() => {})
     await fs.writeTextFile(manifest, JSON.stringify(Object.fromEntries(written)), opt)
+    setResult('ok')
   } catch (e) {
     console.error('No se pudo actualizar la carpeta Documentos/Datheke', e) // la copia visible nunca debe frenar la app
+    setResult(e instanceof Error ? e.message : String(e))
   } finally {
     busy = false
     if (again) { again = false; mirror() }

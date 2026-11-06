@@ -1,7 +1,8 @@
 import { ArrowUpCircle, BellRing, Check, CheckCircle2, ChevronDown, Copy, Download, ExternalLink, Globe, LogOut, Monitor, Smartphone, X } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import { desktop } from './auth.ts'
 import { useBack } from './back.ts'
+import { folderResult, onFolderResult } from './folder.ts'
 import { DOWNLOADS, getUpdate, latestDownloads, openLink, type Downloads, type Update } from './update.ts'
 import { newer } from './version.ts'
 import { ReminderModeRow, type ReminderMode } from './Reminders.tsx'
@@ -40,6 +41,7 @@ export function Account({ email, onLogout, update, mode, calendarHere, onPickMod
   const [open, setOpen] = useState<{ left: number; top: number } | null>(null)
   const [copied, setCopied] = useState('') // qué enlace se acaba de copiar
   const [downloads, setDownloads] = useState<Downloads | null>(null)
+  const folder = useSyncExternalStore(onFolderResult, folderResult)
   const ref = useRef<HTMLDivElement>(null)
 
   // Al abrir la tarjeta se miran los enlaces de la última versión (para descargar o copiar).
@@ -94,6 +96,9 @@ export function Account({ email, onLogout, update, mode, calendarHere, onPickMod
           <span>Versión instalada <strong>{__VERSION__}</strong> · {platform}</span>
           {upToDate && <small><CheckCircle2 size={14} aria-hidden="true" /> Es la más reciente</small>}
         </div>
+        {desktop && folder && <p className="cuenta-nota" role="status">{folder === 'ok'
+          ? `Copia de tus notas en ${android ? 'Documents' : 'Documentos'}/Datheke ✓`
+          : `⚠️ No se pudo hacer la copia en ${android ? 'Documents' : 'Documentos'}/Datheke: ${folder}`}</p>}
         {update && <div className="cuenta-nueva">
           <ArrowUpCircle size={16} aria-hidden="true" />
           <span>Versión <strong>{update.version}</strong> disponible</span>
