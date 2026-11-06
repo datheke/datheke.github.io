@@ -12,7 +12,9 @@
 ## Qué falta
 1. David prueba "Solo ver" con dos cuentas de Google (pasos en el chat del 6 nov: compartir como Solo ver, intentar cambiarla, cambiar a Puede editar, salirse y ver el aviso en el dueño).
 2. 0.17.12 publicada: "Hacer ahora" no borra el respaldo viejo; carpeta única visible "Datheke – importante, no borrar" con Respaldos, Notas compartidas y LÉEME (se ordena sola en cada cuenta); aviso cuando se borra el archivo de una nota compartida. David revisa en su Drive que las carpetas se hayan juntado bien.
-3. Llave de Android: confirmado el 6 nov que `datheke.jks` está en la bóveda (privada y al día en GitHub) y su contraseña en las claves de David. La carpeta de Drive se queda como está (decisión de David).
+3. 0.17.13 publicada: versión anterior de cada nota (⋯ → Ver versión anterior → Restaurar; restaurar otra vez lo deshace). David la prueba con una nota que no haya tocado hace rato.
+4. Siguiente en el orden: diseño nuevo como Evernote, empezando por el inventario de todo lo que tiene la app (nada puede quedar fuera).
+5. Llave de Android: confirmado el 6 nov que `datheke.jks` está en la bóveda (privada y al día en GitHub) y su contraseña en las claves de David. La carpeta de Drive se queda como está (decisión de David).
 
 ## Pendiente para el celular
 - Lo de "Qué falta" 1.

@@ -107,7 +107,7 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 7. Kanban, calendario y tablas inteligentes.
 8. Notas compartidas con otros Gmail (ver y editar).
 
-## Estado (6 de noviembre de 2026, versión 0.17.12)
+## Estado (6 de noviembre de 2026, versión 0.17.13)
 Revisado contra el menú `/`, los botones de la app, todo el historial de versiones y palabras parecidas; no probando cada función en un aparato.
 
 | Etapa | Ya está | Falta (David dijo que sí) | Por decidir |
@@ -115,7 +115,7 @@ Revisado contra el menú `/`, los botones de la app, todo el historial de versio
 | 1 a 3 | Todo | Nada | Nada |
 | 4 | Windows y Android. Carpeta visible en Android: se escribía en la carpeta privada de la app (escondida); va a Documents/Datheke. Android sí deja crear la carpeta; la 0.17.9 mostró que Tauri bloqueaba el archivo de control `.datheke.json` (nombre con punto) y la 0.17.10 le da permiso. Falta confirmar en el celular que se copien notas y fotos (si algo más falla, la tarjeta de la cuenta muestra el error) | Mac | Nada |
 | 5 | Íconos y Gemini | Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini). Diseño nuevo (ver abajo) | Nada |
-| 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal, protección al borrar (ver "Protección contra borrado") limpieza de fotos sin uso (0.17.8; falta probarla en el celular) y versión anterior por nota (programada; falta publicarla y probarla) | Nada | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
+| 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal, protección al borrar (ver "Protección contra borrado") limpieza de fotos sin uso (0.17.8; falta probarla en el celular) y versión anterior por nota (0.17.13; falta probarla) | Nada | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
 | 7 | Nada | Calendario dentro de la app, Kanban y tablas con filtros y orden, unidos a los recordatorios | Nada |
 | 8 | Notas compartidas por correo, clave común, y elegir "Puede editar" o "Solo ver" con cambio y aviso de salida (programado; falta probarlo con dos cuentas de Google) | Combinar los cambios cuando dos personas editan la misma nota a la vez | Nada |
 | Ideas nuevas | — | Dispositivos, con un apartado para celular perdido o robado. Importar notas de Evernote. Preferencias: libreta para notas nuevas, letra por defecto y modo oscuro | Etiquetas (recomendado: no por ahora) |
