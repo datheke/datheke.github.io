@@ -237,6 +237,97 @@ test('nota con clave cerrada: la limpieza usa los números de foto que anotó el
   assert.ok(drive.files.get('p8')!.appProperties?.sin_uso, 'la que nadie usa sí se marca')
 })
 
+// En este Drive de mentira todo se guarda con fechas de enero: para la app, cada nota lleva más de 10 minutos quieta.
+const versionText = (noteId: string) => store.getState().texts[store.versionOf(noteId)?.id ?? '']?.text
+const versions = () => Object.values(store.getState().files).filter(f => f.appProperties?.kind === 'version')
+
+test('versión anterior: al empezar a cambiar una nota quieta se guarda cómo estaba; seguir escribiendo no la cambia; la próxima vez se reemplaza', async () => {
+  const drive = fakeDrive()
+  drive.note('n1', 'Lista', '<p>pan</p>')
+  await store.start('version@test')
+  await store.sync()
+  store.edit('n1', { text: '<p>pan y leche</p>' })
+  assert.equal(versionText('n1'), '<p>pan</p>')
+  store.edit('n1', { text: '<p>pan, leche y huevos</p>' })
+  assert.equal(versionText('n1'), '<p>pan</p>') // en el mismo rato no cambia
+  await store.sync()
+  const v = store.versionOf('n1')!
+  assert.equal(drive.files.get(v.id)?.body, '<p>pan</p>') // también queda en Drive
+  assert.equal(drive.files.get(v.id)?.appProperties?.kind, 'version')
+  store.edit('n1', { text: '<p>solo huevos</p>' }) // otra vez, ya guardada y quieta: se reemplaza
+  assert.equal(versionText('n1'), '<p>pan, leche y huevos</p>')
+  assert.equal(versions().length, 1) // una sola por nota
+})
+
+test('versión anterior: una nota cambiada hace menos de 10 minutos no guarda otra', async () => {
+  fakeDrive()
+  await store.start('version-reciente@test')
+  await store.sync()
+  const id = store.create({ kind: 'note', notebook: 'nb' }, 'Nueva', '<p>x</p>', 'text/html')
+  store.edit(id, { text: '<p>xy</p>' })
+  assert.equal(store.versionOf(id), undefined)
+})
+
+test('restaurar: la nota vuelve a como estaba y lo de ahora queda como versión anterior (restaurar otra vez lo deshace)', async () => {
+  const drive = fakeDrive()
+  drive.note('n1', 'Plan', '<p>uno</p>')
+  await store.start('restaurar@test')
+  await store.sync()
+  store.edit('n1', { text: '<p>dos</p>' })
+  const back = await store.loadVersion('n1')
+  assert.equal(back?.text, '<p>uno</p>')
+  store.restoreVersion('n1', back!)
+  assert.equal(store.getState().texts.n1.text, '<p>uno</p>')
+  assert.equal(versionText('n1'), '<p>dos</p>')
+  store.restoreVersion('n1', (await store.loadVersion('n1'))!)
+  assert.equal(store.getState().texts.n1.text, '<p>dos</p>')
+  await store.sync()
+  assert.equal(drive.files.get('n1')?.body, '<p>dos</p>')
+})
+
+test('la versión no es una nota: no protege fotos (decisión de David) y se borra con su nota', async () => {
+  const drive = fakeDrive()
+  drive.note('n1', 'Recibo', '<p>a</p><img src="drive:p9">')
+  drive.files.set('p9', { id: 'p9', name: 'foto.jpg', modifiedTime: drive.tick(), mimeType: 'image/jpeg', appProperties: { kind: 'image' }, body: 'JPG' })
+  await store.start('version-fotos@test')
+  await store.sync()
+  store.edit('n1', { text: '<p>a</p>' }) // se quita la foto; la versión todavía la nombra
+  await store.sync()
+  assert.match(versionText('n1') ?? '', /drive:p9/)
+  assert.deepEqual(store.photoPlan(store.getState(), Date.now())?.mark, ['p9'])
+  const v = store.versionOf('n1')!
+  store.remove('n1')
+  await store.sync()
+  assert.equal(store.versionOf('n1'), undefined)
+  assert.equal(drive.files.has(v.id), false)
+})
+
+test('nota con clave: su versión anterior también va cifrada en el aparato', async () => {
+  const vault = await import('./vault.ts')
+  const db = await import('./db.ts')
+  const drive = fakeDrive()
+  drive.note('n1', 'Banco', '<p>PIN 4321</p>')
+  await store.start('version-clave@test')
+  await store.sync()
+  store.edit('n1', { text: '<p>PIN 9999</p>' }) // la versión guarda el PIN viejo
+  await store.sync()
+  await vault.create('clave-larga-3')
+  store.patch('n1', { props: { protegida: 'true' } }) // al ponerle clave a la nota, su versión también la lleva
+  await store.sync()
+  await new Promise(r => setTimeout(r, 50))
+  const v = store.versionOf('n1')!
+  assert.equal(v.appProperties?.protegida, 'true')
+  const local = await db.get(`text:${v.id}`)
+  assert.ok(vault.isSealed(local), 'en el aparato queda cifrada')
+  assert.doesNotMatch(JSON.stringify(local), /4321/)
+  store.closeVault()
+})
+
+test('restaurar sin las fotos que ya se borraron', () => {
+  assert.deepEqual(store.withoutMissingPhotos('<p>a</p><img src="drive:p1"><img src="drive:p2" alt="">', id => id === 'p1'),
+    { html: '<p>a</p><img src="drive:p1">', removed: 1 })
+})
+
 test('fotos: se procesan de a 30 por vuelta y lo que falta sigue en la siguiente', async () => {
   const drive = fakeDrive()
   drive.note('n1', 'Sin fotos', '<p>x</p>')

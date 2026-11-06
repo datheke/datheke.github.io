@@ -257,7 +257,7 @@ async function pull() {
 }
 
 const contentOf = async (f: DriveFile) =>
-  f.appProperties?.kind === 'note' ? state.texts[f.id]?.text ?? ''
+  f.appProperties?.kind === 'note' || f.appProperties?.kind === 'version' ? state.texts[f.id]?.text ?? ''
     : f.appProperties?.kind === 'image' ? db.get<Blob>(`img:${f.id}`) : undefined
 
 async function push() {
@@ -307,7 +307,71 @@ export function create(props: Record<string, string>, name: string, text?: strin
   return id
 }
 
+// ---- Versión anterior (decisión de David) ----
+// Una por nota: cómo estaba antes de empezar a cambiarla la última vez. Se guarda al cambiar una nota que llevaba más de
+// 10 minutos sin tocarse (según su último guardado en Drive: igual en todos los aparatos) y se reemplaza la próxima vez.
+// Es otro archivo ("version") en la carpeta oculta: no es una nota (no se lista, no va al respaldo y no protege fotos),
+// lleva la misma clave que su nota y se borra con ella.
+const VERSION_GAP = 10 * 60_000
+const KEY_PROPS = ['protegida', 'clave_comun'] as const
+const isVersionOf = (f: DriveFile, noteId: string) => f.appProperties?.kind === 'version' && f.appProperties.nota === noteId
+export const versionOf = (noteId: string) => Object.values(state.files).find(f => isVersionOf(f, noteId))
+
+function keepVersion(noteId: string, before: Snapshot) {
+  const note = state.files[noteId]
+  const v = versionOf(noteId)
+  if (v) {
+    write(v.id, before)
+    patch(v.id, { props: { del: note.modifiedTime } })
+    return
+  }
+  const props: Record<string, string> = { kind: 'version', nota: noteId, del: note.modifiedTime }
+  for (const k of KEY_PROPS) if (note.appProperties?.[k]) props[k] = note.appProperties[k]
+  create(props, before.title, before.text, 'text/html')
+}
+
 export function edit(id: string, change: Partial<Snapshot>) {
+  const f = state.files[id]
+  const before = state.texts[id]
+  // Empieza a cambiar una nota quieta: primero se guarda cómo estaba.
+  if (before && f?.appProperties?.kind === 'note' && f.appProperties.solo_ver !== 'true' && !state.pending[id]?.content
+    && Date.now() - Date.parse(f.modifiedTime) > VERSION_GAP) {
+    try { keepVersion(id, before) } catch (e) { console.error('Versión anterior', e) } // sin internet ni ids reservados: sigue sin versión
+  }
+  write(id, change)
+}
+
+// La versión anterior de una nota, para verla o restaurarla. Si se guardó en otro aparato se baja (necesita internet).
+export async function loadVersion(noteId: string): Promise<(Snapshot & { del: string }) | null> {
+  const v = versionOf(noteId)
+  if (!v || (isProtected(v.id) && !canSeal(v.id))) return null
+  if (!state.texts[v.id] || (!state.pending[v.id] && state.base[v.id] !== v.modifiedTime)) {
+    setText(v.id, { title: titleOf(v), text: await readNote(v.id, v.mimeType) }, v.modifiedTime)
+    persist()
+  }
+  const t = state.texts[v.id]
+  return t ? { ...t, del: v.appProperties?.del ?? v.modifiedTime } : null
+}
+
+// Restaurar: la nota vuelve a como estaba y lo de ahora pasa a ser la versión anterior (restaurar otra vez lo deshace).
+export function restoreVersion(noteId: string, back: Snapshot) {
+  const now = state.texts[noteId]
+  const v = versionOf(noteId)
+  if (!now || !v) return
+  write(v.id, now)
+  patch(v.id, { props: { del: new Date().toISOString() } })
+  write(noteId, { title: back.title, text: back.text })
+  update({ revs: { ...state.revs, [noteId]: (state.revs[noteId] ?? 0) + 1 } })
+}
+
+// Al restaurar, las fotos que ya se borraron (pasó más de un día) salen del texto: se recupera solo el texto.
+export function withoutMissingPhotos(html: string, exists: (id: string) => boolean) {
+  let removed = 0
+  const out = html.replace(/<img[^>]*\bsrc="drive:([\w-]+)"[^>]*>/g, (tag, id: string) => exists(id) ? tag : (removed++, ''))
+  return { html: out, removed }
+}
+
+function write(id: string, change: Partial<Snapshot>) {
   const t = { ...state.texts[id], ...change }
   const first = !state.pending[id]?.content
   update({
@@ -334,6 +398,10 @@ export function patch(id: string, change: { name?: string; props?: Props }) {
   })
   persist()
   if (change.props && 'protegida' in change.props) enforce()
+  // La versión anterior va con la misma clave que su nota.
+  const keys = KEY_PROPS.filter(k => change.props && k in change.props)
+  const v = keys.length && f?.appProperties?.kind === 'note' ? versionOf(id) : undefined
+  if (v) patch(v.id, { props: Object.fromEntries(keys.map(k => [k, change.props![k]])) })
   schedule(500)
 }
 
@@ -346,6 +414,7 @@ export function remove(id: string) {
   forget(id)
   if (inDrive) update({ pending: { ...state.pending, [id]: { remove: true } } })
   for (const p of photos) if (state.files[p]?.appProperties?.kind === 'image') patch(p, { props: { sin_uso: WAITED } })
+  for (const v of Object.values(state.files)) if (isVersionOf(v, id)) remove(v.id) // su versión anterior se va con ella
   persist()
   schedule(500)
 }

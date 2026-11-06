@@ -1,5 +1,5 @@
 import {
-  Bell, Check, CheckSquare, ChevronLeft, ChevronRight, Circle, CircleCheck, FileDown, FilePlus, FileText, FolderInput, GripVertical, KeyRound, LayoutTemplate, LockKeyhole, Maximize2, Minimize2, Notebook, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Shield, ShieldCheck, ShieldOff, Trash2, Users, X as XIcon,
+  Bell, Check, CheckSquare, ChevronLeft, ChevronRight, Circle, CircleCheck, FileDown, FilePlus, FileText, FolderInput, GripVertical, History, KeyRound, LayoutTemplate, LockKeyhole, Maximize2, Minimize2, Notebook, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Shield, ShieldCheck, ShieldOff, Trash2, Users, X as XIcon,
 } from 'lucide-react'
 import { useDeferredValue, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { closeTop, useBack } from './back.ts'
@@ -108,6 +108,8 @@ export default function App() {
   // Ventana de un recordatorio: uno que ya está en una línea (id) o uno nuevo (insert lo pone en la línea del cursor).
   const [received, setReceived] = useState<{ p: Packed; notebook: string } | null>(null) // nota .datheke recibida, por agregar
   const [shareOpen, setShareOpen] = useState(false) // ventana "Compartir"
+  // "Ver versión anterior": la nota se muestra como estaba (sin poder cambiarla) hasta Restaurar o Volver.
+  const [peek, setPeek] = useState<{ noteId: string; title: string; text: string; del: string; missing: number } | null>(null)
   const [recvMenu, setRecvMenu] = useState(false) // "Nota recibida": archivo o compartida conmigo
   const [copyAsk, setCopyAsk] = useState<{ who: string; resolve: (v: 'copia' | 'quitar' | null) => void } | null>(null)
   const [toast, setToast] = useState<string | null>(null) // aviso corto abajo (se va solo)
@@ -249,6 +251,7 @@ export default function App() {
   // Una nota en el basurero se ve igual: solo leer, hasta restaurarla.
   const trashed = inTrash(note)
   const locked = note?.appProperties?.locked === 'true' || trashed || viewOnly(note)
+  const shown = peek && peek.noteId === note?.id ? peek : null // versión anterior a la vista
   // Privada (sin Gemini): la nota sola, o todas las de una libreta (también las que se creen después).
   const isPrivate = (f?: DriveFile) => f?.appProperties?.privada === 'true'
   const noteNotebook = notebooks.find(nb => nb.id === note?.appProperties?.notebook)
@@ -487,6 +490,7 @@ export default function App() {
     setNoteId(id)
     setFocusRem(undefined)
     setPicker(false)
+    setPeek(null)
     setWriting(false)
     setNavOpen(false)
     setNoteFind(null)
@@ -1070,6 +1074,28 @@ export default function App() {
     return () => clearTimeout(t)
   }, [toast])
 
+  // Versión anterior (sync.ts): se ve sin poder cambiarla y se restaura con confirmación (restaurar otra vez lo deshace).
+  const versionDate = (iso: string) => new Date(iso).toLocaleString('es', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  async function showVersion() {
+    if (!note) return
+    try {
+      const v = await store.loadVersion(note.id)
+      if (!v) return setToast('Esta nota todavía no tiene versión anterior.')
+      const { html, removed } = store.withoutMissingPhotos(v.text, id => !!store.getState().files[id])
+      setPeek({ noteId: note.id, title: v.title, text: html, del: v.del, missing: removed })
+    } catch (e) {
+      if (e instanceof OfflineError) setToast('Esa versión se guardó en otro aparato: para verla, conéctate a internet.')
+      else fail(e)
+    }
+  }
+  function restoreShown() {
+    if (!note || peek?.noteId !== note.id) return
+    if (!confirm(`¿Volver a como estaba el ${versionDate(peek.del)}? Lo de ahora queda como versión anterior, por si te arrepientes.`)) return
+    store.restoreVersion(note.id, { title: peek.title, text: peek.text })
+    setToast(peek.missing ? 'Listo. Las fotos de esta versión ya se borraron; se recuperó solo el texto.' : 'Listo: la nota volvió a como estaba.')
+    setPeek(null)
+  }
+
   function saveAsTemplate() {
     if (!doc) return
     act(() => {
@@ -1471,6 +1497,8 @@ export default function App() {
               { label: shareOf(note) && !shareOf(note)!.owner ? 'Compartida contigo…' : shareOf(note) ? 'Compartida: personas…' : 'Compartir con…', icon: <Users size={16} />, onClick: () => setShareOpen(true) },
               { label: 'Enviar copia (WhatsApp, correo…)', icon: <Send size={16} />, onClick: sendCopy },
               { label: 'Guardar como plantilla', icon: <LayoutTemplate size={16} />, onClick: saveAsTemplate },
+              ...(store.versionOf(note.id) && !viewOnly(note) && !isClosed(note)
+                ? [{ label: 'Ver versión anterior', icon: <History size={16} />, onClick: showVersion }] : []),
               { label: 'Borrar nota', icon: <Trash2 size={16} />, onClick: deleteNote, danger: true },
             ]} />
             </>}
@@ -1519,7 +1547,10 @@ export default function App() {
             </div>
             {picker && !locked && <EmojiPicker onPick={icon => { store.patch(note.id, { props: { icon } }); setPicker(false) }} />}
             {doc ? <>
-              <input className="titulo" value={doc.title} placeholder="Título" readOnly={locked} onChange={e => store.edit(note.id, { title: e.target.value })} />
+              <input className="titulo" value={shown ? shown.title : doc.title} placeholder="Título" readOnly={locked || !!shown} onChange={e => store.edit(note.id, { title: e.target.value })} />
+              {shown && <p className="aviso-fijada" role="status">🕘 Así estaba el {versionDate(shown.del)}:{' '}
+                <button className="enlace" onClick={restoreShown}>Restaurar</button> · <button className="enlace" onClick={() => setPeek(null)}>Volver a la nota</button>
+                {shown.missing > 0 && <><br />Las fotos de esta versión ya se borraron: al restaurar se recupera solo el texto.</>}</p>}
               {(() => {
                 const sh = shareOf(note)
                 if (!sh || (sh.owner && note.appProperties?.archivo === 'borrado')) return null // ese aviso va aparte, abajo
@@ -1535,8 +1566,9 @@ export default function App() {
                 ⚠️ Se borró de tu Drive el archivo de esta nota compartida: ya no le llega a nadie.{' '}
                 <button className="enlace" onClick={() => reshareLost(note)}>Volver a compartir</button></p>}
 
-              <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} inlineImages={!!shareOf(note)} me={session.email} content={doc.text} onChange={text => store.edit(note.id, { text })}
-                notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked} checkable={!viewOnly(note)}
+              <Editor key={`${note.id}-${shown ? 'version' : s.revs[note.id] ?? 0}`} inlineImages={!!shareOf(note)} me={session.email}
+                content={shown ? shown.text : doc.text} onChange={text => { if (!shown) store.edit(note.id, { text }) }}
+                notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked && !shown} checkable={!viewOnly(note) && !shown}
                 geminiKey={geminiKey} onGeminiKey={setGeminiKey}
                 privacy={privacy} onPrivate={() => setPrivate(note, true)}
                 onReminder={id => { if (!viewOnly(note)) setRemDlg({ noteId: note.id, id, label: reminders.find(x => x.r.id === id)?.label ?? 'Recordatorio' }) }}
