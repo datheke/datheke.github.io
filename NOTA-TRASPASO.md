@@ -1,22 +1,21 @@
 # Nota de traspaso
 
-**Fecha:** 5 de noviembre de 2026. **Dónde quedé:** PC.
+**Fecha:** 6 de noviembre de 2026. **Dónde quedé:** PC.
 **IA y aparato:** Claude Code, PC.
 **Rama:** `main`.
 
 ## Qué se hizo
-- Versión 0.17.8: limpieza de fotos sin uso (se borran al día siguiente; las de una nota que sale del basurero se van con ella), copia visible en Documentos/Datheke también en Android, y las fotos de notas con clave ya no quedan en la carpeta visible.
+- 0.17.8 a 0.17.10: limpieza de fotos sin uso y copia visible en Android (Documents/Datheke ya funciona en el celular de David).
+- 0.17.11: compartir con "Puede editar" o "Solo ver" (cambiable después, aviso de salida) y las páginas del respaldo ya no se ven feas en el celular.
 - Decisiones de David y lo que falta: tabla de Estado de `PROYECTO.md` (única fuente).
 
-- Versión 0.17.9: la carpeta Documents/Datheke no apareció en el celular con la 0.17.8; ahora la tarjeta de la cuenta muestra si la copia salió bien o el error exacto.
-
 ## Qué falta
-1. La 0.17.9 mostró "forbidden path …/.datheke.json": Tauri bloquea en Android los archivos con punto. La 0.17.10 le da permiso. David instala la 0.17.10 y revisa que la tarjeta diga "Copia de tus notas en Documents/Datheke ✓" y que aparezcan sus notas y fotos (la carpeta ya se crea).
-2. Revisar que las fotos de sus notas se sigan viendo bien.
-3. Siguiente en el orden aprobado: "solo ver" / "puede editar" al compartir.
+1. David prueba "Solo ver" con dos cuentas de Google (pasos en el chat del 6 nov: compartir como Solo ver, intentar cambiarla, cambiar a Puede editar, salirse y ver el aviso en el dueño).
+2. En curso en la PC (0.17.12): "Hacer ahora" no borra el respaldo viejo si el actual tiene menos de un día; carpeta única visible "Datheke – importante, no borrar" con Respaldos, Notas compartidas y LÉEME (se ordena sola en cada cuenta); aviso cuando se borra el archivo de una nota compartida.
+3. Llave de Android (carpeta de David en Drive): confirmar que `datheke.jks` y su contraseña estén en la bóveda; luego renombrar la carpeta "NO BORRAR – llave de Datheke Android" y sacar `contrasena.txt` de Drive.
 
 ## Pendiente para el celular
-- Lo de "Qué falta".
+- Lo de "Qué falta" 1.
 
 ## Aprendizajes para pasar a la fuente única
 - Ninguno.
