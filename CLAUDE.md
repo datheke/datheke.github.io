@@ -18,3 +18,4 @@ Las reglas generales están en `~/.claude/CLAUDE.md`; aquí solo lo de este proy
 - Para la parte Rust/Tauri (`src-tauri/`) usa las skills `rust-patterns` y `rust-testing`, y los agentes de Rust de este proyecto.
 - Verificar antes de decir "listo": `npm run lint` y `npm run build`.
 - El dev server se cae al cerrar la sesión: reinícialo con `npm run dev`.
+- Para ver un cambio con poca RAM: `npm run build` y `npx vite preview --port 5173 --strictPort` (liviano; Google deja entrar en 5173).
