@@ -99,13 +99,13 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 7. Kanban, calendario y tablas inteligentes.
 8. Notas compartidas con otros Gmail (ver y editar).
 
-## Estado (5 de noviembre de 2026, versión 0.17.8)
+## Estado (6 de noviembre de 2026, versión 0.17.9)
 Revisado contra el menú `/`, los botones de la app, todo el historial de versiones y palabras parecidas; no probando cada función en un aparato.
 
 | Etapa | Ya está | Falta (David dijo que sí) | Por decidir |
 |---|---|---|---|
 | 1 a 3 | Todo | Nada | Nada |
-| 4 | Windows y Android. Carpeta visible en Android: se escribía en la carpeta privada de la app (escondida); arreglado en la 0.17.8 para que vaya a Documentos/Datheke (falta probarlo en el celular, Android 11 o más nuevo) | Mac | Nada |
+| 4 | Windows y Android. Carpeta visible en Android: se escribía en la carpeta privada de la app (escondida); la 0.17.8 escribe directo en Documents/Datheke, pero en el celular de David no aparece; la 0.17.9 muestra el error exacto en la tarjeta de la cuenta para hallar la causa (si Android no deja escribir directo, la salida es el complemento tauri-plugin-android-fs, con OK de David) | Mac | Nada |
 | 5 | Íconos y Gemini | Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini). Diseño nuevo (ver abajo) | Nada |
 | 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal, protección al borrar (ver "Protección contra borrado") y limpieza de fotos sin uso (0.17.8; falta probarla en el celular) | Una versión anterior por nota (ver "Versiones y basurero") | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
 | 7 | Nada | Calendario dentro de la app, Kanban y tablas con filtros y orden, unidos a los recordatorios | Nada |
