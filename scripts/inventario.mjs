@@ -21,7 +21,9 @@ const items = []
 for (const file of readdirSync(SRC).filter(f => f.endsWith('.tsx'))) {
   const code = readFileSync(join(SRC, file), 'utf8')
   for (const re of patterns) for (const m of code.matchAll(re)) {
-    if (code.slice(Math.max(0, m.index - 80), m.index).includes('className')) continue // estilos, no textos
+    const before = code.slice(Math.max(0, m.index - 80), m.index + (m[0].startsWith('>') ? 1 : 0))
+    const cls = before.lastIndexOf('className')
+    if (cls >= 0 && !before.slice(cls).includes('>')) continue // dentro de un className: estilos, no textos
     for (const g of m.slice(1).filter(Boolean)) {
       const text = g.trim().replace(/\s+/g, ' ')
       if (/[=();]|=>|\b(return|const|Promise|new)\b/.test(text) || /^[a-z]+$/.test(text)) continue // código o palabras internas
