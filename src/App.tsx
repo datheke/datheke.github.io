@@ -352,7 +352,7 @@ export default function App() {
     if (!ready || !s.synced || s.offline || backup.needsLogin || organized.current) return
     organized.current = true
     dathekeFolder('respaldos').then(() => dathekeFolder('compartidas'))
-      .catch(e => { organized.current = false; console.error('Carpetas de Datheke', e) }) // sin internet o sin permiso: se intenta otra vez
+      .catch(e => { organized.current = false; console.error('Carpetas de Datheke', e) }) // se intenta al reconectarse, o en el próximo respaldo
   }, [ready, s.synced, s.offline, backup.needsLogin])
 
   // Versión nueva: se mira al abrir la app y luego cada hora (cada 10 minutos mientras no haya nada nuevo).
@@ -741,7 +741,8 @@ export default function App() {
       setToast(`Primero quita la clave a ${keyed.map(n => `«${n.name || UNTITLED}»`).join(', ')}: las notas con clave no se pueden borrar.`)
       return null
     }
-    const mine = ns.filter(n => { const sh = shareOf(n); return sh?.owner && !sh.estado })
+    // Si su archivo ya no está en Drive, se borra como una nota cualquiera: ya no hay a quién avisar.
+    const mine = ns.filter(n => { const sh = shareOf(n); return sh?.owner && !sh.estado && n.appProperties?.archivo !== 'borrado' })
     const theirs = ns.filter(n => { const sh = shareOf(n); return sh && !sh.owner && !sh.fin })
     if (!mine.length && !theirs.length) return 'ok'
     let choice: 'copia' | 'quitar' | null = null
@@ -867,17 +868,25 @@ export default function App() {
       const title = n.name || UNTITLED
       const full = await fullOf(n)
       const remote = await shared.create(title, full)
-      for (const c of sh.people) await shared.invite(remote.id, [c.email], title, c.rol)
-      const desde = new Date().toISOString()
+      // La nota apunta al archivo nuevo antes de invitar: si se corta a medias, otro intento no crea un archivo más.
       shared.saveState(sh.id, null)
       shared.saveState(remote.id, { base: remote.modifiedTime, sent: shared.hash(full + title) })
-      store.patch(n.id, { props: { compartida: remote.id, archivo: null, ...conProps(n, sh.people.map(c => ({ ...c, desde }))) } })
-      setToast(`«${title}» se volvió a compartir con ${sh.con.join(', ') || 'nadie'}: les llegó un correo para agregarla de nuevo.`)
+      store.patch(n.id, { props: { compartida: remote.id, archivo: null } })
+      const desde = new Date().toISOString()
+      const missing: string[] = []
+      const people: Con[] = []
+      for (const c of sh.people) {
+        try { await shared.invite(remote.id, [c.email], title, c.rol); people.push({ ...c, desde }) } catch { missing.push(c.email) }
+      }
+      store.patch(n.id, { props: conProps(n, people) })
+      setToast(`«${title}» se volvió a compartir${people.length ? ` con ${people.map(c => c.email).join(', ')}: les llegó un correo para agregarla de nuevo (a cada uno le queda además su copia de antes)` : ''}.`
+        + (missing.length ? ` No se pudo invitar a ${missing.join(', ')}: invítalos de nuevo desde Compartir.` : ''))
     } catch (e) { setToast(null); fail(e) }
   }
 
   const shBusy = useRef(false)
   const leftChecked = useRef(new Map<string, number>()) // avisos de "salí de esta nota": se miran cada 5 minutos por nota
+  const lostChecked = useRef(new Map<string, number>()) // notas cuyo archivo se perdió: cada 5 minutos se mira si volvió
   async function syncShared(only?: string) {
     if (shBusy.current || !session) return
     shBusy.current = true
@@ -886,7 +895,19 @@ export default function App() {
     try {
       for (const n of allNotes) {
         const sh = shareOf(n)
-        if (!sh || sh.fin || sh.estado || n.appProperties?.archivo === 'borrado' || (only && n.id !== only)) continue
+        if (!sh || sh.fin || sh.estado || (only && n.id !== only)) continue
+        // Su archivo se había perdido: cada 5 minutos se mira si volvió (lo sacaron de la papelera, o fue un error de Google).
+        if (n.appProperties?.archivo === 'borrado') {
+          if (sh.owner && Date.now() - (lostChecked.current.get(n.id) ?? 0) > 5 * 60_000) {
+            lostChecked.current.set(n.id, Date.now())
+            const back = await shared.get(sh.id).then(m => !m.trashed, () => false)
+            if (back) {
+              store.patch(n.id, { props: { archivo: null } })
+              setToast(`El archivo de «${n.name || UNTITLED}» volvió a tu Drive. Si a alguien ya no le llega, que la agregue otra vez: Nota recibida → Compartida conmigo.`)
+            }
+          }
+          continue
+        }
         const title = store.getState().texts[n.id]?.title ?? n.name ?? ''
         const st = state[sh.id]
         let meta: shared.Remote

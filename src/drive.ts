@@ -133,15 +133,35 @@ Nunca toques "Eliminar datos de app ocultos" en Configuración > Administrar apl
 
 Si borras algo de aquí por error, abre Datheke: el respaldo se vuelve a hacer con "Hacer ahora", y Datheke te avisa si una nota compartida perdió su archivo.
 `
+// Lo ya encontrado o creado no se vuelve a buscar (la búsqueda de Drive a veces tarda en ver lo recién creado y se
+// crearía dos veces). Va con el token de la sesión: otra cuenta u otra sesión lo vuelve a buscar.
+let known: { token: string; ids: Record<string, string> } = { token: '', ids: {} }
 async function ensure(sub: keyof typeof SUBFOLDERS) {
-  const home = await findFolder(HOME) ?? await createFolder(HOME)
-  if (!(await listVisible(`name='${README}' and '${home}' in parents`)).length) await uploadVisible(README, home, new Blob([README_TEXT], { type: 'text/plain;charset=utf-8' }))
+  if (known.token !== token) known = { token, ids: {} }
+  const ids = known.ids
+  const home = ids.home ??= await findFolder(HOME) ?? await createFolder(HOME)
+  if (!ids.readme) {
+    if (!(await listVisible(`name='${README}' and '${home}' in parents`)).length) await uploadVisible(README, home, new Blob([README_TEXT], { type: 'text/plain;charset=utf-8' }))
+    ids.readme = 'ok'
+  }
   const name = SUBFOLDERS[sub]
-  const found = await findFolder(name, home)
-  if (found) return found
-  const before = await findFolder(BEFORE[sub], undefined, true)
-  if (before) { await moveInto(before, home, name); return before }
-  return createFolder(name, home)
+  let target = ids[sub] ?? await findFolder(name, home)
+  if (!target) {
+    const before = await findFolder(BEFORE[sub], undefined, true)
+    if (before) await moveInto(before, home, name)
+    target = before ?? await createFolder(name, home)
+  }
+  ids[sub] = target
+  // Una carpeta de antes que creó otro aparato todavía con la versión vieja: va adentro, para que nada quede suelto.
+  // Si eso falla, no frena el respaldo ni el compartir: se intenta la próxima vez.
+  try {
+    const moved = new Set<string>()
+    for (let stray; (stray = await findFolder(BEFORE[sub], undefined, true)) && !moved.has(stray);) {
+      moved.add(stray)
+      await moveInto(stray, target, `${BEFORE[sub]} (de otro aparato)`)
+    }
+  } catch (e) { console.error('Carpeta suelta de Datheke', e) }
+  return target
 }
 // De a una: si se piden dos a la vez (respaldo y compartir al abrir), no se crea la carpeta dos veces.
 // shortcut: dos aparatos abiertos justo a la vez podrían crearla dos veces; se usa siempre la más vieja.

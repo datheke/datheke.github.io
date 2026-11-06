@@ -83,22 +83,28 @@ export async function buildZip(): Promise<Uint8Array> {
 
 // Qué hacer con los respaldos que ya hay antes de subir el nuevo (siempre quedan 2). Si el actual es de hace menos de un
 // día (tocaron "Hacer ahora" seguido), solo se reemplaza: el anterior, más viejo, no se pierde.
+// Lo que sobre de una vez que falló a medias (dos actuales, o solo el anterior) se ordena sin perder el único bueno.
 export function rotate(inside: Pick<DriveFile, 'id' | 'name' | 'modifiedTime'>[], now = Date.now()) {
-  const current = inside.filter(f => f.name === ZIP)
-  if (current.some(f => now - Date.parse(f.modifiedTime) < 86400_000)) return { remove: current.map(f => f.id), rename: [] as string[] }
-  return { remove: inside.filter(f => f.name === OLD).map(f => f.id), rename: current.map(f => f.id) }
+  const [newest, ...extra] = inside.filter(f => f.name === ZIP).sort((a, b) => (b.modifiedTime ?? '').localeCompare(a.modifiedTime ?? ''))
+  const old = inside.filter(f => f.name === OLD)
+  if (!newest) return { remove: [] as string[], rename: [] as string[] }
+  // El que queda como anterior: el anterior de siempre si el actual es de hoy; si no, el actual.
+  const keep = now - Date.parse(newest.modifiedTime) < 86400_000 ? (old[0] ?? extra[0]) : newest
+  return { remove: [newest, ...extra, ...old].filter(f => f !== keep).map(f => f.id), rename: keep?.name === ZIP ? [keep.id] : [] }
 }
 
-// Sube el zip nuevo y deja solo dos: el nuevo y el anterior.
+// Sube el zip nuevo y deja solo dos: el nuevo y el anterior. Primero se sube el nuevo: si eso falla (sin internet),
+// los que había siguen ahí.
 export async function upload(zip: Uint8Array) {
   try {
     const folder = await dathekeFolder('respaldos')
     const { remove, rename } = rotate(await listVisible(`'${folder}' in parents`))
+    await uploadVisible(ZIP, folder, new Blob([zip as BlobPart], { type: 'application/zip' }))
     for (const id of remove) await deleteFile(id)
     for (const id of rename) await renameFile(id, OLD)
-    await uploadVisible(ZIP, folder, new Blob([zip as BlobPart], { type: 'application/zip' }))
   } catch (e) {
-    if ((e as { status?: number }).status === 403) throw new NeedsPermission('Falta el permiso para guardar el respaldo en tu Drive.')
+    // Solo un permiso que falta pide volver a entrar; otro 403 (por ejemplo, Drive lleno) se muestra tal cual.
+    if ((e as { status?: number }).status === 403 && /insufficient/i.test((e as Error).message)) throw new NeedsPermission('Falta el permiso para guardar el respaldo en tu Drive.')
     throw e
   }
 }
