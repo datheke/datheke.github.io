@@ -62,7 +62,44 @@ async function openKeyPage() {
   else window.open(KEY_URL, '_blank', 'noopener')
 }
 
-const toBase64 = (bytes: Uint8Array) => new Promise<string>((resolve, reject) => {
+// Vincular Gemini con la clave gratis de Google: en el panel de la nota y en Ajustes → IA.
+export function GeminiLink({ onKey }: { onKey: (key: string) => void }) {
+  const [draft, setDraft] = useState('')
+  const [checking, setChecking] = useState(false)
+  const [error, setError] = useState('')
+
+  async function saveKey(key: string) {
+    key = key.trim()
+    if (!key) return
+    setChecking(true)
+    setError('')
+    try {
+      await checkKey(key)
+      onKey(key)
+      setDraft('')
+    } catch (e) { setError(geminiMessage(e)) } finally { setChecking(false) }
+  }
+
+  return <>
+    <p>Vincula tu Gemini <strong>gratis</strong> una sola vez y funciona en todos tus aparatos con esta cuenta.</p>
+    <ol>
+      <li><button type="button" className="principal" onClick={openKeyPage}><ExternalLink size={16} /> Abrir Google</button> y entra con tu cuenta.</li>
+      <li>Toca <strong>Crear clave de API</strong> (Create API key) y cópiala.</li>
+      <li>Vuelve aquí, pégala abajo y toca <strong>Vincular</strong>.</li>
+    </ol>
+    <div className="gemini-fila">
+      <input value={draft} onChange={e => setDraft(e.target.value)} placeholder="Pega la clave aquí" aria-label="Clave de Gemini"
+        autoComplete="off" spellCheck={false} />
+      <button type="button" className="principal" disabled={!draft.trim() || checking} onClick={() => saveKey(draft)}>
+        {checking ? 'Revisando…' : 'Vincular'}
+      </button>
+    </div>
+    {error && <p className="error">{error}</p>}
+    <p className="gemini-nota">En el plan gratis, Google puede revisar lo que le envíes para mejorar sus productos. No lo uses con datos delicados (claves, cuentas bancarias, salud).</p>
+  </>
+}
+
+const toBase64 =(bytes: Uint8Array) => new Promise<string>((resolve, reject) => {
   const r = new FileReader()
   r.onload = () => resolve(String(r.result).split(',')[1] ?? '')
   r.onerror = () => reject(r.error)
@@ -90,8 +127,6 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
   const [phase, setPhase] = useState<Phase>({ at: 'menu' })
   const [error, setError] = useState('')
   const [request, setRequest] = useState('')
-  const [draft, setDraft] = useState('')
-  const [checking, setChecking] = useState(false)
   const [seconds, setSeconds] = useState(0)
   const recorder = useRef<MediaRecorder | null>(null)
   const cancelled = useRef(false)
@@ -240,39 +275,13 @@ export default function GeminiPanel({ editor, mode, geminiKey, onKey, onClose, p
     else go()
   }
 
-  async function saveKey(key: string) {
-    key = key.trim()
-    if (!key) return
-    setChecking(true)
-    setError('')
-    try {
-      await checkKey(key)
-      onKey(key)
-      setDraft('')
-    } catch (e) { setError(geminiMessage(e)) } finally { setChecking(false) }
-  }
-
   const close = <button type="button" className="btn-icono" aria-label="Cerrar" title="Cerrar" onClick={onClose}><X size={16} /></button>
   const title = mode === 'voz' ? <><AudioLines size={16} aria-hidden="true" /> Dictar a Gemini</> : <><Sparkles size={16} aria-hidden="true" /> Gemini</>
 
   if (!geminiKey) return (
     <div className="gemini" role="region" aria-label="Vincular Gemini">
       <div className="gemini-cabeza"><strong>{title}</strong>{close}</div>
-      <p>Vincula tu Gemini <strong>gratis</strong> una sola vez y funciona en todos tus aparatos con esta cuenta.</p>
-      <ol>
-        <li><button type="button" className="principal" onClick={openKeyPage}><ExternalLink size={16} /> Abrir Google</button> y entra con tu cuenta.</li>
-        <li>Toca <strong>Crear clave de API</strong> (Create API key) y cópiala.</li>
-        <li>Vuelve aquí, pégala abajo y toca <strong>Vincular</strong>.</li>
-      </ol>
-      <div className="gemini-fila">
-        <input value={draft} onChange={e => setDraft(e.target.value)} placeholder="Pega la clave aquí" aria-label="Clave de Gemini"
-          autoComplete="off" spellCheck={false} />
-        <button type="button" className="principal" disabled={!draft.trim() || checking} onClick={() => saveKey(draft)}>
-          {checking ? 'Revisando…' : 'Vincular'}
-        </button>
-      </div>
-      {error && <p className="error">{error}</p>}
-      <p className="gemini-nota">En el plan gratis, Google puede revisar lo que le envíes para mejorar sus productos. No lo uses con datos delicados (claves, cuentas bancarias, salud).</p>
+      <GeminiLink onKey={onKey} />
     </div>
   )
 

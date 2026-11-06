@@ -11,7 +11,7 @@ Account.tsx · Esta es la versión web
 Account.tsx · Google Calendar
 Account.tsx · Salir
 Account.tsx · Sesión iniciada como
-Account.tsx · Tu cuenta y la versión web
+Account.tsx · Tu cuenta y Ajustes
 Account.tsx · Versión
 Account.tsx · Versión web
 Account.tsx · Windows

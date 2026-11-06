@@ -107,14 +107,14 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 7. Kanban, calendario y tablas inteligentes.
 8. Notas compartidas con otros Gmail (ver y editar).
 
-## Estado (6 de noviembre de 2026, versión 0.17.13)
+## Estado (6 de noviembre de 2026, versión 0.18.0)
 Revisado contra el menú `/`, los botones de la app, todo el historial de versiones y palabras parecidas; no probando cada función en un aparato.
 
 | Etapa | Ya está | Falta (David dijo que sí) | Por decidir |
 |---|---|---|---|
 | 1 a 3 | Todo | Nada | Nada |
-| 4 | Windows y Android. Carpeta visible en Android: se escribía en la carpeta privada de la app (escondida); va a Documents/Datheke. Android sí deja crear la carpeta; la 0.17.9 mostró que Tauri bloqueaba el archivo de control `.datheke.json` (nombre con punto) y la 0.17.10 le da permiso. Falta confirmar en el celular que se copien notas y fotos (si algo más falla, la tarjeta de la cuenta muestra el error) | Mac | Nada |
-| 5 | Íconos y Gemini | Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini). Diseño nuevo (ver abajo) | Nada |
+| 4 | Windows y Android. Carpeta visible en Android: se escribía en la carpeta privada de la app (escondida); va a Documents/Datheke. Android sí deja crear la carpeta; la 0.17.9 mostró que Tauri bloqueaba el archivo de control `.datheke.json` (nombre con punto) y la 0.17.10 le da permiso. Falta confirmar en el celular que se copien notas y fotos (si algo más falla, Ajustes → Apps y versión muestra el error) | Mac | Nada |
+| 5 | Íconos y Gemini. Diseño nuevo, parte 1 (0.18.0; falta probarla en el celular): estilo B, barra lateral con «Más» (Plantillas, Compartido conmigo, Basurero) y ventana de Ajustes con buscador | Diseño nuevo, parte 2 (0.18.1): barra de edición con «Insertar ▾» y «Más ▾», e Ícono y portada también en ⋯. Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini) | Nada |
 | 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal, protección al borrar (ver "Protección contra borrado") limpieza de fotos sin uso (0.17.8; falta probarla en el celular) y versión anterior por nota (0.17.13; falta probarla) | Nada | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
 | 7 | Nada | Calendario dentro de la app, Kanban y tablas con filtros y orden, unidos a los recordatorios | Nada |
 | 8 | Notas compartidas por correo, clave común, y elegir "Puede editar" o "Solo ver" con cambio y aviso de salida (programado; falta probarlo con dos cuentas de Google) | Combinar los cambios cuando dos personas editan la misma nota a la vez | Nada |
@@ -128,5 +128,6 @@ Orden aprobado: fotos → carpeta de Android → "solo ver"/"puede editar" → v
 - Barra lateral con menú "Más": Basurero, Calendario, Plantillas, Libretas, Recordatorios y Compartido conmigo. Sin Archivos ni Espacios.
 - Ventana de Ajustes con buscador y estas secciones: Inicio de sesión y seguridad, Dispositivos, IA y aplicaciones conectadas, Recordatorios, Importar, Respaldo, Apps y versión, Preferencias. Sin Adjuntos.
 - Barra de edición: a la vista lo de siempre; "Insertar ▾" y "Más ▾" con su nombre escrito y un buscador adentro.
-- Ícono y portada: por decidir (propuesta: arriba del título, como hoy, y también en el menú ⋯ de la nota).
+- Ícono y portada: arriba del título, como hoy, y también en el menú ⋯ de la nota (aprobado con `DISENO.md`).
+- Estilo elegido: B, verde y redondeado (como Evernote, lo más parecido a lo de antes). Dónde queda cada cosa: `DISENO.md`.
 - Antes de cambiar nada: inventario de todo lo que la app tiene hoy (cada botón, menú, opción del `/` y ajuste) con el lugar donde queda en el diseño nuevo. No se publica si algo del inventario no tiene lugar.

@@ -1,5 +1,5 @@
 import {
-  Bell, Check, CheckSquare, ChevronLeft, ChevronRight, Circle, CircleCheck, FileDown, FilePlus, FileText, FolderInput, GripVertical, History, KeyRound, LayoutTemplate, LockKeyhole, Maximize2, Minimize2, Notebook, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Shield, ShieldCheck, ShieldOff, Trash2, Users, X as XIcon,
+  Bell, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, FileDown, FilePlus, FileText, FolderInput, GripVertical, History, KeyRound, LayoutTemplate, LockKeyhole, Maximize2, Minimize2, Notebook, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Shield, ShieldCheck, ShieldOff, Trash2, Users, X as XIcon,
 } from 'lucide-react'
 import { useDeferredValue, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { closeTop, useBack } from './back.ts'
@@ -20,6 +20,7 @@ import { findRanges, highlight, matches, searchWords, snippet, type Part } from 
 import { startSort } from './sortable.ts'
 import { MoreMenu, Resizer } from './ui.tsx'
 import { Account, UpdateToast } from './Account.tsx'
+import { Settings, type Section } from './Settings.tsx'
 import { checkUpdate, type Update } from './update.ts'
 import { ReminderHelp, type ReminderMode } from './Reminders.tsx'
 import { ReminderDialog } from './ReminderDialog.tsx'
@@ -100,6 +101,10 @@ export default function App() {
   const [trashView, setTrashView] = useState(false) // la lista muestra el basurero
   const [selected, setSelected] = useState<Set<string> | null>(null) // seleccionar varias notas (null: no se está seleccionando)
   const [remindView, setRemindView] = useState(false) // la lista muestra los recordatorios
+  const [sharedView, setSharedView] = useState(false) // la lista muestra las compartidas conmigo
+  const [settingsAt, setSettingsAt] = useState<Section | null>(null) // ventana de Ajustes abierta en esa sección
+  // "Más" de la barra lateral (Plantillas, Compartido conmigo, Basurero): abierto o cerrado, como se dejó.
+  const [moreOpen, setMoreOpen] = useState(() => { try { return localStorage.getItem('datheke-mas') !== 'no' } catch { return true } })
   const [navOpen, setNavOpen] = useState(false) // celular: se ve la pantalla de libretas (en la PC siempre se ven)
   const [query, setQuery] = useState('') // buscador: mientras haya algo escrito, la lista muestra los resultados
   const searched = useDeferredValue(query) // escribir no espera a que termine de buscar
@@ -170,7 +175,8 @@ export default function App() {
   const trash = files.filter(f => f.appProperties?.kind === 'note' && inTrash(f))
     .sort((a, b) => (b.appProperties?.borrada ?? '').localeCompare(a.appProperties?.borrada ?? ''))
   const regular = allNotes.filter(n => n.appProperties?.notebook !== templatesNb?.id) // "Todas las notas" sin plantillas
-  const visible = trashView ? trash : notebookId ? allNotes.filter(n => n.appProperties?.notebook === notebookId) : regular
+  const sharedWithMe = allNotes.filter(n => n.appProperties?.rol === 'invitado')
+  const visible = trashView ? trash : sharedView ? sharedWithMe : notebookId ? allNotes.filter(n => n.appProperties?.notebook === notebookId) : regular
   // Subnotas debajo de su nota y con sangría; si la nota madre no está a la vista, la subnota va arriba. En cada nivel,
   // el orden que se les dio arrastrando; las que no tienen, arriba y la más nueva primero.
   const ids = new Set(visible.map(n => n.id))
@@ -497,10 +503,11 @@ export default function App() {
   }
 
   // Elegir una libreta o una vista. En el celular lleva de la pantalla de libretas a sus notas.
-  function go(nb: string | null, view?: 'basurero' | 'recordatorios') {
+  function go(nb: string | null, view?: 'basurero' | 'recordatorios' | 'compartidas') {
     setNotebookId(nb)
     setTrashView(view === 'basurero')
     setRemindView(view === 'recordatorios')
+    setSharedView(view === 'compartidas')
     setNavOpen(false)
     setQuery('')
   }
@@ -1175,7 +1182,7 @@ export default function App() {
   // Seleccionar varias notas: mantener presionada una (celular), Ctrl+clic o el botón "Seleccionar" (PC).
   // Luego borrar (al basurero), mover a otra libreta o, en el basurero, restaurar o eliminar para siempre.
   // Cambiar de libreta o de vista termina la selección: se ajusta al dibujar, para que no se vea en la vista nueva.
-  const selectView = `${notebookId}|${trashView}|${remindView}`
+  const selectView = `${notebookId}|${trashView}|${remindView}|${sharedView}`
   const [selectedIn, setSelectedIn] = useState(selectView)
   if (selectedIn !== selectView) {
     setSelectedIn(selectView)
@@ -1286,7 +1293,7 @@ export default function App() {
     if (query) return setQuery('')
     const narrow = window.matchMedia('(max-width: 700px)').matches
     if (narrow && !navOpen) return setNavOpen(true)
-    if (!narrow && (notebookId || trashView || remindView)) return go(null)
+    if (!narrow && (notebookId || trashView || remindView || sharedView)) return go(null)
     const bridge = (window as unknown as { DathekeAndroid?: { salir(): void } }).DathekeAndroid
     if (bridge?.salir) bridge.salir()
     else import('@tauri-apps/api/app').then(a => a.exit(0)).catch(() => {})
@@ -1305,10 +1312,9 @@ export default function App() {
   return (
     <div className={appClass} style={{ '--columnas': columns } as CSSProperties}>
       <nav className="libretas" aria-label="Libretas">
-        <Account email={session.email} onLogout={logout} update={update} mode={reminderMode} calendarHere={calendarHere}
-          onPickMode={m => setReminderHelp(m)} onConnect={() => setReminderHelp('calendar')} />
+        <Account email={session.email} onLogout={logout} update={update} onSettings={() => setSettingsAt('cuenta')} />
         <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
-        <button className={notebookId === null && !trashView && !remindView ? 'item activo' : 'item'} onClick={() => go(null)}>
+        <button className={notebookId === null && !trashView && !remindView && !sharedView ? 'item activo' : 'item'} onClick={() => go(null)}>
           <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
         </button>
         <button className={remindView ? 'item activo' : 'item'} onClick={() => go(null, 'recordatorios')}>
@@ -1343,13 +1349,24 @@ export default function App() {
               onPointerDown={e => startSort(e, (from, to) => saveOrder(notebooks, from, to))}><GripVertical size={14} /></button>
           </div>
         ))}
-        <button className={trashView ? 'item activo basurero' : 'item basurero'} onClick={() => go(null, 'basurero')}>
-          <Trash2 size={16} /><span>Basurero</span><small>{trash.length || ''}</small>
-        </button>
+        <button className="seccion mas-boton" aria-expanded={moreOpen} onClick={() => {
+          try { localStorage.setItem('datheke-mas', moreOpen ? 'no' : 'si') } catch { /* queda como estaba al abrir */ }
+          setMoreOpen(!moreOpen)
+        }}><span>Más</span><ChevronDown size={16} aria-hidden="true" /></button>
+        {(moreOpen || trashView || sharedView) && <>
+          <button className={templatesNb && notebookId === templatesNb.id ? 'item activo' : 'item'} onClick={() => templatesNb ? go(templatesNb.id)
+            : setToast('Aún no tienes plantillas guardadas: abre una nota y toca ⋯ → Guardar como plantilla.')}>
+            <LayoutTemplate size={16} /><span>Plantillas</span><small>{templates.length || ''}</small>
+          </button>
+          <button className={sharedView ? 'item activo' : 'item'} onClick={() => go(null, 'compartidas')}>
+            <Users size={16} /><span>Compartido conmigo</span><small>{sharedWithMe.length || ''}</small>
+          </button>
+          <button className={trashView ? 'item activo' : 'item'} onClick={() => go(null, 'basurero')}>
+            <Trash2 size={16} /><span>Basurero</span><small>{trash.length || ''}</small>
+          </button>
+        </>}
         <div className="respaldo">
-          <span>Respaldo en Drive: {lastBackup ? shortDate(lastBackup) : 'aún no'}</span>
-          {backup.needsLogin ? <button onClick={login}>Dar permiso</button>
-            : <button onClick={() => doBackup(true)} disabled={backup.busy}>{backup.busy ? 'Haciendo…' : 'Hacer ahora'}</button>}
+          <button onClick={() => setSettingsAt('respaldo')} title="Ver el respaldo en Ajustes">Respaldo en Drive: {lastBackup ? shortDate(lastBackup) : 'aún no'}</button>
           {backup.msg && <small role="status">{backup.msg}</small>}
         </div>
       </nav>
@@ -1381,7 +1398,7 @@ export default function App() {
           </div> : <>
           <div className="lista-titulo">
             <button className="btn-icono solo-celular" onClick={() => setNavOpen(true)} title="Libretas" aria-label="Ver las libretas"><ChevronLeft size={20} /></button>
-            <h2>{words.length ? 'Resultados' : remindView ? 'Recordatorios' : trashView ? 'Basurero' : notebookName ?? 'Todas las notas'}</h2>
+            <h2>{words.length ? 'Resultados' : remindView ? 'Recordatorios' : trashView ? 'Basurero' : sharedView ? 'Compartido conmigo' : notebookName ?? 'Todas las notas'}</h2>
             <small>{words.length ? found.length : remindView ? reminders.length : list.length}</small>
             <button className="btn-icono" onClick={() => store.sync()} title="Sincronizar" aria-label="Sincronizar"><RefreshCw size={16} /></button>
             {!words.length && !remindView && list.length > 0 && <button className="btn-icono" onClick={() => setSelected(new Set())} title="Seleccionar varias notas" aria-label="Seleccionar varias notas"><CheckSquare size={16} /></button>}
@@ -1420,7 +1437,8 @@ export default function App() {
             </div>
           )))
             : remindView ? remindersList() : !ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
-            : list.length === 0 ? <p className="vacio">{trashView ? 'El basurero está vacío' : 'Sin notas'}</p>
+            : list.length === 0 ? <p className="vacio">{trashView ? 'El basurero está vacío'
+              : sharedView ? 'Nadie te ha compartido notas todavía. Para agregar una: Nota recibida → Compartida conmigo.' : 'Sin notas'}</p>
             : list.map(([n, depth]) => (
               // Se ordena entre sus hermanas: las del mismo nivel y la misma nota madre (data-grupo).
               <div key={n.id} className={selected ? 'nota-fila seleccionando' : 'nota-fila'} data-grupo={shownParent(n) ?? 'raiz'} style={{ marginLeft: 8 + depth * 16 }}>
@@ -1623,6 +1641,11 @@ export default function App() {
           onHistory={hist => { if (cur) apply({ ...cur, hist }) }} />
       })()}
       {reminderHelp && <ReminderHelp mode={reminderHelp} current={reminderMode} calendarHere={calendarHere} onClose={() => setReminderHelp(null)} onUse={pickMode} />}
+
+      {settingsAt && <Settings start={settingsAt} onClose={() => setSettingsAt(null)} email={session.email} onLogout={logout} update={update}
+        hasKey={!!verifier} onChangeKey={() => setKeyDialog({ mode: 'cambiar' })} geminiKey={geminiKey} onGeminiKey={setGeminiKey}
+        mode={reminderMode} calendarHere={calendarHere} onPickMode={m => setReminderHelp(m)} onConnect={() => setReminderHelp('calendar')}
+        onReceive={() => setRecvMenu(true)} lastBackup={lastBackup} backup={backup} onBackup={() => doBackup(true)} onPermission={login} />}
 
       {keyDialog && <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Clave de notas">
         <div className="ventana">
