@@ -27,6 +27,9 @@
           "path": "/storage/emulated/0/Documents/Datheke/**"
         },
         {
+          "path": "/storage/emulated/0/Documents/Datheke/*/.datheke.json"
+        },
+        {
           "path": "$APPCACHE"
         },
         {

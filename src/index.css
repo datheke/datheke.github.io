@@ -51,7 +51,7 @@ button.enlace { border: none; padding: 0; text-decoration: underline; color: inh
 .avatar.grande { width: 40px; height: 40px; font-size: 18px; }
 .cuenta-web { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: 10px; background: #eaf6ef; }
 .cuenta-web p { margin: 0; display: flex; align-items: center; gap: 6px; }
-.cuenta-nota { color: #3f5f4b; font-size: 12px; }
+.cuenta-nota { color: #3f5f4b; font-size: 12px; overflow-wrap: anywhere; }
 .cuenta-direccion { display: flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px; border-radius: 8px; background: var(--fondo); border: 1px solid #cfe9da; }
 .cuenta-direccion span { flex: 1; font-weight: 600; color: var(--acento); user-select: all; }
 .cuenta-direccion button { display: inline-flex; border: none; padding: 6px; color: var(--suave); }
