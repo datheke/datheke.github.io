@@ -5,7 +5,7 @@ import { useDeferredValue, useEffect, useRef, useState, useSyncExternalStore, ty
 import { closeTop, useBack } from './back.ts'
 import { connectCalendar, desktop, forgetSession, hasCalendar, loadSession, resume, signIn } from './auth.ts'
 import { deleteCalendar, ensureCalendar, syncCalendar, type Item as CalItem } from './calendar.ts'
-import { AuthError, OfflineError, readNote, type DriveFile } from './drive.ts'
+import { AuthError, dathekeFolder, HOME, OfflineError, readNote, type DriveFile } from './drive.ts'
 import Editor, { Cover, EmojiPicker } from './Editor.tsx'
 import { startFolder } from './folder.ts'
 import { shortDate } from './format.ts'
@@ -335,7 +335,7 @@ export default function App() {
     try {
       await uploadBackup(await buildZip())
       setLastBackup(nowIso())
-      setBackup({ msg: manual ? 'Listo: está en tu Drive, carpeta "Datheke".' : undefined })
+      setBackup({ msg: manual ? `Listo: está en tu Drive, carpeta "${HOME}" → Respaldos.` : undefined })
     } catch (e) {
       if (e instanceof NeedsPermission) setBackup({ needsLogin: true, msg: 'Para guardar el respaldo en tu Drive, Datheke necesita un permiso más.' })
       else setBackup({ msg: `No se pudo hacer el respaldo: ${messageOf(e) === 'auth' ? 'la sesión venció' : messageOf(e)}` })
@@ -345,6 +345,15 @@ export default function App() {
   const backupDue = ready && s.synced && !s.offline && !backup.needsLogin
     && backupOld(lastBackup) && changedSince(files, lastBackup)
   useEffect(() => { if (backupDue) queueMicrotask(() => doBackup(false)) }, [backupDue]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Carpetas visibles: la primera vez en cada cuenta se juntan solas en "Datheke – importante, no borrar" (drive.ts).
+  const organized = useRef(false)
+  useEffect(() => {
+    if (!ready || !s.synced || s.offline || backup.needsLogin || organized.current) return
+    organized.current = true
+    dathekeFolder('respaldos').then(() => dathekeFolder('compartidas'))
+      .catch(e => { organized.current = false; console.error('Carpetas de Datheke', e) }) // sin internet o sin permiso: se intenta otra vez
+  }, [ready, s.synced, s.offline, backup.needsLogin])
 
   // Versión nueva: se mira al abrir la app y luego cada hora (cada 10 minutos mientras no haya nada nuevo).
   useEffect(() => {
@@ -844,6 +853,29 @@ export default function App() {
   }
 
   // Sincronizar las notas compartidas: bajar lo que cambió la otra persona y subir lo de aquí.
+  // El archivo de una nota que compartí ya no está en Drive (lo borraron o está en la papelera): no le llega a nadie.
+  function markLost(n: DriveFile, title: string) {
+    store.patch(n.id, { props: { archivo: 'borrado' } })
+    setToast(`Se borró de tu Drive el archivo de la nota compartida «${title || UNTITLED}»: ya no le llega a nadie. Ábrela para volver a compartirla.`)
+  }
+  // "Volver a compartir": se crea el archivo de nuevo y se invita otra vez a cada uno con lo que podía hacer.
+  async function reshareLost(n: DriveFile) {
+    const sh = shareOf(n)
+    if (!sh?.owner) return
+    try {
+      setToast('Volviendo a compartir…')
+      const title = n.name || UNTITLED
+      const full = await fullOf(n)
+      const remote = await shared.create(title, full)
+      for (const c of sh.people) await shared.invite(remote.id, [c.email], title, c.rol)
+      const desde = new Date().toISOString()
+      shared.saveState(sh.id, null)
+      shared.saveState(remote.id, { base: remote.modifiedTime, sent: shared.hash(full + title) })
+      store.patch(n.id, { props: { compartida: remote.id, archivo: null, ...conProps(n, sh.people.map(c => ({ ...c, desde }))) } })
+      setToast(`«${title}» se volvió a compartir con ${sh.con.join(', ') || 'nadie'}: les llegó un correo para agregarla de nuevo.`)
+    } catch (e) { setToast(null); fail(e) }
+  }
+
   const shBusy = useRef(false)
   const leftChecked = useRef(new Map<string, number>()) // avisos de "salí de esta nota": se miran cada 5 minutos por nota
   async function syncShared(only?: string) {
@@ -854,7 +886,7 @@ export default function App() {
     try {
       for (const n of allNotes) {
         const sh = shareOf(n)
-        if (!sh || sh.fin || sh.estado || (only && n.id !== only)) continue
+        if (!sh || sh.fin || sh.estado || n.appProperties?.archivo === 'borrado' || (only && n.id !== only)) continue
         const title = store.getState().texts[n.id]?.title ?? n.name ?? ''
         const st = state[sh.id]
         let meta: shared.Remote
@@ -862,12 +894,14 @@ export default function App() {
           const code = shared.status(e)
           // En este aparato nunca se pudo abrir (se agregó desde la web y Google aún no da acceso aquí): no se toca.
           if (!st) continue
+          if (sh.owner && code === 404) { markLost(n, title); continue }
           if (!sh.owner && (code === 404 || code === 403)) { // te la dejaron de compartir: queda tu copia
             store.patch(n.id, { props: { fin: 'true' } })
             setToast(`${sh.dueno || 'Quien la compartió'} dejó de compartir «${title || UNTITLED}». Te quedó una copia como nota tuya.`)
           }
           continue
         }
+        if (sh.owner && meta.trashed) { markLost(n, title); continue } // a los demás ya no les llega (y a quien la tenía le quedó su copia)
         if (!sh.owner && (meta.appProperties?.estado === 'quitada' || Object.entries(meta.appProperties ?? {}).some(([k, v]) => /^q\d+$/.test(k) && v.toLowerCase() === me))) {
           await shared.leave(sh.id).catch(() => {})
           store.remove(n.id)
@@ -1467,7 +1501,7 @@ export default function App() {
               <input className="titulo" value={doc.title} placeholder="Título" readOnly={locked} onChange={e => store.edit(note.id, { title: e.target.value })} />
               {(() => {
                 const sh = shareOf(note)
-                if (!sh) return null
+                if (!sh || (sh.owner && note.appProperties?.archivo === 'borrado')) return null // ese aviso va aparte, abajo
                 if (sh.fin) return <p className="compartida-barra fin">Ya no está compartida: es tu copia.</p>
                 if (sh.estado) return null
                 return <button className="compartida-barra" onClick={() => setShareOpen(true)}>
@@ -1476,6 +1510,9 @@ export default function App() {
                   {sh.por && <span> · Modificado por {sh.por}{sh.en ? `, ${shortDate(sh.en)}` : ''}</span>}
                 </button>
               })()}
+              {shareOf(note)?.owner && note.appProperties?.archivo === 'borrado' && <p className="compartida-barra fin">
+                ⚠️ Se borró de tu Drive el archivo de esta nota compartida: ya no le llega a nadie.{' '}
+                <button className="enlace" onClick={() => reshareLost(note)}>Volver a compartir</button></p>}
 
               <Editor key={`${note.id}-${s.revs[note.id] ?? 0}`} inlineImages={!!shareOf(note)} me={session.email} content={doc.text} onChange={text => store.edit(note.id, { text })}
                 notes={allNotes.map(n => ({ id: n.id, label: n.name || UNTITLED }))} onOpenNote={open} onError={fail} editable={!locked} checkable={!viewOnly(note)}

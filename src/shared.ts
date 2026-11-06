@@ -1,7 +1,7 @@
-import { call, createFolder, findFolder, getEmail, getToken } from './drive.ts'
+import { call, dathekeFolder, getEmail, getToken } from './drive.ts'
 
 // Notas compartidas por correo. La carpeta oculta de Datheke no se puede compartir, así que una nota compartida vive
-// en "Mi unidad" (carpeta "Datheke – notas compartidas", permiso drive.file: solo lo que crea o abre Datheke) y se
+// en "Mi unidad" ("Datheke – importante, no borrar/Notas compartidas", permiso drive.file: solo lo que crea o abre Datheke) y se
 // comparte con permiso de edición. Cada persona tiene además su propia nota en Datheke que apunta a ese archivo
 // (appProperties: compartida = id del archivo, rol = dueño | invitado): es su copia para ver sin internet.
 //  - Quien recibe: Google no deja que su Datheke vea el archivo solo; lo elige una vez en la ventana de Google (Picker).
@@ -9,8 +9,7 @@ import { call, createFolder, findFolder, getEmail, getToken } from './drive.ts'
 //    nota y se sale. "Con copia": se le quita el permiso y su Datheke se queda con lo último como nota suya.
 const API = 'https://www.googleapis.com/drive/v3'
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3/files'
-const FIELDS = 'id,name,modifiedTime,appProperties,lastModifyingUser(displayName,emailAddress,me),ownedByMe,owners(displayName,emailAddress),capabilities(canEdit)'
-const FOLDER_NAME = 'Datheke – notas compartidas'
+const FIELDS = 'id,name,modifiedTime,trashed,appProperties,lastModifyingUser(displayName,emailAddress,me),ownedByMe,owners(displayName,emailAddress),capabilities(canEdit)'
 // Públicas por diseño (van dentro de la página): solo abren la ventana de Google para elegir un archivo.
 const PICKER_KEY = 'AIzaSyDZzN9tF45jb9A_8hro1JAACjopqv6kAo8'
 const APP_ID = '561260224283'
@@ -20,6 +19,7 @@ export type Remote = {
   lastModifyingUser?: { displayName?: string; emailAddress?: string; me?: boolean }
   ownedByMe?: boolean; owners?: { displayName?: string; emailAddress?: string }[]
   capabilities?: { canEdit?: boolean } // false: me la compartieron para solo verla
+  trashed?: boolean // el dueño la mandó a la papelera de su Drive
 }
 export type Person = { id: string; emailAddress?: string; displayName?: string; role: string }
 export type Role = 'editar' | 'ver'
@@ -30,9 +30,6 @@ export const roleOf = (p: Person): Role => p.role === 'writer' || p.role === 'ow
 
 const json = (body: unknown): RequestInit => ({ headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 export const status = (e: unknown) => (e as { status?: number }).status
-
-let folderId: Promise<string> | undefined
-const folder = () => folderId ??= findFolder(FOLDER_NAME).then(id => id ?? createFolder(FOLDER_NAME)).catch(e => { folderId = undefined; throw e })
 
 async function upload(id: string | undefined, meta: Record<string, unknown>, html: string): Promise<Remote> {
   const b = crypto.randomUUID()
@@ -45,7 +42,7 @@ async function upload(id: string | undefined, meta: Record<string, unknown>, htm
 
 // La nota pasa a "Mi unidad" (la crea quien comparte) y se comparte con cada correo (Google les manda un aviso).
 export async function create(title: string, html: string): Promise<Remote> {
-  return upload(undefined, { name: title, mimeType: 'text/html', parents: [await folder()], appProperties: { datheke: 'nota' } }, html)
+  return upload(undefined, { name: title, mimeType: 'text/html', parents: [await dathekeFolder('compartidas')], appProperties: { datheke: 'nota' } }, html)
 }
 
 export async function invite(fileId: string, emails: string[], title: string, role: Role = 'editar') {

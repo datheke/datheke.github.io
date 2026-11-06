@@ -96,13 +96,61 @@ export async function listVisible(q: string): Promise<DriveFile[]> {
   return (await (await call(`${API}/files?${p}`)).json()).files
 }
 
-export async function createFolder(name: string): Promise<string> {
-  const res = await call(`${API}/files?fields=id`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, mimeType: FOLDER }) })
+async function createFolder(name: string, parent?: string): Promise<string> {
+  const res = await call(`${API}/files?fields=id`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, mimeType: FOLDER, ...(parent ? { parents: [parent] } : {}) }) })
   return (await res.json()).id
 }
 
-export const findFolder = async (name: string) =>
-  (await listVisible(`name='${name.replace(/'/g, "\\'")}' and mimeType='${FOLDER}'`))[0]?.id as string | undefined
+// La carpeta más vieja con ese nombre (o la más nueva, para las de antes), dentro de parent si se pide.
+async function findFolder(name: string, parent?: string, newest = false) {
+  const p = new URLSearchParams({ q: `name='${name.replace(/'/g, "\\'")}' and mimeType='${FOLDER}' and trashed=false${parent ? ` and '${parent}' in parents` : ''}`,
+    spaces: 'drive', fields: 'files(id)', orderBy: newest ? 'createdTime desc' : 'createdTime', pageSize: '1' })
+  return (await (await call(`${API}/files?${p}`)).json()).files[0]?.id as string | undefined
+}
+
+async function moveInto(id: string, parent: string, name: string) {
+  const { parents = [] } = await (await call(`${API}/files/${id}?fields=parents`)).json()
+  const p = new URLSearchParams({ addParents: parent, removeParents: parents.join(','), fields: 'id' })
+  await call(`${API}/files/${id}?${p}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
+}
+
+// Todo lo visible de Datheke va en una sola carpeta de "Mi unidad" (las notas siguen en la carpeta escondida). Las carpetas
+// de antes ("Datheke" con los respaldos y "Datheke – notas compartidas") se mueven ahí la primera vez, con lo que tengan
+// adentro: las notas compartidas siguen compartidas (el permiso va en cada archivo). Nada se borra.
+export const HOME = 'Datheke – importante, no borrar'
+export const README = 'LÉEME – no borrar.txt'
+const SUBFOLDERS = { respaldos: 'Respaldos', compartidas: 'Notas compartidas' }
+const BEFORE: Record<keyof typeof SUBFOLDERS, string> = { respaldos: 'Datheke', compartidas: 'Datheke – notas compartidas' }
+const README_TEXT = `Esta carpeta es de Datheke, tu app de notas. Es importante: no la borres ni le cambies el nombre.
+
+- Respaldos: una copia de todas tus notas, una vez por semana (se guardan las 2 últimas). Se abre en cualquier navegador, aunque no tengas Datheke.
+- Notas compartidas: las notas que compartes con otras personas. Si borras una, deja de llegarles.
+
+Tus notas no están aquí: viven en una carpeta escondida de Datheke en tu Drive, que no aparece en esta lista. Para verlas, abre Datheke (la app o datheke.github.io).
+
+Nunca toques "Eliminar datos de app ocultos" en Configuración > Administrar aplicaciones (Datheke puede salir ahí como "Notas David"): borraría todas tus notas.
+
+Si borras algo de aquí por error, abre Datheke: el respaldo se vuelve a hacer con "Hacer ahora", y Datheke te avisa si una nota compartida perdió su archivo.
+`
+async function ensure(sub: keyof typeof SUBFOLDERS) {
+  const home = await findFolder(HOME) ?? await createFolder(HOME)
+  if (!(await listVisible(`name='${README}' and '${home}' in parents`)).length) await uploadVisible(README, home, new Blob([README_TEXT], { type: 'text/plain;charset=utf-8' }))
+  const name = SUBFOLDERS[sub]
+  const found = await findFolder(name, home)
+  if (found) return found
+  const before = await findFolder(BEFORE[sub], undefined, true)
+  if (before) { await moveInto(before, home, name); return before }
+  return createFolder(name, home)
+}
+// De a una: si se piden dos a la vez (respaldo y compartir al abrir), no se crea la carpeta dos veces.
+// shortcut: dos aparatos abiertos justo a la vez podrían crearla dos veces; se usa siempre la más vieja.
+let queue: Promise<unknown> = Promise.resolve()
+export function dathekeFolder(sub: keyof typeof SUBFOLDERS): Promise<string> {
+  const run = queue.then(() => ensure(sub))
+  queue = run.catch(() => {})
+  return run
+}
 
 export async function uploadVisible(name: string, parent: string, content: Blob): Promise<string> {
   const b = crypto.randomUUID()

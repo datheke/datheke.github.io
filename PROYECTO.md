@@ -62,9 +62,16 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 - (No es posible poner clave dentro de Drive/Dropbox; se compensa con la carpeta oculta.)
 
 ## Respaldo visible
-- Carpeta visible "Datheke" con el archivo "Datheke – respaldo.zip" (todas las notas y fotos).
+- Carpeta visible "Datheke – importante, no borrar" → "Respaldos", con el archivo "Datheke – respaldo.zip" (todas las notas y fotos).
 - Se genera **una vez por semana solo si hubo cambios**.
-- Se guardan **2 respaldos** (el actual y el anterior); el más viejo se pisa.
+- Se guardan **2 respaldos** (el actual y el anterior); el más viejo se pisa. Decidido por David (noviembre de 2026): si el actual es de hace menos de un día ("Hacer ahora" seguido), solo se reemplaza el actual y el anterior no se pierde.
+
+## Carpetas visibles en "Mi unidad" (decidido por David, noviembre de 2026)
+- Todo lo visible de Datheke va en una sola carpeta "Datheke – importante, no borrar": "Respaldos", "Notas compartidas" y "LÉEME – no borrar.txt" (dice dónde están las notas y qué no tocar). Las notas siguen en la carpeta escondida de Google (no se puede mostrar ni mover, y es su protección).
+- En cada cuenta (David y su familia) las carpetas de antes ("Datheke" y "Datheke – notas compartidas") se mueven ahí solas al abrir Datheke, con lo que tengan adentro. Nada se borra.
+- Las notas compartidas no pueden ir en la carpeta escondida (Google no deja compartir desde ahí) y los respaldos van visibles a propósito (se abren sin Datheke y no se borran junto con las notas).
+- La llave de Android ("Datheke-llave-android") es solo de David, no la creó Datheke y no va dentro de esa carpeta: si se borrara esa carpeta, se iría la llave.
+- Si se borra (o va a la papelera) el archivo de una nota compartida, el Datheke del dueño lo nota, avisa y ofrece "Volver a compartir" (archivo nuevo, se invita otra vez a cada uno con su permiso).
 
 ## Funciones inspiradas en AppFlowy (solo ideas, no su código — AppFlowy es AGPLv3)
 - **Menú "/":** al escribir `/` se elige qué insertar (tabla, foto, lista, casilla, dibujo, recuadro, etc.).

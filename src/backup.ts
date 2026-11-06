@@ -1,11 +1,11 @@
 import { strToU8, zipSync } from 'fflate'
-import { createFolder, deleteFile, findFolder, listVisible, readNote, renameFile, uploadVisible, type DriveFile } from './drive.ts'
+import { dathekeFolder, deleteFile, listVisible, readNote, renameFile, uploadVisible, type DriveFile } from './drive.ts'
 import { indexPage, noteBody, notePage, plainHtml } from './exportPage.ts'
 import { safeName } from './folder.ts'
 import { imageBlob } from './images.ts'
 import * as store from './sync.ts'
 
-// Respaldo semanal: "Datheke – respaldo.zip" en la carpeta visible "Datheke" de Drive, con una página por nota que se
+// Respaldo semanal: "Datheke – respaldo.zip" en "Datheke – importante, no borrar/Respaldos" de Drive, con una página por nota que se
 // abre en cualquier navegador (fotos y portada adentro) y "Abrir aquí.html" con la lista. Se guardan los 2 últimos:
 // el anterior pasa a "Datheke – respaldo anterior.zip" y el más viejo se borra. Todo va sin cifrar, también las notas
 // con clave (decisión del dueño): el respaldo se ve siempre, aunque se olvide la clave o no se tenga la app; lo protege
@@ -13,7 +13,6 @@ import * as store from './sync.ts'
 
 export const ZIP = 'Datheke – respaldo.zip'
 export const OLD = 'Datheke – respaldo anterior.zip'
-const FOLDER = 'Datheke'
 const ROOT = 'Datheke – respaldo/'
 export const EVERY_MS = 7 * 86400_000
 
@@ -82,13 +81,21 @@ export async function buildZip(): Promise<Uint8Array> {
   return zipSync(out, { level: 6 })
 }
 
+// Qué hacer con los respaldos que ya hay antes de subir el nuevo (siempre quedan 2). Si el actual es de hace menos de un
+// día (tocaron "Hacer ahora" seguido), solo se reemplaza: el anterior, más viejo, no se pierde.
+export function rotate(inside: Pick<DriveFile, 'id' | 'name' | 'modifiedTime'>[], now = Date.now()) {
+  const current = inside.filter(f => f.name === ZIP)
+  if (current.some(f => now - Date.parse(f.modifiedTime) < 86400_000)) return { remove: current.map(f => f.id), rename: [] as string[] }
+  return { remove: inside.filter(f => f.name === OLD).map(f => f.id), rename: current.map(f => f.id) }
+}
+
 // Sube el zip nuevo y deja solo dos: el nuevo y el anterior.
 export async function upload(zip: Uint8Array) {
   try {
-    const folder = await findFolder(FOLDER) ?? await createFolder(FOLDER)
-    const inside = await listVisible(`'${folder}' in parents`)
-    for (const f of inside.filter(f => f.name === OLD)) await deleteFile(f.id)
-    for (const f of inside.filter(f => f.name === ZIP)) await renameFile(f.id, OLD)
+    const folder = await dathekeFolder('respaldos')
+    const { remove, rename } = rotate(await listVisible(`'${folder}' in parents`))
+    for (const id of remove) await deleteFile(id)
+    for (const id of rename) await renameFile(id, OLD)
     await uploadVisible(ZIP, folder, new Blob([zip as BlobPart], { type: 'application/zip' }))
   } catch (e) {
     if ((e as { status?: number }).status === 403) throw new NeedsPermission('Falta el permiso para guardar el respaldo en tu Drive.')
