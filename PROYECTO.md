@@ -88,6 +88,7 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 - Edición conjunta: los cambios se **combinan** (CRDT, ej. Yjs) en lugar de pisarse; se actualizan cada pocos segundos (no es tiempo real exacto, no hay servidor).
 - Protección: historial de versiones para recuperar lo que otro borre o cambie.
 - El espacio lo ocupa la cuenta del dueño de la nota, incluidas fotos añadidas por otros.
+- "Puede editar" o "Solo ver" (decidido por David, noviembre de 2026): se elige al compartir y se cambia después en "La tienen"; la X sigue quitando a la persona. "Solo ver" es el permiso "comentarista" de Google: Google no deja cambiar la nota y la persona sí puede dejar el aviso de que se salió. Quien solo ve: la nota se abre como fijada y sin "Editar", no marca casillas, no pone clave y no le suenan sus recordatorios; si la pasan a "Solo ver" con cambios sin subir, quedan en una nota suya "(tu versión)". Al salirse, si Google no le deja quitarse el permiso, su Datheke deja el aviso "Datheke: salí de esta nota." y el Datheke del dueño le quita el permiso y lo saca de la lista (solo cuenta el aviso de la propia persona, de después de su última invitación).
 
 ## Etapas
 1. Base: login Google, libretas, lista de notas, sincronización con Drive (web).
@@ -109,7 +110,7 @@ Revisado contra el menú `/`, los botones de la app, todo el historial de versio
 | 5 | Íconos y Gemini | Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini). Diseño nuevo (ver abajo) | Nada |
 | 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal, protección al borrar (ver "Protección contra borrado") y limpieza de fotos sin uso (0.17.8; falta probarla en el celular) | Una versión anterior por nota (ver "Versiones y basurero") | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
 | 7 | Nada | Calendario dentro de la app, Kanban y tablas con filtros y orden, unidos a los recordatorios | Nada |
-| 8 | Notas compartidas por correo (todos pueden editar) y clave común | Elegir "puede editar" o "solo ver", y poder cambiarlo o quitarlo después. Combinar los cambios cuando dos personas editan la misma nota a la vez | Nada |
+| 8 | Notas compartidas por correo, clave común, y elegir "Puede editar" o "Solo ver" con cambio y aviso de salida (programado; falta probarlo con dos cuentas de Google) | Combinar los cambios cuando dos personas editan la misma nota a la vez | Nada |
 | Ideas nuevas | — | Dispositivos, con un apartado para celular perdido o robado. Importar notas de Evernote. Preferencias: libreta para notas nuevas, letra por defecto y modo oscuro | Etiquetas (recomendado: no por ahora) |
 
 Descartado por David (noviembre de 2026): Dropbox con doble nube y PIN para abrir la app.

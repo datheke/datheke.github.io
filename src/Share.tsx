@@ -1,13 +1,16 @@
 import { Users, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { people, type Person } from './shared.ts'
+import { people, roleOf, type Person, type Role } from './shared.ts'
 
-// Ventana "Compartir": a quién (correos de Google) y quiénes ya la tienen. Quien recibe ve quién la compartió y "Salir".
-export function ShareDialog({ title, fileId, owner, ownerName, myEmail, onShare, onRemove, onLeave, onClose }: {
-  title: string; fileId?: string; owner: boolean; ownerName?: string; myEmail: string
-  onShare: (emails: string[]) => Promise<void>; onRemove: (p: Person) => Promise<boolean>; onLeave: () => void; onClose: () => void
+// Ventana "Compartir": a quién (correos de Google), si puede editar o solo ver, y quiénes ya la tienen (con lo que
+// puede hacer cada uno, que se cambia aquí mismo). Quien recibe ve quién la compartió y "Salir".
+export function ShareDialog({ title, fileId, owner, ownerName, myEmail, viewOnly, onShare, onRemove, onRole, onLeave, onClose }: {
+  title: string; fileId?: string; owner: boolean; ownerName?: string; myEmail: string; viewOnly: boolean
+  onShare: (emails: string[], role: Role) => Promise<void>; onRemove: (p: Person) => Promise<boolean>
+  onRole: (p: Person, role: Role) => Promise<void>; onLeave: () => void; onClose: () => void
 }) {
   const [text, setText] = useState('')
+  const [role, setRole] = useState<Role>('editar')
   const [list, setList] = useState<Person[] | null>(fileId ? null : [])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -20,7 +23,11 @@ export function ShareDialog({ title, fileId, owner, ownerName, myEmail, onShare,
   async function share() {
     if (!emails.length || bad.length) return setError(bad.length ? `Revisa: ${bad.join(', ')}` : 'Escribe el correo de Google de la persona.')
     setBusy(true); setError('')
-    try { await onShare(emails); setText(''); reload() } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+    try { await onShare(emails, role); setText(''); reload() } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
+  }
+  async function changeRole(p: Person, r: Role) {
+    setBusy(true)
+    try { await onRole(p, r); reload() } finally { setBusy(false) }
   }
 
   return (
@@ -30,19 +37,32 @@ export function ShareDialog({ title, fileId, owner, ownerName, myEmail, onShare,
         <Users size={30} className="caja-icono" aria-hidden="true" />
         <h2>{owner ? 'Compartir' : 'Nota compartida'}: {title}</h2>
         {owner ? <>
-          <p className="caja-nota">La otra persona la ve y la edita en su Datheke, y ves quién la cambió. Le llega un correo de Google con cómo abrirla.</p>
+          <p className="caja-nota">La otra persona la tiene en su Datheke: elige si puede editarla contigo o solo verla (lo puedes cambiar después). Le llega un correo de Google con cómo abrirla.</p>
           <label className="compartir-correo">Correo de Google (Gmail) de la persona
             <input type="email" inputMode="email" autoCapitalize="off" placeholder="nombre@gmail.com" value={text}
               onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') share() }} disabled={busy} />
           </label>
+          <label className="compartir-correo">Qué puede hacer
+            <select value={role} onChange={e => setRole(e.target.value as Role)} disabled={busy}>
+              <option value="editar">Puede editar</option>
+              <option value="ver">Solo ver</option>
+            </select>
+          </label>
           {error && <p className="caja-error" role="alert">{error}</p>}
           <button className="principal" onClick={share} disabled={busy || !emails.length}>{busy ? 'Compartiendo…' : 'Compartir'}</button>
-        </> : <p className="caja-nota">Te la compartió <strong>{ownerName || 'otra persona'}</strong>. Lo que cambies le llega, y lo que cambie te llega a ti.</p>}
+        </> : viewOnly
+          ? <p className="caja-nota">Te la compartió <strong>{ownerName || 'otra persona'}</strong> solo para verla: no puedes cambiarla, y lo que cambie te llega a ti.</p>
+          : <p className="caja-nota">Te la compartió <strong>{ownerName || 'otra persona'}</strong>. Lo que cambies le llega, y lo que cambie te llega a ti.</p>}
         {fileId && <div className="compartir-lista">
           <h3>La tienen</h3>
           {list === null ? <p className="caja-nota">Cargando…</p> : <ul>
             {(list ?? []).filter(p => p.role === 'owner').map(p => <li key={p.id}><span>{p.displayName || p.emailAddress}</span><small>dueño</small></li>)}
             {others.map(p => <li key={p.id}><span>{p.displayName ? `${p.displayName} · ${p.emailAddress}` : p.emailAddress}</span>
+              {owner ? <select value={roleOf(p)} onChange={e => changeRole(p, e.target.value as Role)} disabled={busy}
+                aria-label={`Qué puede hacer ${p.emailAddress}`}>
+                <option value="editar">Puede editar</option>
+                <option value="ver">Solo ver</option>
+              </select> : <small>{roleOf(p) === 'ver' ? 'solo ver' : 'puede editar'}</small>}
               {owner && <button className="btn-icono" title="Dejar de compartir con esta persona" aria-label={`Dejar de compartir con ${p.emailAddress}`}
                 onClick={async () => { if (await onRemove(p)) reload() }}><X size={16} /></button>}</li>)}
             {!others.length && <li className="vacio-lista">Aún nadie más.</li>}

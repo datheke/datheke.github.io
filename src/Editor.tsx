@@ -413,6 +413,7 @@ type Props = {
   onOpenNote: (id: string) => void
   onError: (e: unknown) => void
   editable: boolean // false = nota fijada: se lee y se copia, no se cambia
+  checkable?: boolean // false = compartida solo para ver: tampoco se marcan las casillas
   geminiKey: string // vacía = Gemini sin vincular
   onGeminiKey: (key: string) => void
   privacy: Privacy // nota o libreta privada: Gemini no lee su texto
@@ -427,11 +428,11 @@ type Props = {
 }
 
 // El contenido solo se usa al crear el editor; App lo vuelve a montar (key) al cambiar de nota.
-export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, geminiKey, onGeminiKey, privacy, onPrivate,
+export default function Editor({ content, onChange, notes, onOpenNote, onError, editable, checkable = true, geminiKey, onGeminiKey, privacy, onPrivate,
   onReminder, onNewReminder, focusReminder, find, onFind, inlineImages, me }: Props) {
   // TipTap guarda la configuración al crearse: las funciones que cambian se leen desde refs.
-  const latest = useRef({ onChange, notes, onError, onReminder, onNewReminder, geminiKey, privacy })
-  useEffect(() => { latest.current = { onChange, notes, onError, onReminder, onNewReminder, geminiKey, privacy } })
+  const latest = useRef({ onChange, notes, onError, onReminder, onNewReminder, geminiKey, privacy, checkable })
+  useEffect(() => { latest.current = { onChange, notes, onError, onReminder, onNewReminder, geminiKey, privacy, checkable } })
   // Fuentes que la app no tiene (pegadas antes de existir appFonts) se ven con la letra de la nota, igual en todos lados.
   const [initial] = useState(() => appFonts(content))
   const [uploading, setUploading] = useState(0)
@@ -515,7 +516,10 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
 
   const editor = useEditor({
     extensions: [
-      StarterKit, TextStyleKit, TaskList, TaskItem.configure({ nested: true, onReadOnlyChecked: () => true }), TableKit, DriveImage, Callout,
+      StarterKit, TextStyleKit, TaskList,
+      // La casilla lee el ref al tocarla, no al dibujar (compartida solo para ver: no se marca).
+      // eslint-disable-next-line react-hooks/refs
+      TaskItem.configure({ nested: true, onReadOnlyChecked: () => latest.current.checkable }), TableKit, DriveImage, Callout,
       // eslint-disable-next-line react-hooks/refs
       Calculator.configure({ gemini: () => ({ key: latest.current.geminiKey, private: !!latest.current.privacy }) }),
       Details.configure({ persist: true, HTMLAttributes: { class: 'details' } }), Summary, DetailsContent,
@@ -746,7 +750,7 @@ export default function Editor({ content, onChange, notes, onOpenNote, onError, 
     const dom = editor.view.dom
     const onCheck = (e: Event) => {
       const box = e.target
-      if (editor.isEditable || !(box instanceof HTMLInputElement) || box.type !== 'checkbox') return
+      if (editor.isEditable || !latest.current.checkable || !(box instanceof HTMLInputElement) || box.type !== 'checkbox') return
       const content = box.closest('li')?.querySelector(':scope > div')
       if (!content) return
       const $pos = editor.state.doc.resolve(editor.view.posAtDOM(content, 0))
