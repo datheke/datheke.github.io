@@ -184,6 +184,7 @@ export async function start(email: string) {
   db.setAccount(email)
   const saved = await db.get<Saved>('meta')
   sealed = {}
+  lastEdit.clear()
   refs = Object.fromEntries(await db.entries<string[]>('refs:'))
   const texts: Record<string, Snapshot> = {}
   for (const [id, v] of await db.entries<Snapshot | vault.Sealed>('text:')) {
@@ -240,6 +241,11 @@ async function pull() {
     // Foto borrada en otro aparato: su copia local se borra, salvo que una nota de aquí la nombre (la volvió a usar sin internet).
     if (old[id].appProperties?.kind === 'image' && !Object.values(state.texts).some(x => x.text.includes(`drive:${id}`))) db.del(`img:${id}`)
     forget(id)
+  }
+  // Versiones repetidas (dos aparatos a la vez) o sueltas (su nota ya no está): se quitan.
+  for (const f of Object.values(state.files)) {
+    const nota = f.appProperties?.nota ?? ''
+    if (f.appProperties?.kind === 'version' && (!state.files[nota] || versionOf(nota)?.id !== f.id)) remove(f.id)
   }
   persist()
   // Notas cambiadas en Drive: se bajan de a una; el usuario puede seguir editando mientras tanto.
@@ -315,16 +321,21 @@ export function create(props: Record<string, string>, name: string, text?: strin
 const VERSION_GAP = 10 * 60_000
 const KEY_PROPS = ['protegida', 'clave_comun'] as const
 const isVersionOf = (f: DriveFile, noteId: string) => f.appProperties?.kind === 'version' && f.appProperties.nota === noteId
-export const versionOf = (noteId: string) => Object.values(state.files).find(f => isVersionOf(f, noteId))
+// Si dos aparatos crearon una cada uno, todos usan la misma (la de id menor) y la otra se quita al sincronizar (pull).
+export const versionOf = (noteId: string) => Object.values(state.files).filter(f => isVersionOf(f, noteId)).sort((a, b) => a.id.localeCompare(b.id))[0]
+// Último cambio en este aparato: además del guardado en Drive, por si el reloj del aparato está adelantado.
+const lastEdit = new Map<string, number>()
 
 function keepVersion(noteId: string, before: Snapshot) {
   const note = state.files[noteId]
   const v = versionOf(noteId)
   if (v) {
+    // Primero la clave de su nota (se la pudieron poner en otro aparato): así nunca se escribe en claro.
+    patch(v.id, { props: { del: note.modifiedTime, ...Object.fromEntries(KEY_PROPS.map(k => [k, note.appProperties?.[k] ?? null])) } })
     write(v.id, before)
-    patch(v.id, { props: { del: note.modifiedTime } })
     return
   }
+  if (state.ids.length < 5) return // sin internet: los ids reservados quedan para crear notas y fotos
   const props: Record<string, string> = { kind: 'version', nota: noteId, del: note.modifiedTime }
   for (const k of KEY_PROPS) if (note.appProperties?.[k]) props[k] = note.appProperties[k]
   create(props, before.title, before.text, 'text/html')
@@ -333,11 +344,13 @@ function keepVersion(noteId: string, before: Snapshot) {
 export function edit(id: string, change: Partial<Snapshot>) {
   const f = state.files[id]
   const before = state.texts[id]
+  const now = Date.now()
   // Empieza a cambiar una nota quieta: primero se guarda cómo estaba.
   if (before && f?.appProperties?.kind === 'note' && f.appProperties.solo_ver !== 'true' && !state.pending[id]?.content
-    && Date.now() - Date.parse(f.modifiedTime) > VERSION_GAP) {
-    try { keepVersion(id, before) } catch (e) { console.error('Versión anterior', e) } // sin internet ni ids reservados: sigue sin versión
+    && now - Date.parse(f.modifiedTime) > VERSION_GAP && now - (lastEdit.get(id) ?? 0) > VERSION_GAP) {
+    try { keepVersion(id, before) } catch (e) { console.error('Versión anterior', e) } // si falla, se sigue sin versión
   }
+  lastEdit.set(id, now)
   write(id, change)
 }
 
@@ -346,7 +359,9 @@ export async function loadVersion(noteId: string): Promise<(Snapshot & { del: st
   const v = versionOf(noteId)
   if (!v || (isProtected(v.id) && !canSeal(v.id))) return null
   if (!state.texts[v.id] || (!state.pending[v.id] && state.base[v.id] !== v.modifiedTime)) {
-    setText(v.id, { title: titleOf(v), text: await readNote(v.id, v.mimeType) }, v.modifiedTime)
+    const text = await readNote(v.id, v.mimeType)
+    if (!state.files[v.id]) return null // la borraron mientras se bajaba
+    setText(v.id, { title: titleOf(v), text }, v.modifiedTime)
     persist()
   }
   const t = state.texts[v.id]
@@ -359,7 +374,7 @@ export function restoreVersion(noteId: string, back: Snapshot) {
   const v = versionOf(noteId)
   if (!now || !v) return
   write(v.id, now)
-  patch(v.id, { props: { del: new Date().toISOString() } })
+  patch(v.id, { props: { del: state.files[noteId].modifiedTime } }) // "Así estaba el…": cuando se guardó lo de ahora
   write(noteId, { title: back.title, text: back.text })
   update({ revs: { ...state.revs, [noteId]: (state.revs[noteId] ?? 0) + 1 } })
 }

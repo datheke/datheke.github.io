@@ -1089,7 +1089,7 @@ export default function App() {
     }
   }
   function restoreShown() {
-    if (!note || peek?.noteId !== note.id) return
+    if (!note || peek?.noteId !== note.id || locked) return
     if (!confirm(`¿Volver a como estaba el ${versionDate(peek.del)}? Lo de ahora queda como versión anterior, por si te arrepientes.`)) return
     store.restoreVersion(note.id, { title: peek.title, text: peek.text })
     setToast(peek.missing ? 'Listo. Las fotos de esta versión ya se borraron; se recuperó solo el texto.' : 'Listo: la nota volvió a como estaba.')
@@ -1497,7 +1497,7 @@ export default function App() {
               { label: shareOf(note) && !shareOf(note)!.owner ? 'Compartida contigo…' : shareOf(note) ? 'Compartida: personas…' : 'Compartir con…', icon: <Users size={16} />, onClick: () => setShareOpen(true) },
               { label: 'Enviar copia (WhatsApp, correo…)', icon: <Send size={16} />, onClick: sendCopy },
               { label: 'Guardar como plantilla', icon: <LayoutTemplate size={16} />, onClick: saveAsTemplate },
-              ...(store.versionOf(note.id) && !viewOnly(note) && !isClosed(note)
+              ...(store.versionOf(note.id) && !locked && !isClosed(note) // fijada, en el basurero o "solo ver": no se restaura
                 ? [{ label: 'Ver versión anterior', icon: <History size={16} />, onClick: showVersion }] : []),
               { label: 'Borrar nota', icon: <Trash2 size={16} />, onClick: deleteNote, danger: true },
             ]} />

@@ -254,9 +254,65 @@ test('versión anterior: al empezar a cambiar una nota quieta se guarda cómo es
   const v = store.versionOf('n1')!
   assert.equal(drive.files.get(v.id)?.body, '<p>pan</p>') // también queda en Drive
   assert.equal(drive.files.get(v.id)?.appProperties?.kind, 'version')
-  store.edit('n1', { text: '<p>solo huevos</p>' }) // otra vez, ya guardada y quieta: se reemplaza
-  assert.equal(versionText('n1'), '<p>pan, leche y huevos</p>')
+  // Recién guardada en un Drive con fecha "vieja" (como un aparato con el reloj adelantado): todavía no se reemplaza.
+  store.edit('n1', { text: '<p>pan, leche, huevos y sal</p>' })
+  assert.equal(versionText('n1'), '<p>pan</p>')
+  await store.sync()
+  // 11 minutos después, quieta: ahora sí se reemplaza.
+  const realNow = Date.now
+  Date.now = () => realNow() + 11 * 60_000
+  try { store.edit('n1', { text: '<p>solo huevos</p>' }) } finally { Date.now = realNow }
+  assert.equal(versionText('n1'), '<p>pan, leche, huevos y sal</p>')
   assert.equal(versions().length, 1) // una sola por nota
+})
+
+test('versión anterior sin internet: siempre deja ids reservados para crear notas y fotos', async () => {
+  const drive = fakeDrive()
+  for (let i = 0; i < 18; i++) drive.note(`m${i}`, `Nota ${i}`, `<p>${i}</p>`)
+  await store.start('version-sin-internet@test')
+  await store.sync()
+  drive.setOnline(false)
+  for (let i = 0; i < 18; i++) store.edit(`m${i}`, { text: `<p>${i} cambiada</p>` })
+  assert.ok(store.getState().ids.length >= 4, 'quedan ids')
+  assert.doesNotThrow(() => store.create({ kind: 'note', notebook: 'nb' }, 'Sin señal', '<p>x</p>', 'text/html'))
+  drive.setOnline(true)
+})
+
+test('versiones repetidas (dos aparatos a la vez) o sueltas (su nota ya no está): se quitan solas', async () => {
+  const drive = fakeDrive()
+  drive.note('n1', 'Lista', '<p>pan</p>')
+  const version = (id: string, nota: string) => drive.files.set(id, { id, name: 'Lista', modifiedTime: drive.tick(), mimeType: 'text/html', appProperties: { kind: 'version', nota }, body: '<p>viejo</p>' })
+  version('va', 'n1')
+  version('vb', 'n1')
+  version('vc', 'nota-borrada')
+  await store.start('versiones-sueltas@test')
+  await store.sync()
+  await store.sync()
+  assert.deepEqual(versions().map(f => f.id), ['va'])
+  assert.deepEqual([...drive.files.keys()].filter(k => k.startsWith('v')), ['va'])
+})
+
+test('versión que todavía no tenía la clave de su nota (se la pusieron en otro aparato): se cifra antes de escribirla', async () => {
+  const vault = await import('./vault.ts')
+  const db = await import('./db.ts')
+  const drive = fakeDrive()
+  drive.note('n1', 'Banco', '<p>PIN 1111</p>')
+  drive.files.set('vx', { id: 'vx', name: 'Banco', modifiedTime: drive.tick(), mimeType: 'text/html', appProperties: { kind: 'version', nota: 'n1' }, body: '<p>PIN 0000</p>' })
+  await store.start('version-carrera@test')
+  await store.sync()
+  await vault.create('clave-larga-4')
+  drive.files.get('n1')!.appProperties = { kind: 'note', protegida: 'true' } // otro aparato le puso clave a la nota, no a la versión
+  drive.files.get('n1')!.modifiedTime = drive.tick()
+  await store.sync()
+  const realNow = Date.now
+  Date.now = () => realNow() + 11 * 60_000
+  try { store.edit('n1', { text: '<p>PIN 2222</p>' }) } finally { Date.now = realNow }
+  await new Promise(r => setTimeout(r, 50))
+  assert.equal(store.versionOf('n1')?.appProperties?.protegida, 'true')
+  const local = await db.get('text:vx')
+  assert.ok(vault.isSealed(local), 'la versión queda cifrada en el aparato')
+  assert.doesNotMatch(JSON.stringify(local), /1111/)
+  store.closeVault()
 })
 
 test('versión anterior: una nota cambiada hace menos de 10 minutos no guarda otra', async () => {
