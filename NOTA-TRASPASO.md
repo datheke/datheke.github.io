@@ -11,7 +11,7 @@
 - Versión 0.17.9: la carpeta Documents/Datheke no apareció en el celular con la 0.17.8; ahora la tarjeta de la cuenta muestra si la copia salió bien o el error exacto.
 
 ## Qué falta
-1. David instala la 0.17.9 y manda captura de la línea de la carpeta en la tarjeta de su cuenta. Con ese error se decide el arreglo (posible complemento tauri-plugin-android-fs; explicarlo y esperar su OK).
+1. La 0.17.9 mostró "forbidden path …/.datheke.json": Tauri bloquea en Android los archivos con punto. La 0.17.10 le da permiso. David instala la 0.17.10 y revisa que la tarjeta diga "Copia de tus notas en Documents/Datheke ✓" y que aparezcan sus notas y fotos (la carpeta ya se crea).
 2. Revisar que las fotos de sus notas se sigan viendo bien.
 3. Siguiente en el orden aprobado: "solo ver" / "puede editar" al compartir.
 
