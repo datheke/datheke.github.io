@@ -60,7 +60,7 @@ App.tsx · Mover a…
 App.tsx · Ninguna
 App.tsx · Nota
 App.tsx · Nota fijada: toca Editar para moverla
-App.tsx · Nota recibida
+App.tsx · Agregar una que me compartieron
 App.tsx · Nueva nota desde plantilla
 App.tsx · Nueva subnota
 App.tsx · Ocultar lista de notas
@@ -218,8 +218,8 @@ Share.tsx · dueño
 Share.tsx · Entra a
 Share.tsx · Listo: aparece sola aquí en la app y en tus otros aparatos.
 Share.tsx · nombre@gmail.com
-Share.tsx · Nota recibida
-Share.tsx · Nota recibida → Compartida conmigo
+App.tsx · Importar
+Share.tsx · Más → Compartidas → Agregar una que me compartieron
 Share.tsx · puede editar
 Share.tsx · Puede editar
 Share.tsx · Quitársela:
@@ -227,7 +227,7 @@ Share.tsx · se queda con la nota como está ahora, como nota suya. Ya no le lle
 Share.tsx · solo para verla: no puedes cambiarla, y lo que cambie te llega a ti.
 Share.tsx · solo ver
 Share.tsx · Solo ver
-Share.tsx · Te mandaron una copia por WhatsApp, correo… Queda como nota tuya.
+Settings.tsx · Archivo .datheke
 Share.tsx · Toca
 Share.tsx · y elige la nota.
 Vault.tsx · Abrir

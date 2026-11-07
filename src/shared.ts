@@ -47,7 +47,7 @@ export async function create(title: string, html: string): Promise<Remote> {
 
 export async function invite(fileId: string, emails: string[], title: string, role: Role = 'editar') {
   const how = role === 'ver' ? ' Es solo para verla: no podrás cambiarla.' : ''
-  const msg = `Te compartí la nota "${title}" en Datheke.${how} Para tenerla (una sola vez): entra desde el navegador a datheke.github.io con este correo → Nota recibida → Compartida conmigo, y elígela. Después aparece sola también en la app de tu celular o tu PC. No la abras con el botón de este correo.`
+  const msg = `Te compartí la nota "${title}" en Datheke.${how} Para tenerla (una sola vez): entra desde el navegador a datheke.github.io con este correo → Más → Compartidas → Agregar una que me compartieron, y elígela. Después aparece sola también en la app de tu celular o tu PC. No la abras con el botón de este correo.`
   for (const emailAddress of emails) {
     const q = new URLSearchParams({ sendNotificationEmail: 'true', emailMessage: msg })
     await call(`${API}/files/${fileId}/permissions?${q}`, { method: 'POST', ...json({ type: 'user', role: GOOGLE_ROLE[role], emailAddress }) })

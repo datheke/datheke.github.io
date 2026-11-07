@@ -26,7 +26,7 @@ const SECTIONS: { id: Section; label: string; Icon: typeof Search; words: string
   { id: 'cuenta', label: 'Inicio de sesión y seguridad', Icon: ShieldCheck, words: 'cuenta correo salir clave notas cambiar olvidaste google' },
   { id: 'ia', label: 'IA y aplicaciones conectadas', Icon: Sparkles, words: 'gemini vincular desvincular inteligencia artificial dictar' },
   { id: 'recordatorios', label: 'Recordatorios', Icon: BellRing, words: 'avisos quien avisa google calendar tono sonido conectar' },
-  { id: 'importar', label: 'Importar', Icon: FileDown, words: 'nota recibida archivo datheke compartida conmigo abrir' },
+  { id: 'importar', label: 'Importar', Icon: FileDown, words: 'nota recibida archivo datheke copia whatsapp compartidas abrir' },
   { id: 'respaldo', label: 'Respaldo', Icon: Archive, words: 'drive copia hacer ahora permiso semana' },
   { id: 'apps', label: 'Apps y versión', Icon: Download, words: 'android windows web navegador descargar actualizar version documentos direccion' },
 ]
@@ -134,9 +134,10 @@ export function Settings({ start, onClose, email, onLogout, update, hasKey, onCh
           </div>}
 
           {id === 'importar' && <div className="ajuste-caja">
-            <strong>Nota recibida</strong>
-            <p className="ajuste-nota">Abre una nota que te enviaron (archivo .datheke) o una que te compartieron por Google Drive.</p>
-            <div className="ajuste-botones"><button className="principal" onClick={then(onReceive)}><FileDown size={16} /> Nota recibida</button></div>
+            <strong>Archivo .datheke</strong>
+            <p className="ajuste-nota">Una copia que te mandaron por WhatsApp, correo… Queda como nota tuya: eliges el título y la libreta.
+              También está en Más → Importar. Las que te compartieron por Google se agregan en Más → Compartidas.</p>
+            <div className="ajuste-botones"><button className="principal" onClick={then(onReceive)}><FileDown size={16} /> Importar</button></div>
           </div>}
 
           {id === 'respaldo' && <div className="ajuste-caja">

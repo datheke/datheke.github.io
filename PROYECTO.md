@@ -107,14 +107,14 @@ Un solo código para todas. Instaladores generados gratis con GitHub Actions (in
 7. Kanban, calendario y tablas inteligentes.
 8. Notas compartidas con otros Gmail (ver y editar).
 
-## Estado (6 de noviembre de 2026, versión 0.18.2)
+## Estado (6 de noviembre de 2026, versión 0.18.3)
 Revisado contra el menú `/`, los botones de la app, todo el historial de versiones y palabras parecidas; no probando cada función en un aparato.
 
 | Etapa | Ya está | Falta (David dijo que sí) | Por decidir |
 |---|---|---|---|
 | 1 a 3 | Todo | Nada | Nada |
 | 4 | Windows y Android. Carpeta visible en Android: se escribía en la carpeta privada de la app (escondida); va a Documents/Datheke. Android sí deja crear la carpeta; la 0.17.9 mostró que Tauri bloqueaba el archivo de control `.datheke.json` (nombre con punto) y la 0.17.10 le da permiso. Falta confirmar en el celular que se copien notas y fotos (si algo más falla, Ajustes → Apps y versión muestra el error) | Mac | Nada |
-| 5 | Íconos y Gemini. Diseño nuevo, parte 1 (0.18.0): estilo B, barra lateral con «Más» (Plantillas, Compartido conmigo, Basurero) y ventana de Ajustes con buscador. 0.18.1 (falta probarla en el celular): en el celular el menú es un panel lateral (se cierra con regresar, tocando afuera o deslizando a la izquierda) y la rueda abre Ajustes en la lista de secciones | Diseño nuevo, parte 2 (0.18.5): barra de edición con «Insertar ▾» y «Más ▾», e Ícono y portada también en ⋯. Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini) | Nada |
+| 5 | Íconos y Gemini. Diseño nuevo, parte 1 (0.18.0): estilo B, barra lateral con «Más» (Plantillas, Compartido conmigo, Basurero) y ventana de Ajustes con buscador. 0.18.1 (falta probarla en el celular): en el celular el menú es un panel lateral (se cierra con regresar, tocando afuera o deslizando a la izquierda) y la rueda abre Ajustes en la lista de secciones. 0.18.3 (falta probarla): «Compartidas» (las que compartí y las que me compartieron, con botón directo para agregar) e «Importar» en «Más» (archivo .datheke con título y libreta); sale el botón «Nota recibida» | Importar de Evernote y enviar o recibir varias notas o una libreta entera (0.18.4). Diseño nuevo, parte 2 (0.18.5): barra de edición con «Insertar ▾» y «Más ▾», e Ícono y portada también en ⋯. Dibujos a mano y "Enviar a IA" (en Ajustes, junto a Gemini) | Nada |
 | 6 | Basurero de 30 días, clave de notas con huella, respaldo semanal, protección al borrar (ver "Protección contra borrado") limpieza de fotos sin uso (0.17.8; falta probarla en el celular) y versión anterior por nota (0.17.13; falta probarla) | Nada | Rescatar una nota que desaparece de la nube (hoy solo si tenía cambios sin subir) |
 | 7 | Nada | Calendario dentro de la app, Kanban y tablas con filtros y orden, unidos a los recordatorios | Nada |
 | 8 | Notas compartidas por correo, clave común, y elegir "Puede editar" o "Solo ver" con cambio y aviso de salida (0.18.2: también avisa cuando sale alguien con «Puede editar», que antes no se detectaba, y la nota lo dice en rojo hasta tocar «Entendido»; si ya no queda nadie, porque se salieron o porque se les quitó, deja de ser compartida y queda como nota normal en su misma libreta; falta probarlo con dos cuentas de Google) | Combinar los cambios cuando dos personas editan la misma nota a la vez | Nada |

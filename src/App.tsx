@@ -1,7 +1,7 @@
 import {
-  Bell, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, FileDown, FilePlus, FileText, FolderInput, GripVertical, History, KeyRound, LayoutTemplate, LockKeyhole, Maximize2, Menu as MenuIcon, Minimize2, Notebook, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Shield, ShieldCheck, ShieldOff, Trash2, Users, X as XIcon,
+  Bell, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, FileDown, FilePlus, FileText, FolderInput, GripVertical, History, KeyRound, LayoutTemplate, LockKeyhole, Maximize2, Menu as MenuIcon, Minimize2, Notebook, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Shield, ShieldCheck, ShieldOff, Trash2, UserPlus, Users, X as XIcon,
 } from 'lucide-react'
-import { useDeferredValue, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
+import { Fragment, useDeferredValue, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { closeTop, useBack } from './back.ts'
 import { connectCalendar, desktop, forgetSession, hasCalendar, loadSession, resume, signIn } from './auth.ts'
 import { deleteCalendar, ensureCalendar, syncCalendar, type Item as CalItem } from './calendar.ts'
@@ -11,7 +11,7 @@ import { startFolder } from './folder.ts'
 import { shortDate } from './format.ts'
 import { imageBlob, imageDataUrl, pickImage, uploadCover } from './images.ts'
 import * as shared from './shared.ts'
-import { CopyDialog, ReceiveDialog, ShareDialog } from './Share.tsx'
+import { CopyDialog, SharedHelp, ShareDialog } from './Share.tsx'
 import { cleanReminders, fileName, pack, photoIds, pickFile, send, takeReceived, unpack, type Packed } from './share.ts'
 import * as store from './sync.ts'
 import { TEMPLATES } from './templates.ts'
@@ -103,7 +103,7 @@ export default function App() {
   const [remindView, setRemindView] = useState(false) // la lista muestra los recordatorios
   const [sharedView, setSharedView] = useState(false) // la lista muestra las compartidas conmigo
   const [settingsAt, setSettingsAt] = useState<Section | '' | null>(null) // Ajustes: null cerrada, '' en la lista de secciones
-  // "Más" de la barra lateral (Plantillas, Compartido conmigo, Basurero): abierto o cerrado, como se dejó.
+  // "Más" de la barra lateral (Plantillas, Compartidas, Importar, Basurero): abierto o cerrado, como se dejó.
   const [moreOpen, setMoreOpen] = useState(() => { try { return localStorage.getItem('datheke-mas') !== 'no' } catch { return true } })
   const [navOpen, setNavOpen] = useState(false) // celular: el menú lateral está abierto (en la PC siempre se ve)
   const swipe = useRef<{ x: number; y: number } | null>(null) // deslizar el menú lateral a la izquierda lo cierra
@@ -116,7 +116,7 @@ export default function App() {
   const [shareOpen, setShareOpen] = useState(false) // ventana "Compartir"
   // "Ver versión anterior": la nota se muestra como estaba (sin poder cambiarla) hasta Restaurar o Volver.
   const [peek, setPeek] = useState<{ noteId: string; title: string; text: string; del: string; missing: number } | null>(null)
-  const [recvMenu, setRecvMenu] = useState(false) // "Nota recibida": archivo o compartida conmigo
+  const [sharedHelp, setSharedHelp] = useState(false) // app: cómo agregar desde la web una nota que me compartieron
   const [copyAsk, setCopyAsk] = useState<{ who: string; resolve: (v: 'copia' | 'quitar' | null) => void } | null>(null)
   const [toast, setToast] = useState<string | null>(null) // aviso corto abajo (se va solo)
   const [remDlg, setRemDlg] = useState<{ noteId: string; id?: string; label: string; insert?: (r: Reminder) => void } | null>(null)
@@ -147,7 +147,7 @@ export default function App() {
   // Regresar (Android): primero se cierra la ventana o el menú abierto; luego App (ver backRef más abajo).
   useBack(!!remDlg, () => setRemDlg(null))
   useBack(shareOpen, () => setShareOpen(false))
-  useBack(recvMenu, () => setRecvMenu(false))
+  useBack(sharedHelp, () => setSharedHelp(false))
   useBack(!!received, () => setReceived(null))
   useBack(!!reminderHelp, () => setReminderHelp(null))
   useBack(!!keyDialog, () => setKeyDialog(null))
@@ -178,8 +178,10 @@ export default function App() {
   const trash = files.filter(f => f.appProperties?.kind === 'note' && inTrash(f))
     .sort((a, b) => (b.appProperties?.borrada ?? '').localeCompare(a.appProperties?.borrada ?? ''))
   const regular = allNotes.filter(n => n.appProperties?.notebook !== templatesNb?.id) // "Todas las notas" sin plantillas
-  const sharedWithMe = allNotes.filter(n => n.appProperties?.rol === 'invitado')
-  const visible = trashView ? trash : sharedView ? sharedWithMe : notebookId ? allNotes.filter(n => n.appProperties?.notebook === notebookId) : regular
+  // Compartidas: las que compartí (dueño) y las que me compartieron, mientras sigan compartidas.
+  const isMine = (n: DriveFile) => n.appProperties?.rol === 'dueño'
+  const sharedNotes = allNotes.filter(n => n.appProperties?.compartida && n.appProperties.fin !== 'true' && !n.appProperties.estado).sort(byDate)
+  const visible = trashView ? trash : sharedView ? sharedNotes : notebookId ? allNotes.filter(n => n.appProperties?.notebook === notebookId) : regular
   // Subnotas debajo de su nota y con sangría; si la nota madre no está a la vista, la subnota va arriba. En cada nivel,
   // el orden que se les dio arrastrando; las que no tienen, arriba y la más nueva primero.
   const ids = new Set(visible.map(n => n.id))
@@ -187,7 +189,8 @@ export default function App() {
   const siblings = (parent?: string) => visible.filter(n => shownParent(n) === parent).sort(firstUnordered(byDate))
   const tree = (parent?: string, depth = 0): [DriveFile, number][] =>
     siblings(parent).flatMap(n => [[n, depth] as [DriveFile, number], ...tree(n.id, depth + 1)])
-  const list = trashView ? trash.map(n => [n, 0] as [DriveFile, number]) : tree()
+  const list = trashView ? trash.map(n => [n, 0] as [DriveFile, number])
+    : sharedView ? [...sharedNotes.filter(isMine), ...sharedNotes.filter(n => !isMine(n))].map(n => [n, 0] as [DriveFile, number]) : tree()
   const saveOrder = (items: DriveFile[], from: number, to: number) =>
     reorder(items, from, to).forEach(({ id, orden }) => store.patch(id, { props: { orden } }))
   const descendants = (id: string): DriveFile[] => allNotes.filter(n => parentOf(n) === id).flatMap(n => [n, ...descendants(n.id)])
@@ -820,7 +823,6 @@ export default function App() {
 
   // Nota compartida conmigo: se elige en la ventana de Google y queda en mis notas (o vuelve, si ya estaba).
   async function addShared() {
-    setRecvMenu(false)
     try {
       const fileId = await shared.pick()
       if (!fileId) return
@@ -932,7 +934,7 @@ export default function App() {
             const back = await shared.get(sh.id).then(m => !m.trashed, () => false)
             if (back) {
               store.patch(n.id, { props: { archivo: null } })
-              setToast(`El archivo de «${n.name || UNTITLED}» volvió a tu Drive. Si a alguien ya no le llega, que la agregue otra vez: Nota recibida → Compartida conmigo.`)
+              setToast(`El archivo de «${n.name || UNTITLED}» volvió a tu Drive. Si a alguien ya no le llega, que la agregue otra vez desde Más → Compartidas.`)
             }
           }
           continue
@@ -1096,9 +1098,9 @@ export default function App() {
       const props: Record<string, string> = { kind: 'note', notebook: nbId }
       if (p.icon) props.icon = p.icon
       if (p.cover && ids[p.cover]) props.cover = ids[p.cover]
-      const id = store.create(props, p.title, html, 'text/html')
+      const id = store.create(props, p.title.trim(), html, 'text/html')
       setReceived(null)
-      setTrashView(false); setRemindView(false); setNotebookId(nbId)
+      go(nbId)
       open(id)
       setToast(`"${p.title || UNTITLED}" se agregó a tus notas.`)
     } catch (e) { fail(e) }
@@ -1393,7 +1395,10 @@ export default function App() {
             <LayoutTemplate size={16} /><span>Plantillas</span><small>{templates.length || ''}</small>
           </button>
           <button className={sharedView ? 'item activo' : 'item'} onClick={() => go(null, 'compartidas')}>
-            <Users size={16} /><span>Compartido conmigo</span><small>{sharedWithMe.length || ''}</small>
+            <Users size={16} /><span>Compartidas</span><small>{sharedNotes.length || ''}</small>
+          </button>
+          <button className="item" onClick={openReceived} title="Agregar una copia que te mandaron (archivo .datheke)">
+            <FileDown size={16} /><span>Importar</span>
           </button>
           <button className={trashView ? 'item activo' : 'item'} onClick={() => go(null, 'basurero')}>
             <Trash2 size={16} /><span>Basurero</span><small>{trash.length || ''}</small>
@@ -1432,7 +1437,7 @@ export default function App() {
           </div> : <>
           <div className="lista-titulo">
             <button className="btn-icono solo-celular" onClick={() => setNavOpen(true)} title="Libretas" aria-label="Ver las libretas"><MenuIcon size={20} /></button>
-            <h2>{words.length ? 'Resultados' : remindView ? 'Recordatorios' : trashView ? 'Basurero' : sharedView ? 'Compartido conmigo' : notebookName ?? 'Todas las notas'}</h2>
+            <h2>{words.length ? 'Resultados' : remindView ? 'Recordatorios' : trashView ? 'Basurero' : sharedView ? 'Compartidas' : notebookName ?? 'Todas las notas'}</h2>
             <small>{words.length ? found.length : remindView ? reminders.length : list.length}</small>
             <button className="btn-icono" onClick={() => store.sync()} title="Sincronizar" aria-label="Sincronizar"><RefreshCw size={16} /></button>
             {!words.length && !remindView && list.length > 0 && <button className="btn-icono" onClick={() => setSelected(new Set())} title="Seleccionar varias notas" aria-label="Seleccionar varias notas"><CheckSquare size={16} /></button>}
@@ -1446,7 +1451,7 @@ export default function App() {
           </div>
           <div className="lista-acciones">
             <button className="principal solo-celular" onClick={() => newNote()}><Plus size={18} /> Nota</button>
-            <button className="recibir" onClick={() => setRecvMenu(true)} title="Abrir una nota que te enviaron o compartieron"><FileDown size={18} /> Nota recibida</button>
+            {sharedView && <button className="recibir" onClick={() => desktop ? setSharedHelp(true) : addShared()}><UserPlus size={18} /> Agregar una que me compartieron</button>}
             <select value="" aria-label="Nueva nota desde plantilla" onChange={e => fromTemplate(e.target.value)}>
               <option value="">Desde plantilla…</option>
               {TEMPLATES.map(t => <option key={t.title} value={t.title}>{t.title}</option>)}
@@ -1472,10 +1477,11 @@ export default function App() {
           )))
             : remindView ? remindersList() : !ready || (!s.synced && !files.length) ? <p className="vacio">Cargando…</p>
             : list.length === 0 ? <p className="vacio">{trashView ? 'El basurero está vacío'
-              : sharedView ? 'Nadie te ha compartido notas todavía. Para agregar una: Nota recibida → Compartida conmigo.' : 'Sin notas'}</p>
-            : list.map(([n, depth]) => (
-              // Se ordena entre sus hermanas: las del mismo nivel y la misma nota madre (data-grupo).
-              <div key={n.id} className={selected ? 'nota-fila seleccionando' : 'nota-fila'} data-grupo={shownParent(n) ?? 'raiz'} style={{ marginLeft: 8 + depth * 16 }}>
+              : sharedView ? 'Aún no tienes notas compartidas. Para compartir una, ábrela y toca ⋯ → Compartir con…' : 'Sin notas'}</p>
+            : list.map(([n, depth], i) => <Fragment key={n.id}>
+              {sharedView && (i === 0 || isMine(list[i - 1][0]) !== isMine(n)) && <h3 className="grupo-titulo">{isMine(n) ? 'Las que compartí' : 'Me compartieron'}</h3>}
+              {/* Se ordena entre sus hermanas: las del mismo nivel y la misma nota madre (data-grupo). */}
+              <div className={selected ? 'nota-fila seleccionando' : 'nota-fila'} data-grupo={shownParent(n) ?? 'raiz'} style={{ marginLeft: 8 + depth * 16 }}>
                 <button className={`nota${n.id === noteId && !selected ? ' activa' : ''}${selected?.has(n.id) ? ' elegida' : ''}`} aria-pressed={selected ? selected.has(n.id) : undefined}
                   title={n.name || UNTITLED} onClick={e => clickNote(e, n.id)} onPointerDown={e => pressStart(e, n.id)} onPointerMove={pressMove} onPointerUp={pressEnd} onPointerCancel={pressEnd}
                   onContextMenu={e => { if (e.nativeEvent instanceof PointerEvent && e.nativeEvent.pointerType !== 'mouse') e.preventDefault() }}>
@@ -1491,10 +1497,10 @@ export default function App() {
                   {trashView && <span className="resumen basurero-dias">Se elimina en {daysLeft(n)} días</span>}
                   <small>{shareOf(n) && !shareOf(n)!.fin && !shareOf(n)!.estado && <Users size={12} aria-label="Compartida" />}{isLocked(n) && <LockKeyhole size={12} aria-label="Con clave" />}{n.appProperties?.locked === 'true' && <Pin size={12} aria-label="Fijada" />}{shortDate(n.modifiedTime)}</small>
                 </button>
-                {!selected && <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
+                {!selected && !sharedView && <button className="agarre-lista" tabIndex={-1} title="Arrastra para ordenar" aria-label="Arrastrar para ordenar"
                   onPointerDown={e => startSort(e, (from, to) => saveOrder(siblings(shownParent(n)), from, to))}><GripVertical size={16} /></button>}
               </div>
-            ))}
+            </Fragment>)}
         </div>
       </section>
       <Resizer className="divisor-lista" label="Ancho de la lista de notas" value={layout.list}
@@ -1641,8 +1647,8 @@ export default function App() {
         ownerName={shareOf(note)?.dueno} myEmail={session.email} onShare={startShare} onRemove={removePerson} onRole={changeRole} viewOnly={viewOnly(note)}
         onLeave={() => { setShareOpen(false); deleteNote() }} onClose={() => setShareOpen(false)} />}
       {copyAsk && <CopyDialog who={copyAsk.who} onPick={copyAsk.resolve} />}
-      {recvMenu && <ReceiveDialog inApp={desktop} onOpenWeb={() => { import('@tauri-apps/plugin-opener').then(o => o.openUrl('https://datheke.github.io')).catch(fail) }}
-        onClose={() => setRecvMenu(false)} onShared={addShared} onFile={() => { setRecvMenu(false); openReceived() }} />}
+      {sharedHelp && <SharedHelp onOpenWeb={() => { import('@tauri-apps/plugin-opener').then(o => o.openUrl('https://datheke.github.io')).catch(fail) }}
+        onClose={() => setSharedHelp(false)} />}
       {received && (() => {
         const rems = (received.p.html.match(/data-type="recordatorio"/g) ?? []).length
         const photos = Object.keys(received.p.photos).length
@@ -1652,6 +1658,9 @@ export default function App() {
             <h2>{received.p.icon && `${received.p.icon} `}{received.p.title || UNTITLED}</h2>
             <p className="caja-nota">Nota recibida{rems ? ` · ${rems} recordatorio${rems > 1 ? 's' : ''}` : ''}{photos ? ` · ${photos} foto${photos > 1 ? 's' : ''}` : ''}.
               Quedará como una nota tuya: lo que cambies no le llega a quien te la envió{rems ? ', y sus recordatorios sonarán en tus aparatos' : ''}.</p>
+            <label className="recibida-libreta">Título
+              <input value={received.p.title} placeholder={UNTITLED} onChange={e => setReceived({ ...received, p: { ...received.p, title: e.target.value } })} />
+            </label>
             <label className="recibida-libreta">Libreta
               <select value={received.notebook} onChange={e => setReceived({ ...received, notebook: e.target.value })}>
                 {notebooks.map(nb => <option key={nb.id} value={nb.id}>{nb.name}</option>)}
@@ -1682,7 +1691,7 @@ export default function App() {
       {settingsAt !== null && <Settings start={settingsAt || undefined} onClose={() => setSettingsAt(null)} email={session.email} onLogout={logout} update={update}
         hasKey={!!verifier} onChangeKey={() => setKeyDialog({ mode: 'cambiar' })} geminiKey={geminiKey} onGeminiKey={setGeminiKey}
         mode={reminderMode} calendarHere={calendarHere} onPickMode={m => setReminderHelp(m)} onConnect={() => setReminderHelp('calendar')}
-        onReceive={() => setRecvMenu(true)} lastBackup={lastBackup} backup={backup} onBackup={() => doBackup(true)} onPermission={login} />}
+        onReceive={openReceived} lastBackup={lastBackup} backup={backup} onBackup={() => doBackup(true)} onPermission={login} />}
 
       {keyDialog && <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Clave de notas">
         <div className="ventana">

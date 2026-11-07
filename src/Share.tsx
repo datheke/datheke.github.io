@@ -96,27 +96,23 @@ export function CopyDialog({ who, onPick }: { who: string; onPick: (v: 'copia' |
   )
 }
 
-// "Nota recibida": un archivo .datheke (WhatsApp, correo…) o una nota compartida contigo por Google.
-// En la app (Android/Windows) la ventana de Google para elegirla no abre: se agrega una vez desde la web.
-export function ReceiveDialog({ onFile, onShared, onClose, inApp, onOpenWeb }: { onFile: () => void; onShared: () => void; onClose: () => void; inApp: boolean; onOpenWeb: () => void }) {
-  const [webHelp, setWebHelp] = useState(false)
+// Agregar una nota que me compartieron por Google: en la app (Android/Windows) la ventana de Google para elegirla no abre,
+// así que se agrega una vez desde la web (en la web, el botón abre directo esa ventana).
+export function SharedHelp({ onClose, onOpenWeb }: { onClose: () => void; onOpenWeb: () => void }) {
   return (
-    <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Nota recibida" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="ventana-fondo" role="dialog" aria-modal="true" aria-label="Agregar una que me compartieron" onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="ventana compartir">
         <button className="btn-icono cerrar" onClick={onClose} aria-label="Cerrar"><X size={18} /></button>
-        <h2>Nota recibida</h2>
-        <button className="recibir-opcion" onClick={inApp ? () => setWebHelp(true) : onShared}><strong>👥 Compartida conmigo</strong>
-          <span>Alguien te la compartió por correo de Google: la ven y la editan los dos.{inApp && ' Se agrega una vez desde la web.'}</span></button>
-        {webHelp && <div className="recibir-web" role="note">
+        <h2>Agregar una que me compartieron</h2>
+        <div className="recibir-web" role="note">
           <p><strong>Agrégala una vez desde la web</strong></p>
           <ol>
             <li>Entra a <strong>datheke.github.io</strong> desde el navegador, con tu misma cuenta de Google.</li>
-            <li>Toca <strong>Nota recibida → Compartida conmigo</strong> y elige la nota.</li>
+            <li>Toca <strong>Más → Compartidas → Agregar una que me compartieron</strong> y elige la nota.</li>
             <li>Listo: aparece sola aquí en la app y en tus otros aparatos.</li>
           </ol>
           <button className="principal" onClick={onOpenWeb}>Abrir la web</button>
-        </div>}
-        <button className="recibir-opcion" onClick={onFile}><strong>📄 Archivo .datheke</strong><span>Te mandaron una copia por WhatsApp, correo… Queda como nota tuya.</span></button>
+        </div>
       </div>
     </div>
   )
