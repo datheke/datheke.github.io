@@ -715,7 +715,7 @@ export default function App() {
     }
     await shared.invite(fileId, emails, title, role)
     const desde = new Date().toISOString()
-    store.patch(note.id, { props: { compartida: fileId, rol: 'dueño',
+    store.patch(note.id, { props: { compartida: fileId, rol: 'dueño', salio: null,
       ...conProps(note, [...(sh?.people ?? []).filter(c => !emails.includes(c.email)), ...emails.map(email => ({ email, rol: role, desde }))]) } })
     setToast(`Listo: compartida con ${emails.join(', ')}${role === 'ver' ? ' (solo para ver)' : ''}. Le llegó un correo de Google con cómo abrirla.`)
   }
@@ -732,6 +732,17 @@ export default function App() {
     } catch (e) { fail(e) }
   }
 
+  // Ya no la tiene nadie: deja de ser compartida y queda como nota normal en su libreta (la clave común, si tiene, se queda).
+  // deleteFile: nadie más tiene acceso, así que su archivo en "Notas compartidas" se borra; si no, queda para que el
+  // Datheke de quien se quitó "sin copia" la borre de su lado.
+  async function endShare(n: DriveFile, deleteFile: boolean, extra: Record<string, string | null> = {}) {
+    const sh = shareOf(n)
+    if (!sh) return
+    if (deleteFile) await shared.remove(sh.id).catch(e => console.error('Borrar el archivo compartido', e))
+    shared.saveState(sh.id, null)
+    store.patch(n.id, { props: { ...conProps(n, []), compartida: null, rol: null, por: null, en: null, archivo: null, estado: null, ...extra } })
+  }
+
   // Quitar a una persona (desde la ventana Compartir): con copia se le quita el permiso; sin copia, su Datheke la borra.
   async function removePerson(p: shared.Person): Promise<boolean> {
     const sh = shareOf(note)
@@ -741,8 +752,12 @@ export default function App() {
     try {
       if (choice === 'copia') await shared.uninvite(sh.id, p.id)
       else await shared.setProps(sh.id, { [`q${Math.abs(shared.hash(p.emailAddress ?? ''))}`]: p.emailAddress ?? '' })
-      store.patch(note.id, { props: conProps(note, sh.people.filter(c => c.email !== p.emailAddress?.toLowerCase())) })
-      setToast(choice === 'copia' ? `${p.emailAddress} se quedó con una copia.` : `Se le quitará a ${p.emailAddress} al sincronizar su Datheke.`)
+      const rest = sh.people.filter(c => c.email !== p.emailAddress?.toLowerCase())
+      store.patch(note.id, { props: conProps(note, rest) })
+      const last = !rest.length
+      if (last) await endShare(note, choice === 'copia' && !(await shared.people(sh.id)).some(x => x.role !== 'owner'))
+      setToast((choice === 'copia' ? `${p.emailAddress} se quedó con una copia.` : `Se le quitará a ${p.emailAddress} al sincronizar su Datheke.`)
+        + (last ? ' Ya no está compartida: quedó como nota tuya.' : ''))
       return true
     } catch (e) { fail(e); return false }
   }
@@ -949,21 +964,27 @@ export default function App() {
         // deja quitarse y deja un aviso: se le quita aquí. Sale de la lista y la nota lo dice en rojo hasta tocar "Entendido".
         if (sh.owner && Date.now() - (leftChecked.current.get(sh.id) ?? 0) > 5 * 60_000) {
           leftChecked.current.set(sh.id, Date.now())
-          const out: { email: string; name: string }[] = []
+          const out: { email: string; name: string; id?: string }[] = []
+          let list: shared.Person[] = []
           try { // si Google falla aquí, esta nota y las demás se siguen sincronizando; se vuelve a mirar en 5 minutos
-            const list = await shared.people(sh.id)
+            list = await shared.people(sh.id)
             for (const email of shared.gone(sh.con, list)) out.push({ email, name: email })
             const notices = await shared.leftNotices(sh.id)
             for (const p of notices.length ? shared.whoLeft(notices, list, email => sh.people.find(c => shared.sameEmail(c.email, email))?.desde || undefined) : []) {
               await shared.uninvite(sh.id, p.id)
-              out.push({ email: p.emailAddress ?? '', name: p.displayName || p.emailAddress || '' })
+              out.push({ email: p.emailAddress ?? '', name: p.displayName || p.emailAddress || '', id: p.id })
             }
           } catch (e) { console.error('Avisos de salida', e) }
           if (out.length) { // los que sí se quitaron salen de la lista, aunque otro haya fallado
             const names = [n.appProperties?.salio, ...out.map(p => p.name)].filter(Boolean).join(', ')
-            store.patch(n.id, { props: { ...conProps(n, sh.people.filter(c => !out.some(p => shared.sameEmail(p.email, c.email)))),
-              salio: names.length > 50 ? `${names.slice(0, 50)}…` : names } }) // Drive no guarda valores largos
-            setToast(`${out.map(p => p.name).join(', ')} salió de «${title || UNTITLED}».`)
+            const salio = names.length > 50 ? `${names.slice(0, 50)}…` : names // Drive no guarda valores largos
+            const rest = sh.people.filter(c => !out.some(p => shared.sameEmail(p.email, c.email)))
+            // Sin nadie en la lista ni en Google: deja de ser compartida. (Si Google aún tiene a alguien, se sigue compartiendo.)
+            const ended = !rest.length && !list.some(p => p.role !== 'owner' && !out.some(o => o.id === p.id))
+            if (ended) await endShare(n, true, { salio })
+            else store.patch(n.id, { props: { ...conProps(n, rest), salio } })
+            setToast(`${out.map(p => p.name).join(', ')} salió de «${title || UNTITLED}».${ended ? ' Quedó como nota tuya.' : ''}`)
+            if (ended) continue
           }
         }
         // Invitado: ¿puede editarla o solo verla? El dueño lo puede cambiar cuando quiera.
@@ -1596,8 +1617,8 @@ export default function App() {
               {shareOf(note)?.owner && note.appProperties?.archivo === 'borrado' && <p className="compartida-barra fin">
                 ⚠️ Se borró de tu Drive el archivo de esta nota compartida: ya no le llega a nadie.{' '}
                 <button className="enlace" onClick={() => reshareLost(note)}>Volver a compartir</button></p>}
-              {shareOf(note)?.owner && note.appProperties?.salio && <p className="compartida-barra salio">
-                ⚠️ Se salió de esta nota: {note.appProperties.salio}.{' '}
+              {(!shareOf(note) || shareOf(note)!.owner) && note.appProperties?.salio && <p className="compartida-barra salio">
+                ⚠️ Se salió de esta nota: {note.appProperties.salio}.{!shareOf(note) && ' Ya no está compartida: quedó solo como nota tuya.'}{' '}
                 <button className="enlace" onClick={() => store.patch(note.id, { props: { salio: null } })}>Entendido</button></p>}
 
               <Editor key={`${note.id}-${shown ? 'version' : s.revs[note.id] ?? 0}`} inlineImages={!!shareOf(note)} me={session.email}
