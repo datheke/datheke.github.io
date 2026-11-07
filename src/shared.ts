@@ -101,6 +101,17 @@ export function whoLeft(notices: Comment[], list: Person[], invitedAt: (email: s
     && (c.createdTime ?? '') > (invitedAt(p.emailAddress?.toLowerCase() ?? '') ?? '')))
 }
 
+// El mismo correo aunque Google lo escriba distinto: en Gmail no cuentan los puntos, las mayúsculas ni lo que va tras "+".
+export function sameEmail(a?: string, b?: string) {
+  const norm = (e: string) => {
+    const [user, domain = ''] = e.trim().toLowerCase().split('@')
+    return /^(gmail|googlemail)\.com$/.test(domain) ? `${user.split('+')[0].replace(/\./g, '')}@gmail.com` : `${user}@${domain}`
+  }
+  return !!a && !!b && norm(a) === norm(b)
+}
+// De los correos con quienes compartí, los que ya no tienen permiso en Google: se quitaron solos ("Puede editar" sí puede).
+export const gone = (emails: string[], list: Person[]) => emails.filter(e => !list.some(p => sameEmail(p.emailAddress, e)))
+
 // Qué hacer con una compartida al sincronizar. dirty: cambió aquí; same: el texto de Drive es igual al de aquí.
 // Quien solo puede ver nunca sube: sus cambios sueltos (de cuando podía editar) quedan en una nota aparte.
 export type Step = 'nada' | 'subir' | 'bajar' | 'las-dos' | 'bajar-y-guardar-la-mia'

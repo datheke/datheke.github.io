@@ -486,6 +486,7 @@ button.peligro, .vaciar { color: #b91c1c; border-color: #fecaca; }
 .recibir-opcion:hover { border-color: var(--acento); }
 .compartida-barra { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 8px; padding: 4px 10px; border: none; border-radius: 999px; background: #e8f0fe; color: #1e3a8a; font-size: 13px; text-align: left; }
 .compartida-barra.fin { background: #f3f4f6; color: var(--suave); }
+.compartida-barra.salio { background: #fee2e2; color: #991b1b; }
 .caja-cerrada-nueva { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 0 32px; max-width: 560px; }
 .caja-cerrada-nueva p { margin: 0; }
 .a-quien { border: 1px solid var(--borde); border-radius: 10px; padding: 8px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 14px; }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { invite, joinExtra, LEFT, leave, setRole, sharedStep, splitExtra, whoLeft } from './shared.ts'
+import { gone, invite, joinExtra, LEFT, leave, sameEmail, setRole, sharedStep, splitExtra, whoLeft } from './shared.ts'
 
 test('ícono y portada viajan en un comentario al final y se separan del texto', () => {
   const body = '<p>Leche</p><p>Pan</p>'
@@ -87,4 +87,16 @@ test('sincronizar una compartida: quien solo puede ver nunca sube; sus cambios s
   assert.equal(sharedStep({ ...editar, dirty: true, remoteChanged: true, same: false }), 'las-dos')
   assert.equal(sharedStep({ ...editar, dirty: false, remoteChanged: true, same: false }), 'bajar')
   assert.equal(sharedStep({ ...editar, dirty: false, remoteChanged: false, same: true }), 'nada')
+})
+
+test('se salió quien ya no tiene permiso en Google (con "Puede editar" se quita solo, sin dejar aviso)', () => {
+  const people = [
+    { id: 'P0', emailAddress: 'david@gmail.com', role: 'owner' },
+    { id: 'P1', emailAddress: 'kary.morales@gmail.com', role: 'writer' }, // Google lo escribe con punto
+  ]
+  assert.deepEqual(gone(['KaryMorales@gmail.com', 'karina@gmail.com', 'luis@empresa.com'], people), ['karina@gmail.com', 'luis@empresa.com'])
+  assert.deepEqual(gone([], people), [])
+  assert.ok(sameEmail('ana.paz+datheke@googlemail.com', 'anapaz@gmail.com'))
+  assert.ok(!sameEmail('ana.paz@empresa.com', 'anapaz@empresa.com')) // fuera de Gmail el punto sí cuenta
+  assert.ok(!sameEmail(undefined, 'ana@gmail.com'))
 })

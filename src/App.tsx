@@ -945,19 +945,25 @@ export default function App() {
           setToast(`${sh.dueno || 'Quien la compartió'} dejó de compartir «${title || UNTITLED}».`)
           continue
         }
-        // Dueño: quien se salió con "solo ver" (Google no lo deja quitarse) dejó un aviso: se le quita y sale de la lista.
+        // Dueño: ¿alguien se salió? Con "Puede editar" se quita el permiso y ya no está en Google; con "solo ver" Google no lo
+        // deja quitarse y deja un aviso: se le quita aquí. Sale de la lista y la nota lo dice en rojo hasta tocar "Entendido".
         if (sh.owner && Date.now() - (leftChecked.current.get(sh.id) ?? 0) > 5 * 60_000) {
           leftChecked.current.set(sh.id, Date.now())
-          const out: shared.Person[] = []
+          const out: { email: string; name: string }[] = []
           try { // si Google falla aquí, esta nota y las demás se siguen sincronizando; se vuelve a mirar en 5 minutos
+            const list = await shared.people(sh.id)
+            for (const email of shared.gone(sh.con, list)) out.push({ email, name: email })
             const notices = await shared.leftNotices(sh.id)
-            const gone = notices.length ? shared.whoLeft(notices, await shared.people(sh.id), email => sh.people.find(c => c.email === email)?.desde || undefined) : []
-            for (const p of gone) { await shared.uninvite(sh.id, p.id); out.push(p) }
+            for (const p of notices.length ? shared.whoLeft(notices, list, email => sh.people.find(c => shared.sameEmail(c.email, email))?.desde || undefined) : []) {
+              await shared.uninvite(sh.id, p.id)
+              out.push({ email: p.emailAddress ?? '', name: p.displayName || p.emailAddress || '' })
+            }
           } catch (e) { console.error('Avisos de salida', e) }
           if (out.length) { // los que sí se quitaron salen de la lista, aunque otro haya fallado
-            const emails = new Set(out.map(p => p.emailAddress?.toLowerCase()))
-            store.patch(n.id, { props: conProps(n, sh.people.filter(c => !emails.has(c.email))) })
-            setToast(`${out.map(p => p.displayName || p.emailAddress).join(', ')} salió de «${title || UNTITLED}».`)
+            const names = [n.appProperties?.salio, ...out.map(p => p.name)].filter(Boolean).join(', ')
+            store.patch(n.id, { props: { ...conProps(n, sh.people.filter(c => !out.some(p => shared.sameEmail(p.email, c.email)))),
+              salio: names.length > 50 ? `${names.slice(0, 50)}…` : names } }) // Drive no guarda valores largos
+            setToast(`${out.map(p => p.name).join(', ')} salió de «${title || UNTITLED}».`)
           }
         }
         // Invitado: ¿puede editarla o solo verla? El dueño lo puede cambiar cuando quiera.
@@ -1582,7 +1588,7 @@ export default function App() {
                 if (sh.fin) return <p className="compartida-barra fin">Ya no está compartida: es tu copia.</p>
                 if (sh.estado) return null
                 return <button className="compartida-barra" onClick={() => setShareOpen(true)}>
-                  <Users size={14} aria-hidden="true" /> {sh.owner ? `Compartida con ${sh.con.join(', ') || '…'}`
+                  <Users size={14} aria-hidden="true" /> {sh.owner ? `Compartida con ${sh.con.join(', ') || 'nadie por ahora'}`
                     : viewOnly(note) ? `Solo para ver · te la compartió ${sh.dueno || 'otra persona'}` : `Compartida por ${sh.dueno || 'otra persona'}`}
                   {sh.por && <span> · Modificado por {sh.por}{sh.en ? `, ${shortDate(sh.en)}` : ''}</span>}
                 </button>
@@ -1590,6 +1596,9 @@ export default function App() {
               {shareOf(note)?.owner && note.appProperties?.archivo === 'borrado' && <p className="compartida-barra fin">
                 ⚠️ Se borró de tu Drive el archivo de esta nota compartida: ya no le llega a nadie.{' '}
                 <button className="enlace" onClick={() => reshareLost(note)}>Volver a compartir</button></p>}
+              {shareOf(note)?.owner && note.appProperties?.salio && <p className="compartida-barra salio">
+                ⚠️ Se salió de esta nota: {note.appProperties.salio}.{' '}
+                <button className="enlace" onClick={() => store.patch(note.id, { props: { salio: null } })}>Entendido</button></p>}
 
               <Editor key={`${note.id}-${shown ? 'version' : s.revs[note.id] ?? 0}`} inlineImages={!!shareOf(note)} me={session.email}
                 content={shown ? shown.text : doc.text} onChange={text => { if (!shown) store.edit(note.id, { text }) }}
