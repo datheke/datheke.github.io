@@ -1,5 +1,5 @@
 import {
-  Bell, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, FileDown, FilePlus, FileText, FolderInput, GripVertical, History, KeyRound, LayoutTemplate, LockKeyhole, Maximize2, Minimize2, Notebook, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Shield, ShieldCheck, ShieldOff, Trash2, Users, X as XIcon,
+  Bell, Check, CheckSquare, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleCheck, FileDown, FilePlus, FileText, FolderInput, GripVertical, History, KeyRound, LayoutTemplate, LockKeyhole, Maximize2, Menu as MenuIcon, Minimize2, Notebook, PanelLeftClose, PanelLeftOpen, Pencil, Pin, Plus, RefreshCw, RotateCcw, Search, Send, Shield, ShieldCheck, ShieldOff, Trash2, Users, X as XIcon,
 } from 'lucide-react'
 import { useDeferredValue, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { closeTop, useBack } from './back.ts'
@@ -102,10 +102,11 @@ export default function App() {
   const [selected, setSelected] = useState<Set<string> | null>(null) // seleccionar varias notas (null: no se está seleccionando)
   const [remindView, setRemindView] = useState(false) // la lista muestra los recordatorios
   const [sharedView, setSharedView] = useState(false) // la lista muestra las compartidas conmigo
-  const [settingsAt, setSettingsAt] = useState<Section | null>(null) // ventana de Ajustes abierta en esa sección
+  const [settingsAt, setSettingsAt] = useState<Section | '' | null>(null) // Ajustes: null cerrada, '' en la lista de secciones
   // "Más" de la barra lateral (Plantillas, Compartido conmigo, Basurero): abierto o cerrado, como se dejó.
   const [moreOpen, setMoreOpen] = useState(() => { try { return localStorage.getItem('datheke-mas') !== 'no' } catch { return true } })
-  const [navOpen, setNavOpen] = useState(false) // celular: se ve la pantalla de libretas (en la PC siempre se ven)
+  const [navOpen, setNavOpen] = useState(false) // celular: el menú lateral está abierto (en la PC siempre se ve)
+  const swipe = useRef<{ x: number; y: number } | null>(null) // deslizar el menú lateral a la izquierda lo cierra
   const [query, setQuery] = useState('') // buscador: mientras haya algo escrito, la lista muestra los resultados
   const searched = useDeferredValue(query) // escribir no espera a que termine de buscar
   const words = searchWords(searched)
@@ -152,6 +153,7 @@ export default function App() {
   useBack(!!keyDialog, () => setKeyDialog(null))
   useBack(!!copyAsk, () => copyAsk?.resolve(null))
   useBack(picker, () => setPicker(false))
+  useBack(navOpen, () => setNavOpen(false))
   useBack(!!selected, () => setSelected(null))
   useBack(noteFind !== null, () => setNoteFind(null))
   const backRef = useRef<() => void>(() => {})
@@ -1286,15 +1288,12 @@ export default function App() {
     })}</>
   }
 
-  // Sin nada abierto: de la subnota a su nota madre, de la nota a la lista, de los resultados a la lista, de la lista a las
-  // libretas y de ahí sale de la app (queda en segundo plano, como las demás apps). En pantallas anchas las libretas
-  // siempre se ven: de una libreta a Todas las notas, y de ahí sale.
+  // Sin nada abierto (el menú lateral del celular se cierra antes, con useBack): de la subnota a su nota madre, de la nota a
+  // la lista, de los resultados a la lista, de una libreta a Todas las notas, y de ahí sale de la app (queda en segundo plano).
   backRef.current = () => {
     if (note) return open(parent ? parent.id : null)
     if (query) return setQuery('')
-    const narrow = window.matchMedia('(max-width: 700px)').matches
-    if (narrow && !navOpen) return setNavOpen(true)
-    if (!narrow && (notebookId || trashView || remindView || sharedView)) return go(null)
+    if (notebookId || trashView || remindView || sharedView) return go(null)
     const bridge = (window as unknown as { DathekeAndroid?: { salir(): void } }).DathekeAndroid
     if (bridge?.salir) bridge.salir()
     else import('@tauri-apps/api/app').then(a => a.exit(0)).catch(() => {})
@@ -1312,8 +1311,15 @@ export default function App() {
 
   return (
     <div className={appClass} style={{ '--columnas': columns } as CSSProperties}>
-      <nav className="libretas" aria-label="Libretas">
-        <Account email={session.email} onLogout={logout} update={update} onSettings={() => setSettingsAt('cuenta')} />
+      {navOpen && <div className="velo" onClick={() => setNavOpen(false)} aria-hidden="true" />}
+      <nav className="libretas" aria-label="Libretas"
+        onTouchStart={e => { swipe.current = { x: e.touches[0].clientX, y: e.touches[0].clientY } }}
+        onTouchEnd={e => {
+          const from = swipe.current, t = e.changedTouches[0]
+          swipe.current = null
+          if (navOpen && from && from.x - t.clientX > 60 && from.x - t.clientX > Math.abs(t.clientY - from.y)) setNavOpen(false)
+        }}>
+        <Account email={session.email} onLogout={logout} update={update} onSettings={() => setSettingsAt('')} />
         <button className="principal nueva-nota solo-pc" onClick={() => newNote()}><Plus size={18} /> Nota</button>
         <button className={notebookId === null && !trashView && !remindView && !sharedView ? 'item activo' : 'item'} onClick={() => go(null)}>
           <FileText size={16} /><span>Todas las notas</span><small>{regular.length}</small>
@@ -1398,7 +1404,7 @@ export default function App() {
             </span>
           </div> : <>
           <div className="lista-titulo">
-            <button className="btn-icono solo-celular" onClick={() => setNavOpen(true)} title="Libretas" aria-label="Ver las libretas"><ChevronLeft size={20} /></button>
+            <button className="btn-icono solo-celular" onClick={() => setNavOpen(true)} title="Libretas" aria-label="Ver las libretas"><MenuIcon size={20} /></button>
             <h2>{words.length ? 'Resultados' : remindView ? 'Recordatorios' : trashView ? 'Basurero' : sharedView ? 'Compartido conmigo' : notebookName ?? 'Todas las notas'}</h2>
             <small>{words.length ? found.length : remindView ? reminders.length : list.length}</small>
             <button className="btn-icono" onClick={() => store.sync()} title="Sincronizar" aria-label="Sincronizar"><RefreshCw size={16} /></button>
@@ -1643,7 +1649,7 @@ export default function App() {
       })()}
       {reminderHelp && <ReminderHelp mode={reminderHelp} current={reminderMode} calendarHere={calendarHere} onClose={() => setReminderHelp(null)} onUse={pickMode} />}
 
-      {settingsAt && <Settings start={settingsAt} onClose={() => setSettingsAt(null)} email={session.email} onLogout={logout} update={update}
+      {settingsAt !== null && <Settings start={settingsAt || undefined} onClose={() => setSettingsAt(null)} email={session.email} onLogout={logout} update={update}
         hasKey={!!verifier} onChangeKey={() => setKeyDialog({ mode: 'cambiar' })} geminiKey={geminiKey} onGeminiKey={setGeminiKey}
         mode={reminderMode} calendarHere={calendarHere} onPickMode={m => setReminderHelp(m)} onConnect={() => setReminderHelp('calendar')}
         onReceive={() => setRecvMenu(true)} lastBackup={lastBackup} backup={backup} onBackup={() => doBackup(true)} onPermission={login} />}

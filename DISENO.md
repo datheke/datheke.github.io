@@ -16,6 +16,8 @@ Gemini, nota recibida y conflicto (quedan igual, se abren desde donde diga abajo
 | Basurero | Dentro de **Más ▾** |
 | (no existe) | **Más ▾**: Plantillas, Compartido conmigo, Basurero (Calendario cuando exista) |
 | Respaldo en Drive: fecha · Hacer ahora / Dar permiso | Ajustes → Respaldo (y la fecha también en Más ▾) |
+| Celular: pantalla completa de libretas | Panel lateral que deja ver la lista; se cierra con regresar, tocando afuera o deslizando a la izquierda (decidido por David) |
+| Rueda de Ajustes | Abre Ajustes en la lista de secciones (en el celular), no en una sección |
 
 ## 2. Ventana de Ajustes (nueva, con buscador)
 | Sección | Qué tiene (todo ya existe hoy) | Hoy está en |

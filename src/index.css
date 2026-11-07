@@ -79,6 +79,7 @@ div.item { padding: 3px 4px 3px 10px; }
 .mas-boton[aria-expanded="true"] svg { transform: rotate(180deg); }
 
 /* Línea entre columnas: se ve fina, se agarra en 6 px. */
+.velo { display: none; }
 .divisor { position: relative; cursor: col-resize; touch-action: none; }
 .divisor::after { content: ''; position: absolute; inset: 0 2px; background: var(--borde); transition: background .15s; }
 .divisor:hover::after, .divisor:focus-visible::after { background: var(--acento); }
@@ -263,8 +264,13 @@ body.cambiando-ancho { cursor: col-resize; }
   .app { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
   .divisor, .app .solo-pc { display: none; }
   .app .solo-celular { display: inline-flex; }
-  .app:not(.con-libretas) .libretas, .app.con-libretas .lista, .app:not(.con-nota) .editor, .app.con-nota .lista { display: none; }
-  .libretas { padding: 12px; }
+  .app:not(.con-nota) .editor, .app.con-nota .lista { display: none; }
+  /* Menú lateral: sale desde la izquierda sobre la lista y deja ver un poco de ella; tocar afuera, deslizar o regresar lo cierra. */
+  .libretas { position: fixed; z-index: 42; top: 0; bottom: 0; left: 0; width: min(85vw, 340px); visibility: hidden; transform: translateX(-100%);
+    transition: transform .25s ease, visibility .25s; box-shadow: 0 0 30px #0003; border-radius: 0 16px 16px 0;
+    padding: calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); }
+  .app.con-libretas .libretas { visibility: visible; transform: none; }
+  .velo { display: block; position: fixed; inset: 0; z-index: 41; background: #0f172a59; }
   .item { padding: 12px 10px; font-size: 16px; }
   div.item { padding: 5px 4px 5px 10px; }
   .item .btn-icono, .seccion .btn-icono { width: 34px; height: 34px; }
@@ -310,7 +316,7 @@ body.cambiando-ancho { cursor: col-resize; }
 .ondas i:nth-child(4) { animation-delay: .45s; } .ondas i:nth-child(5) { animation-delay: .6s; }
 @keyframes onda { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
 @keyframes latido { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
-@media (prefers-reduced-motion: reduce) { .ondas i, .gemini-pensando { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ondas i, .gemini-pensando { animation: none; } .libretas { transition: none; } }
 .gemini-aviso { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 8px; background: #fff7ed; border: 1px solid #fdba74; color: #7c2d12; }
 .gemini-aviso svg, .gemini-privada svg { vertical-align: -3px; }
 .gemini-privada { color: #166534; font-size: 13px; }
